@@ -9,11 +9,14 @@
    只动 transform/opacity（绝不碰 layout 属性）；reduced-motion 一刀切全关。 */
 :root {
   --primary: #3482FF;
-  /* --primary-strong：**承载文字**时的主色（按钮白字底 / 主色文字）。miuix 原值
-     #3482FF 配白字只有 3.63:1，低于 WCAG AA 4.5:1；色相不变只加深到 #2563EB
-     （白字 5.17:1、淡底 #EAF2FF 上 4.59:1，两项都过线）。图标/描边/焦点环等
-     非文字用途仍用 --primary，保住 miuix 的观感。 */
+  /* 承载文字的主色按「底要深、字要浅」拆成两个 token——一个值兼两职必然顾此失彼
+     （#2563EB 当深色文字压暗底只有 2.19:1）：
+     --primary-strong：按钮白字**底**（#2563EB 白字 5.17:1；miuix 原值 #3482FF
+     配白字仅 3.63:1，色相不变只加深）；
+     --primary-text：主色**文字**（浅 #1363D6 压淡底 #EAF2FF 4.93:1、画布 5.18:1）。
+     图标/描边/焦点环等非文字用途仍用 --primary，保住 miuix 的观感。 */
   --primary-strong: #2563EB;
+  --primary-text: #1363D6;
   --primary-ink: #ffffff;
   --primary-soft: #EAF2FF;
   --canvas: #F7F7F7;
@@ -53,7 +56,8 @@
 @media (prefers-color-scheme: dark) {
   :root {
     --primary: #277AF7;
-    --primary-strong: #2563EB;   /* 暗色同值：#277AF7 配白字 4.03:1 仍不够 */
+    --primary-strong: #2563EB;   /* 按钮底暗色同值：#277AF7 配白字 4.03:1 仍不够 */
+    --primary-text: #7CB0FF;     /* 文字要浅：压 #2B3B54 5.12:1、卡 #242424 7.03:1（同 --focus） */
     --primary-ink: #ffffff;
     --primary-soft: #2B3B54;
     --canvas: #000000;
@@ -179,7 +183,7 @@ code { font-family: var(--mono); }
   transition: background-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
 }
 .app-chip:hover { color: var(--ink); }
-.app-chip.on { background: var(--primary-soft); color: var(--primary-strong); font-weight: 500; }
+.app-chip.on { background: var(--primary-soft); color: var(--primary-text); font-weight: 500; }
 /* W8② 按压反馈统一：分段 chip 与 .btn/.tab 同款「按下轻微缩进」（只 transform，
    reduced-motion 由文件末尾一刀切撤掉）——之前点它是「无反应」，和全站不一致。 */
 .app-chip:active { transform: scale(.97); }
@@ -273,7 +277,7 @@ button.app-chip { background: transparent; border: 0; font: inherit; cursor: poi
               transform var(--dur-1) var(--spring);
 }
 .nav-item:hover { background: var(--card); color: var(--ink); }
-.nav-item.on { color: var(--primary-strong); background: var(--primary-soft); font-weight: 500; }
+.nav-item.on { color: var(--primary-text); background: var(--primary-soft); font-weight: 500; }
 
 @media (min-width: 900px) {
   .tabnav { display: none; }
@@ -319,7 +323,7 @@ p.hint { margin: 6px 0; }
 
 /* 提示容器（验证码/信息卡同款：浅蓝底 + 主色字） */
 .hint-box {
-  background: var(--primary-soft); color: var(--primary);
+  background: var(--primary-soft); color: var(--primary-text);
   border-radius: var(--radius-card); padding: 14px 16px;
   font-size: 14px; margin: 0;
 }
@@ -433,7 +437,7 @@ input:-webkit-autofill {
   transition: background-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
 }
 .select-opt:hover, .select-opt.active { background: var(--canvas); }
-.select-opt[aria-selected=true] { color: var(--primary-strong); font-weight: 500; }
+.select-opt[aria-selected=true] { color: var(--primary-text); font-weight: 500; }
 .select-opt[aria-selected=true]::after { content: "✓"; font-size: 13px; }
 
 /* 勾选/单选自绘：原生 input 保留（语义/键盘/表单值全不动），只换外观 */
@@ -634,7 +638,7 @@ input:disabled { opacity: .6; }
   background: var(--sub-bg); background-clip: padding-box; border: none; color: var(--dim);
   vertical-align: middle;
 }
-.badge.on { color: var(--primary-strong); background: var(--primary-soft); }
+.badge.on { color: var(--primary-text); background: var(--primary-soft); }
 .badge.off { color: var(--dim); }
 .badge.warn { color: var(--danger-ink); background: var(--danger-bg); }
 /* 邀请四态徽标的绿色档（accepted）：与 .ok-note 同一 --ok 取色 */
@@ -677,7 +681,7 @@ td.wrap-cell { white-space: normal; overflow-wrap: anywhere; word-break: normal;
   transition: color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease),
               transform var(--dur-1) var(--ease);
 }
-.tab[aria-selected=true] { color: var(--primary); border-bottom-color: var(--primary); font-weight: 500; }
+.tab[aria-selected=true] { color: var(--primary-text); border-bottom-color: var(--primary); font-weight: 500; }
 .tab:active { transform: scale(.97); }
 
 /* ---- 对话框（弹入：scale .96→1 + fade，200ms；遮罩淡入）---- */

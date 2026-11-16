@@ -446,17 +446,21 @@ body { margin:0; min-height:100vh; display:flex; align-items:center; justify-con
         box-shadow:0 8px 32px rgba(0,0,0,.06); }
 h1 { font-size:20px; font-weight:400; margin:0 0 12px; }
 p  { font-size:15px; line-height:1.7; margin:0 0 10px; color:#333; }
-.warn { color:#e94634; }
+/* 承载文字的蓝/红都取 AA 配方变体：#3482ff 配白字 3.63:1、#e94634 压白卡 3.90:1 均不达线 */
+.warn { color:#C93A2A; }
 .btn { display:block; width:100%; margin-top:20px; padding:13px 0; border:0; border-radius:16px;
-       background:#3482ff; color:#fff; font-size:16px; cursor:pointer; }
+       background:#1363D6; color:#fff; font-size:16px; cursor:pointer; }
 .btn:disabled { opacity:.6; cursor:default; }
-.link { display:inline-block; margin-top:14px; color:#3482ff; text-decoration:none; font-size:15px; }
-.err { color:#e94634; font-size:14px; margin-top:10px; }
+.link { display:inline-block; margin-top:14px; color:#1363D6; text-decoration:none; font-size:15px; }
+.err { color:#C93A2A; font-size:14px; margin-top:10px; }
 .hidden { display:none; }
 @media (prefers-color-scheme: dark) {
   body { background:#000; color:#e6ffffff; }
   .card { background:#242424; box-shadow:none; }
   p { color:#b4b4b4; }
+  /* 暗卡上的浅色文字换浅墨：#1363D6 / #C93A2A 压 #242424 只有 2.80 / 3.05:1 */
+  .link { color:#7CB0FF; }
+  .warn, .err { color:#FF8B7C; }
 }
 </style></head><body><div class="card">`
 	if !ok {

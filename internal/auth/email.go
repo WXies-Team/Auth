@@ -56,8 +56,10 @@ type brand struct {
 	// 作者定案用「账户」且拉丁名前留一个空格（" Auth 账户"）——中英混排的空格只在这里
 	// 与 join 出现，模板不再逐处手写。
 	account string
-	// primaryHex 是品牌主色（按钮底、logo 外层 td 底）：两个 App 与中性品牌都用
-	// auth web 的 --primary token 同源色值（#3482FF，正文走灰阶）。
+	// primaryHex 是品牌主色在邮件里**承载文字的形态**（CTA 按钮白字底、正文文字
+	// 链接）：#3482FF 压白字 3.63:1、压卡 3.51:1 都不到 AA，取同色相压深的
+	// #1363D6（白字 5.55 / 压卡 5.36 / 压画布 5.03）。品牌面的 #3482FF 只留在
+	// logo 资产里（scripts/genicons 画、gen_test 断言钉死）——两者不同值是有意的。
 	primaryHex string
 	// logoPath 是托管 logo 的站内路径（/brand/<slug>-v1.png，internal/ui 静态路由，
 	// scripts/genicons 生成）。品牌表按此口径引用，brand_test 逐个断言非空。
@@ -72,12 +74,12 @@ var brands = map[string]brand{
 	"calorie-diary": {
 		name: "热量日记", latin: "CalorieDiary", footer: "热量日记 CalorieDiary",
 		prefix: "【热量日记】", account: "热量日记账号",
-		primaryHex: "#3482FF", logoPath: "/brand/calorie-diary-v1.png",
+		primaryHex: "#1363D6", logoPath: "/brand/calorie-diary-v1.png",
 	},
 	"expense-diary": {
 		name: "开支日记", latin: "ExpenseDiary", footer: "开支日记 ExpenseDiary",
 		prefix: "【开支日记】", account: "开支日记账号",
-		primaryHex: "#3482FF", logoPath: "/brand/expense-diary-v1.png",
+		primaryHex: "#1363D6", logoPath: "/brand/expense-diary-v1.png",
 	},
 }
 
@@ -86,7 +88,7 @@ var brands = map[string]brand{
 var neutralBrand = brand{
 	name: "Auth", latin: "auth.horatio.cn", footer: "Auth auth.horatio.cn",
 	prefix: "【Auth】", account: " Auth 账户",
-	primaryHex: "#3482FF", logoPath: "/brand/auth-v1.png",
+	primaryHex: "#1363D6", logoPath: "/brand/auth-v1.png",
 }
 
 // brandFor 按 app 取品牌，空与未知都回 Auth：非法 app 在上游已被 validateApp 挡成
@@ -119,11 +121,11 @@ const (
 	mailCard    = "#FAFBFD" // 主卡片
 	mailInk     = "#1F2430" // 主文
 	mailSub     = "#646B7A" // 次文
-	mailDim     = "#8C93B0" // 页脚/纯文本 URL
+	mailDim     = "#5F6785" // 页脚/纯文本 URL（#8C93B0 压卡 2.93:1，加深到 5.39，同 style.css --section-title）
 	mailHair    = "#E7EAEF" // 分隔线
 	mailCodeBox = "#E8F0FE" // 验证码卡底（品牌主色的淡版）
 	mailTipBox  = "#F0F2F5" // 提示卡底
-	mailWarn    = "#E94634" // 「不是我」警示红
+	mailWarn    = "#C93A2A" // 「不是我」警示红（#E94634 压卡 3.76:1，加深到 4.92，同 style.css --danger-ink）
 )
 
 // brandEyebrow 是卡片里的次文眉题（品牌名 · 场景）。
