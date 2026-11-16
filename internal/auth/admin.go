@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -13,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/WXies-Team/auth/internal/db"
 	"github.com/WXies-Team/auth/internal/geoip"
 	"github.com/WXies-Team/auth/internal/protocol"
 )
@@ -203,12 +203,12 @@ func (s *Service) AdminSearchUsers(query string, limit, offset int) ([]AdminUser
 		}
 	}
 	var total int
-	if err := s.pool.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM users"+cond, args...).
+	if err := s.pool.QueryRowContext(db.QueryCtx(), "SELECT COUNT(*) FROM users"+cond, args...).
 		Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("数用户: %w", err)
 	}
 	listArgs := append(append([]any{}, args...), limit, offset)
-	rows, err := s.pool.QueryContext(context.Background(),
+	rows, err := s.pool.QueryContext(db.QueryCtx(),
 		cols+cond+" ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?", listArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("查用户: %w", err)
@@ -249,7 +249,7 @@ func (s *Service) fillUserBans(users []AdminUser) error {
 		ph = append(ph, "?")
 	}
 	now := time.Now().UnixMilli()
-	rows, err := s.pool.QueryContext(context.Background(),
+	rows, err := s.pool.QueryContext(db.QueryCtx(),
 		"SELECT uid, app, until_ms, reason FROM user_bans WHERE uid IN ("+strings.Join(ph, ",")+
 			") AND (until_ms = 0 OR until_ms > ?)", append(ids, now)...)
 	if err != nil {
@@ -292,7 +292,7 @@ func (s *Service) fillUserSummaries(users []AdminUser) error {
 		ids = append(ids, u.UID)
 		placeholders = append(placeholders, "?")
 	}
-	rows, err := s.pool.QueryContext(context.Background(),
+	rows, err := s.pool.QueryContext(db.QueryCtx(),
 		"SELECT user_id, COUNT(*) FROM totp_factors WHERE enabled = 1 AND user_id IN ("+strings.Join(placeholders, ",")+") GROUP BY user_id",
 		ids...)
 	if err != nil {
@@ -312,7 +312,7 @@ func (s *Service) fillUserSummaries(users []AdminUser) error {
 		return err
 	}
 
-	rows2, err := s.pool.QueryContext(context.Background(),
+	rows2, err := s.pool.QueryContext(db.QueryCtx(),
 		"SELECT user_id, COUNT(*) FROM passkeys WHERE rp_id = ? AND user_id IN ("+strings.Join(placeholders, ",")+") GROUP BY user_id",
 		append([]any{passkeyRPID}, ids...)...)
 	if err != nil {
@@ -336,7 +336,7 @@ func (s *Service) fillUserSummaries(users []AdminUser) error {
 		users[i].PasskeyCount = counts[users[i].UID]
 	}
 
-	rows3, err := s.pool.QueryContext(context.Background(),
+	rows3, err := s.pool.QueryContext(db.QueryCtx(),
 		"SELECT uid, COUNT(*) FROM admin_scopes WHERE uid IN ("+strings.Join(placeholders, ",")+") GROUP BY uid",
 		ids...)
 	if err != nil {
@@ -361,7 +361,7 @@ func (s *Service) fillUserSummaries(users []AdminUser) error {
 
 	// 资料三件套（B5）：nickname / avatarColor / hasAvatar 批量回填。avatarImage
 	// 只取「有没有」（avatar_image IS NOT NULL AND <> ''）——列表不背 95 万字符的图。
-	rows4, err := s.pool.QueryContext(context.Background(),
+	rows4, err := s.pool.QueryContext(db.QueryCtx(),
 		"SELECT user_id, nickname, avatar_color,"+
 			" (avatar_image IS NOT NULL AND avatar_image <> '') FROM user_profile WHERE user_id IN ("+strings.Join(placeholders, ",")+")",
 		ids...)
@@ -405,7 +405,7 @@ func (s *Service) AdminUserDetail(uid int64) (*AdminUserDetail, error) {
 		u        AdminUser
 		password sql.NullString
 	)
-	err := s.pool.QueryRowContext(context.Background(),
+	err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT id, email, role, created_at, password_hash FROM users WHERE id = ?", uid).
 		Scan(&u.UID, &u.Email, &u.Role, &u.CreatedAt, &password)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -466,7 +466,7 @@ func (s *Service) AdminUserDetail(uid int64) (*AdminUserDetail, error) {
 // denyIfBanned 同款口径**惰性删**——判定与展示不会对同一行各说各话。
 func (s *Service) AdminUserBans(uid int64) ([]BanInfo, error) {
 	out := make([]BanInfo, 0, 2)
-	rows, err := s.pool.QueryContext(context.Background(),
+	rows, err := s.pool.QueryContext(db.QueryCtx(),
 		"SELECT app, until_ms, reason FROM user_bans WHERE uid = ?", uid)
 	if err != nil {
 		return nil, fmt.Errorf("查封禁: %w", err)
@@ -490,7 +490,7 @@ func (s *Service) AdminUserBans(uid int64) ([]BanInfo, error) {
 	}
 	_ = rows.Close()
 	for _, app := range stale {
-		if _, derr := s.pool.ExecContext(context.Background(),
+		if _, derr := s.pool.ExecContext(db.QueryCtx(),
 			"DELETE FROM user_bans WHERE uid = ? AND app = ?", uid, app); derr != nil {
 			slog.Warn("清理过期封禁行失败（不进列表即可）", "uid", uid, "app", app, "err", derr)
 		}
@@ -529,7 +529,7 @@ func (s *Service) AdminSetRole(actor Caller, targetUID int64, role string) (err 
 		return badRequest("不能修改自己的角色，请让另一位平台管理员操作")
 	}
 	var current string
-	scanErr := s.pool.QueryRowContext(context.Background(),
+	scanErr := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT role FROM users WHERE id = ?", targetUID).Scan(&current)
 	if errors.Is(scanErr, sql.ErrNoRows) {
 		return &HTTPError{404, "该用户不存在，请刷新用户列表后重试"}
@@ -550,7 +550,7 @@ func (s *Service) AdminSetRole(actor Caller, targetUID int64, role string) (err 
 	}
 	if IsSuperRole(current) && role != adminRoleSuper {
 		var supers int
-		if err := s.pool.QueryRowContext(context.Background(),
+		if err := s.pool.QueryRowContext(db.QueryCtx(),
 			"SELECT COUNT(*) FROM users WHERE role = ?", adminRoleSuper).Scan(&supers); err != nil {
 			return fmt.Errorf("数平台管理员: %w", err)
 		}
@@ -558,13 +558,13 @@ func (s *Service) AdminSetRole(actor Caller, targetUID int64, role string) (err 
 			return badRequest("不能降级最后一个平台管理员，之后将无人能管理本服务")
 		}
 	}
-	if _, err := s.pool.ExecContext(context.Background(),
+	if _, err := s.pool.ExecContext(db.QueryCtx(),
 		"UPDATE users SET role = ? WHERE id = ?", role, targetUID); err != nil {
 		return fmt.Errorf("改角色: %w", err)
 	}
 	if role == adminRoleUser {
 		// 降回普通用户即清授权行：残留行会在下次提权时把旧 app 权限意外带回来
-		if _, err := s.pool.ExecContext(context.Background(),
+		if _, err := s.pool.ExecContext(db.QueryCtx(),
 			"DELETE FROM admin_scopes WHERE uid = ?", targetUID); err != nil {
 			return fmt.Errorf("清应用授权: %w", err)
 		}
@@ -604,7 +604,7 @@ func (s *Service) isRootAccount(uid int64, email string) bool {
 // 读写走 atomic：惰性补解析可能来自并发请求。
 func (s *Service) resolveRootSuper() {
 	var id int64
-	err := s.pool.QueryRowContext(context.Background(),
+	err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT id FROM users WHERE email = ?", normalizeEmail(RootSuperEmail)).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		// 空库首启 / 测试先建服务后建号：回退态，直到根账号入库后的下一次判定补上
@@ -665,16 +665,16 @@ func (s *Service) AdminListSessions(uid int64, apps []string, query, ipFilter st
 	from := " FROM sessions s JOIN users u ON u.id = s.user_id" +
 		" LEFT JOIN user_profile p ON p.user_id = s.user_id" + cond
 	var total, totalUsers int
-	if err := s.pool.QueryRowContext(context.Background(),
+	if err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT COUNT(*)"+from, args...).Scan(&total); err != nil {
 		return nil, 0, 0, fmt.Errorf("数会话: %w", err)
 	}
-	if err := s.pool.QueryRowContext(context.Background(),
+	if err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT COUNT(DISTINCT s.user_id)"+from, args...).Scan(&totalUsers); err != nil {
 		return nil, 0, 0, fmt.Errorf("数会话用户: %w", err)
 	}
 	listArgs := append(append([]any{}, args...), limit, offset)
-	rows, err := s.pool.QueryContext(context.Background(),
+	rows, err := s.pool.QueryContext(db.QueryCtx(),
 		"SELECT s.id, s.user_id, u.email, s.app, s.user_agent, s.ip, s.created_at, s.last_seen_at,"+
 			" COALESCE(p.nickname, ''), COALESCE(p.avatar_color, 0)"+
 			from+" ORDER BY s.last_seen_at DESC, s.id DESC LIMIT ? OFFSET ?", listArgs...)
@@ -710,7 +710,7 @@ func (s *Service) AdminListSessions(uid int64, apps []string, query, ipFilter st
 func (s *Service) AdminRevokeSession(actor Caller, sid int64, apps []string) (err error) {
 	var owner sql.NullInt64
 	var sessApp string
-	appErr := s.pool.QueryRowContext(context.Background(),
+	appErr := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT user_id, app FROM sessions WHERE id = ?", sid).Scan(&owner, &sessApp)
 	defer func() {
 		s.Audit(AuditEvent{
@@ -725,7 +725,7 @@ func (s *Service) AdminRevokeSession(actor Caller, sid int64, apps []string) (er
 		err = &HTTPError{403, "没有该项目的管理权限，请联系平台管理员开通"}
 		return err
 	}
-	if _, err = s.pool.ExecContext(context.Background(),
+	if _, err = s.pool.ExecContext(db.QueryCtx(),
 		"UPDATE sessions SET revoked_at = ? WHERE id = ?", time.Now().UnixMilli(), sid); err != nil {
 		return fmt.Errorf("吊销会话: %w", err)
 	}
@@ -741,7 +741,7 @@ func (s *Service) AdminRevokeUserSessions(actor Caller, targetUID int64) (err er
 			ActorEmail: maskEmail(actor.Email), TargetUID: uidPtr(targetUID), Meta: actor.Meta,
 		})
 	}()
-	if err = revokeUserSessions(context.Background(), s.pool, targetUID, 0, nil); err != nil {
+	if err = revokeUserSessions(db.QueryCtx(), s.pool, targetUID, 0, nil); err != nil {
 		return err
 	}
 	return nil
@@ -779,7 +779,7 @@ func allowedConfigKey(key string) bool {
 // AdminListConfig 列白名单配置：读**库里现值**（不走 config.Store 的 10 秒缓存，
 // 否则刚写的值读回旧的，管理员会以为没保存）。
 func (s *Service) AdminListConfig() ([]ConfigItem, error) {
-	rows, err := s.pool.QueryContext(context.Background(),
+	rows, err := s.pool.QueryContext(db.QueryCtx(),
 		"SELECT `key`, `value` FROM app_config ORDER BY `key`")
 	if err != nil {
 		return nil, fmt.Errorf("查配置: %w", err)
@@ -863,12 +863,12 @@ func (s *Service) AdminSetConfig(actor Caller, key, value string) (err error) {
 	}
 	// 先读旧态（给审计用），失败不挡写入
 	var old string
-	if err := s.pool.QueryRowContext(context.Background(),
+	if err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT `value` FROM app_config WHERE `key` = ?", key).Scan(&old); err == nil {
 		before = strings.TrimSpace(old) != ""
 	}
 
-	ctx := context.Background()
+	ctx := db.QueryCtx()
 	if strings.TrimSpace(value) == "" {
 		if _, err = s.pool.ExecContext(ctx, "DELETE FROM app_config WHERE `key` = ?", key); err != nil {
 			return fmt.Errorf("清除配置: %w", err)
@@ -932,7 +932,7 @@ type aiLimitValues struct {
 func (s *Service) aiLimitValues() (aiLimitValues, error) {
 	out := aiLimitValues{}
 	values := map[string]string{}
-	rows, err := s.pool.QueryContext(context.Background(),
+	rows, err := s.pool.QueryContext(db.QueryCtx(),
 		"SELECT `key`, `value` FROM app_config WHERE `key` IN (?,?,?,?)",
 		aiQuotaKeys[0].key, aiQuotaKeys[1].key, aiQuotaKeys[2].key, aiQuotaKeys[3].key)
 	if err != nil {
@@ -997,7 +997,7 @@ func (s *Service) AdminAIUsage(days int, apps []string) (*AIUsageOverview, error
 			args = append(args, a)
 		}
 	}
-	rows, err := s.pool.QueryContext(context.Background(),
+	rows, err := s.pool.QueryContext(db.QueryCtx(),
 		"SELECT a.day, a.subject, a.`count`, u.email FROM ai_usage a"+
 			" LEFT JOIN users u ON u.id = CAST(a.subject AS UNSIGNED)"+
 			" WHERE a.scope = 'user' AND a.day >= ?"+cond+" ORDER BY a.day ASC", args...)
@@ -1075,7 +1075,7 @@ func (s *Service) AdminAIUsage(days int, apps []string) (*AIUsageOverview, error
 	// 全站行：限额闸比对的就是它；app-admin 视角藏起来（跨项目数据）
 	if len(apps) == 0 {
 		var used int
-		if err := s.pool.QueryRowContext(context.Background(),
+		if err := s.pool.QueryRowContext(db.QueryCtx(),
 			"SELECT `count` FROM ai_usage WHERE scope = 'global' AND subject = '' AND day = ?",
 			today).Scan(&used); err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("查全站当日用量: %w", err)
@@ -1103,7 +1103,7 @@ func (s *Service) AdminAIUsageUser(days int, apps []string, uid int64) (*AIUsage
 		}
 	}
 	var email sql.NullString
-	err := s.pool.QueryRowContext(context.Background(),
+	err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT u.email FROM users u WHERE u.id = ?"+cond, args...).Scan(&email)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, &HTTPError{404, "该用户不存在，请刷新用户列表后重试"}
@@ -1112,7 +1112,7 @@ func (s *Service) AdminAIUsageUser(days int, apps []string, uid int64) (*AIUsage
 		return nil, fmt.Errorf("查用户: %w", err)
 	}
 
-	rows, err := s.pool.QueryContext(context.Background(),
+	rows, err := s.pool.QueryContext(db.QueryCtx(),
 		"SELECT day, `count` FROM ai_usage WHERE scope = 'user' AND subject = ? AND day >= ? ORDER BY day ASC",
 		strconv.FormatInt(uid, 10), now.AddDate(0, 0, -(days-1)).Format("2006-01-02"))
 	if err != nil {
@@ -1149,7 +1149,7 @@ func (s *Service) AdminAIUsageUser(days int, apps []string, uid int64) (*AIUsage
 // NULL 与空串都算「没密码」，那正是纯验证码并入账号的形态）。
 func (s *Service) HasPassword(uid int64) (bool, error) {
 	var pw sql.NullString
-	err := s.pool.QueryRowContext(context.Background(),
+	err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT password_hash FROM users WHERE id = ?", uid).Scan(&pw)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, unauthorized("登录已过期，请重新登录")
@@ -1163,7 +1163,7 @@ func (s *Service) HasPassword(uid int64) (bool, error) {
 // HasMFA 是管理后台「强制 MFA」的判定：绑了 TOTP 或至少一把 passkey。
 func (s *Service) HasMFA(uid int64) (bool, error) {
 	var totp, passkeys int
-	if err := s.pool.QueryRowContext(context.Background(),
+	if err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT (SELECT COUNT(*) FROM totp_factors WHERE user_id = ? AND enabled = 1),"+
 			"(SELECT COUNT(*) FROM passkeys WHERE user_id = ? AND rp_id = ?)",
 		uid, uid, passkeyRPID).Scan(&totp, &passkeys); err != nil {

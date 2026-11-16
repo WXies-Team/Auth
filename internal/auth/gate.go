@@ -1,13 +1,14 @@
 package auth
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
 	"time"
+
+	"github.com/WXies-Team/auth/internal/db"
 )
 
 // 登录与 /internal/verify 共用的账号态闸（W2 封禁 / W5 项目登录白名单）。
@@ -39,7 +40,7 @@ func (s *Service) denyReason(uid int64, app string) error {
 // 读到过期的限时行（until_ms>0 且已过）视为已解封并顺手删行（惰性清扫——
 // 不引入定时任务，判定即清理，契约定案）。
 func (s *Service) denyIfBanned(uid int64, app string) error {
-	ctx := context.Background()
+	ctx := db.QueryCtx()
 	rows, err := s.pool.QueryContext(ctx,
 		"SELECT app, until_ms, reason FROM user_bans WHERE uid = ?", uid)
 	if err != nil {
@@ -114,7 +115,7 @@ func (s *Service) denyIfProjectRestricted(uid int64, app string) error {
 		return nil
 	}
 	var restricted int
-	err := s.pool.QueryRowContext(context.Background(),
+	err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT restricted FROM project_policy WHERE app = ?", app).Scan(&restricted)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil // 没有策略行 = 未开限制（默认开放）
@@ -127,7 +128,7 @@ func (s *Service) denyIfProjectRestricted(uid int64, app string) error {
 		return nil
 	}
 	var allowed int
-	if err := s.pool.QueryRowContext(context.Background(),
+	if err := s.pool.QueryRowContext(db.QueryCtx(),
 		`SELECT (EXISTS(SELECT 1 FROM users WHERE id = ? AND role = ?)
 		       OR EXISTS(SELECT 1 FROM project_access WHERE app = ? AND uid = ?)
 		       OR EXISTS(SELECT 1 FROM admin_scopes WHERE app = ? AND uid = ?))`,
@@ -156,7 +157,7 @@ func (s *Service) loginGate(uid int64, app string, meta SessionMeta) (mustChange
 	if err := s.denyReason(uid, app); err != nil {
 		return false, false, err
 	}
-	ctx := context.Background()
+	ctx := db.QueryCtx()
 	var (
 		email    string
 		pending  int64
@@ -194,7 +195,7 @@ func (s *Service) loginGate(uid int64, app string, meta SessionMeta) (mustChange
 // passwordMustChange 读强制改密位（改密端点的空 oldPassword 通道要用）。
 func (s *Service) passwordMustChange(uid int64) (bool, error) {
 	var flag int
-	err := s.pool.QueryRowContext(context.Background(),
+	err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT password_must_change FROM users WHERE id = ?", uid).Scan(&flag)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, unauthorized("登录已过期，请重新登录")
@@ -212,7 +213,7 @@ func (s *Service) passwordMustChange(uid int64) (bool, error) {
 // 相等即根；缓存未解析出（空库形态）才回退钉死邮箱比对。
 func (s *Service) adminTarget(actor Caller, targetUID int64) (string, error) {
 	var email string
-	err := s.pool.QueryRowContext(context.Background(),
+	err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT email FROM users WHERE id = ?", targetUID).Scan(&email)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", &HTTPError{404, "该用户不存在，请刷新用户列表后重试"}

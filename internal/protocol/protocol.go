@@ -134,10 +134,15 @@ type AIQuotaRequest struct {
 
 // AIConsumeRequest 是 /internal/ai/consume 的请求体。Weight 是本次请求折算的
 // 次数：文字 1、图片 2——由日记路由按请求体是否含图片判定，不采信客户端自报。
+// PromptTokens / CompletionTokens 是本次请求的上游 token 用量（可选，2026-11-17
+// 记账补层）：老调用方不传按 0 记账，不破坏现有调用；由日记服务从上游回执取值
+// 后随 consume 一并上报（跨仓同批接，接口本身向后兼容）。
 type AIConsumeRequest struct {
-	App    string `json:"app"`
-	UID    int64  `json:"uid"`
-	Weight int    `json:"weight"`
+	App              string `json:"app"`
+	UID              int64  `json:"uid"`
+	Weight           int    `json:"weight"`
+	PromptTokens     int    `json:"promptTokens,omitempty"`
+	CompletionTokens int    `json:"completionTokens,omitempty"`
 }
 
 // AIConsumeResponse 是 /internal/ai/consume 的回执：入账后的两层**当日**计数，

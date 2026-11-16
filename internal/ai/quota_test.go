@@ -191,15 +191,16 @@ func TestAIConsumeCountsAndCrossApp(t *testing.T) {
 	day := dayToday(t)
 	uid := int64(5555555)
 
-	// 模拟同一用户在两个 App 各记一次（weight 1 + 2，图片折算 2 的语义）
-	dailyUser, dailyGlobal, err := svc.Consume(ctx, uid, 1)
+	// 模拟同一用户在两个 App 各记一次（weight 1 + 2，图片折算 2 的语义）；
+	// token 随次入账（10/20 与 30/40），列与 count 同一条 UPSERT 累加。
+	dailyUser, dailyGlobal, err := svc.Consume(ctx, uid, 1, 10, 20)
 	if err != nil {
 		t.Fatalf("首次入账: %v", err)
 	}
 	if dailyUser != 1 || dailyGlobal != 1 {
 		t.Errorf("首次入账回执应 1/1，得到 %d/%d", dailyUser, dailyGlobal)
 	}
-	dailyUser, dailyGlobal, err = svc.Consume(ctx, uid, 2)
+	dailyUser, dailyGlobal, err = svc.Consume(ctx, uid, 2, 30, 40)
 	if err != nil {
 		t.Fatalf("二次入账: %v", err)
 	}
@@ -207,11 +208,11 @@ func TestAIConsumeCountsAndCrossApp(t *testing.T) {
 		t.Errorf("跨 App 相加回执应 3/3，得到 %d/%d", dailyUser, dailyGlobal)
 	}
 	// 另一个用户的消耗只进 global 层
-	if _, _, err := svc.Consume(ctx, 6666666, 4); err != nil {
+	if _, _, err := svc.Consume(ctx, 6666666, 4, 5, 6); err != nil {
 		t.Fatalf("他人入账: %v", err)
 	}
 
-	rows, err := svc.pool.Query("SELECT scope, subject, day, `count` FROM ai_usage ORDER BY scope, subject")
+	rows, err := svc.pool.Query("SELECT scope, subject, day, `count`, prompt_tokens, completion_tokens FROM ai_usage ORDER BY scope, subject")
 	if err != nil {
 		t.Fatalf("读库核对: %v", err)
 	}
@@ -219,19 +220,21 @@ func TestAIConsumeCountsAndCrossApp(t *testing.T) {
 	type row struct {
 		scope, subject, day string
 		count               int
+		prompt, completion  int
 	}
 	var got []row
 	for rows.Next() {
 		var r row
-		if err := rows.Scan(&r.scope, &r.subject, &r.day, &r.count); err != nil {
+		if err := rows.Scan(&r.scope, &r.subject, &r.day, &r.count, &r.prompt, &r.completion); err != nil {
 			t.Fatalf("扫描: %v", err)
 		}
 		got = append(got, r)
 	}
 	want := []row{
-		{"global", "", day, 7}, // 3（uid 5555555 两次）+ 4（uid 6666666）
-		{"user", "5555555", day, 3},
-		{"user", "6666666", day, 4},
+		// 3（uid 5555555 两次）+ 4（uid 6666666）；token 同口径相加
+		{"global", "", day, 7, 45, 66},
+		{"user", "5555555", day, 3, 40, 60},
+		{"user", "6666666", day, 4, 5, 6},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("行数应 %d，得到 %+v", len(want), got)
@@ -242,12 +245,13 @@ func TestAIConsumeCountsAndCrossApp(t *testing.T) {
 		}
 	}
 
-	// 越线也照记：user 行已到 500（默认限额）再入账 2 → 502，回执如实
+	// 越线也照记：user 行已到 500（默认限额）再入账 2 → 502，回执如实；
+	// 负数 token 按 0 夹紧（入参错误不该记出负账）
 	if _, err := svc.pool.Exec(
 		"INSERT INTO ai_usage (scope, subject, day, `count`) VALUES ('user','7777777',?,500)", day); err != nil {
 		t.Fatalf("造满额行: %v", err)
 	}
-	dailyUser, _, err = svc.Consume(ctx, 7777777, 2)
+	dailyUser, _, err = svc.Consume(ctx, 7777777, 2, -5, -10)
 	if err != nil {
 		t.Fatalf("越线入账: %v", err)
 	}

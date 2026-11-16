@@ -1,13 +1,14 @@
 package auth
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
 	"time"
+
+	"github.com/WXies-Team/auth/internal/db"
 )
 
 // 审计日志的口径（规格 A1.4，ASVS V16.2/V16.3）：
@@ -133,7 +134,7 @@ func (s *Service) Audit(e AuditEvent) {
 			detailJSON = string(b)
 		}
 	}
-	_, err := s.pool.ExecContext(context.Background(),
+	_, err := s.pool.ExecContext(db.QueryCtx(),
 		`INSERT INTO audit_logs
 		 (id, ts, actor_uid, actor_email, action, result, target_uid, ip, user_agent, detail)
 		 VALUES (?,?,?,?,?,?,?,?,?,?)`,
@@ -253,13 +254,13 @@ func (s *Service) QueryAudit(q AuditQuery) ([]AuditRow, int, error) {
 	}
 
 	var total int
-	if err := s.pool.QueryRowContext(context.Background(), "SELECT COUNT(*)"+base+cond, args...).
+	if err := s.pool.QueryRowContext(db.QueryCtx(), "SELECT COUNT(*)"+base+cond, args...).
 		Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("数审计行: %w", err)
 	}
 
 	listArgs := append(append([]any{}, args...), limit, offset)
-	rows, err := s.pool.QueryContext(context.Background(),
+	rows, err := s.pool.QueryContext(db.QueryCtx(),
 		"SELECT id, ts, actor_uid, actor_email, action, result, target_uid, ip, user_agent, detail"+
 			base+cond+" ORDER BY ts DESC, id DESC LIMIT ? OFFSET ?", listArgs...)
 	if err != nil {
@@ -304,7 +305,7 @@ func (s *Service) CleanAuditLogs() { cleanAuditLogs(s.pool) }
 
 // cleanAuditLogs 按保留期删过期审计行（Service 方法与 otp 发码路径共用同一实现）。
 func cleanAuditLogs(pool *sql.DB) {
-	if _, err := pool.ExecContext(context.Background(),
+	if _, err := pool.ExecContext(db.SlowCtx(),
 		"DELETE FROM audit_logs WHERE ts < ?", time.Now().Add(-auditRetention).UnixMilli()); err != nil {
 		slog.Warn("清理过期审计行失败（下次发码再试）", "err", err)
 	}

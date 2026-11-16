@@ -11,6 +11,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/WXies-Team/auth/internal/db"
 	"github.com/go-sql-driver/mysql"
 )
 
@@ -182,7 +183,7 @@ func (s *Service) AdminResetPassword(actor Caller, scope AdminScope, targetUID i
 	if in.ForceChange {
 		forceFlag = 1
 	}
-	ctx := context.Background()
+	ctx := db.SlowCtx()
 	tx, err := s.pool.BeginTx(ctx, nil)
 	if err != nil {
 		return "", fmt.Errorf("开事务: %w", err)
@@ -218,7 +219,7 @@ func (s *Service) targetHasScopedSession(uid int64, apps []string) (bool, error)
 		args = append(args, a)
 	}
 	var ok int
-	err := s.pool.QueryRowContext(context.Background(),
+	err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT EXISTS(SELECT 1 FROM sessions WHERE user_id = ? AND revoked_at IS NULL AND app IN ("+
 			placeholders(len(apps))+"))", args...).Scan(&ok)
 	if err != nil {
@@ -306,7 +307,7 @@ func (s *Service) AdminChangeEmail(actor Caller, scope AdminScope, targetUID int
 	if exists {
 		return badRequest("该邮箱已被其它账号使用")
 	}
-	ctx := context.Background()
+	ctx := db.SlowCtx()
 	tx, err := s.pool.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("开事务: %w", err)
@@ -416,7 +417,7 @@ func (s *Service) AdminResetProfile(actor Caller, scope AdminScope, targetUID in
 	}
 	sets = append(sets, "updated_at = ?")
 	args = append(args, time.Now().UnixMilli(), targetUID)
-	if _, err = s.pool.ExecContext(context.Background(),
+	if _, err = s.pool.ExecContext(db.QueryCtx(),
 		"UPDATE user_profile SET "+strings.Join(sets, ", ")+" WHERE user_id = ?", args...); err != nil {
 		return fmt.Errorf("重置资料: %w", err)
 	}
@@ -462,7 +463,7 @@ func (s *Service) AdminBan(actor Caller, scope AdminScope, targetUID int64, in A
 	if _, err = s.adminTarget(actor, targetUID); err != nil {
 		return err
 	}
-	ctx := context.Background()
+	ctx := db.QueryCtx()
 	if _, err = s.pool.ExecContext(ctx,
 		`INSERT INTO user_bans (uid, app, until_ms, reason, banned_by, created_at)
 		 VALUES (?,?,?,?,?,?)
@@ -505,7 +506,7 @@ func (s *Service) AdminUnban(actor Caller, scope AdminScope, targetUID int64, ap
 	if _, err = s.adminTarget(actor, targetUID); err != nil {
 		return err
 	}
-	if _, err = s.pool.ExecContext(context.Background(),
+	if _, err = s.pool.ExecContext(db.QueryCtx(),
 		"DELETE FROM user_bans WHERE uid = ? AND app = ?", targetUID, app); err != nil {
 		return fmt.Errorf("解除封禁: %w", err)
 	}
@@ -536,7 +537,7 @@ type AdminProject struct {
 // app-admin = 仅其 admin_scopes 项目（零 scope 回空列表，页面空态说明）。
 // restricted 直查 project_policy（不进 app_config 缓存）。
 func (s *Service) AdminListProjects(scope AdminScope) ([]AdminProject, error) {
-	ctx := context.Background()
+	ctx := db.QueryCtx()
 	out := make([]AdminProject, 0, len(knownAppOrder))
 	for _, app := range knownAppOrder {
 		if !scope.Super && !containsStr(scope.Apps, app) {
@@ -588,7 +589,7 @@ func (s *Service) uidByEmail(rawEmail string) (int64, error) {
 		return 0, err
 	}
 	var uid int64
-	err := s.pool.QueryRowContext(context.Background(),
+	err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT id FROM users WHERE email = ?", email).Scan(&uid)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, &HTTPError{404, "该用户不存在，请刷新用户列表后重试"}
@@ -621,7 +622,7 @@ func (s *Service) AdminGrantAccess(actor Caller, scope AdminScope, app, rawEmail
 	if err != nil {
 		return err
 	}
-	if _, err = s.pool.ExecContext(context.Background(),
+	if _, err = s.pool.ExecContext(db.QueryCtx(),
 		"INSERT IGNORE INTO project_access (app, uid, granted_by, created_at) VALUES (?,?,?,?)",
 		app, target, actor.UID, time.Now().UnixMilli()); err != nil {
 		return fmt.Errorf("加入项目名单: %w", err)
@@ -659,11 +660,11 @@ func (s *Service) AdminRevokeAccess(actor Caller, scope AdminScope, app, rawEmai
 		return uerr
 	}
 	target = uid
-	if _, err = s.pool.ExecContext(context.Background(),
+	if _, err = s.pool.ExecContext(db.QueryCtx(),
 		"DELETE FROM project_access WHERE app = ? AND uid = ?", app, uid); err != nil {
 		return fmt.Errorf("移出项目名单: %w", err)
 	}
-	if err = revokeUserSessions(context.Background(), s.pool, uid, 0, []string{app}); err != nil {
+	if err = revokeUserSessions(db.QueryCtx(), s.pool, uid, 0, []string{app}); err != nil {
 		return err
 	}
 	return nil
@@ -695,7 +696,7 @@ func (s *Service) AdminSetRestricted(actor Caller, scope AdminScope, app string,
 	if restricted {
 		flag = 1
 	}
-	ctx := context.Background()
+	ctx := db.QueryCtx()
 	if _, err = s.pool.ExecContext(ctx,
 		`INSERT INTO project_policy (app, restricted, updated_by, updated_at) VALUES (?,?,?,?)
 		 ON DUPLICATE KEY UPDATE restricted = VALUES(restricted),

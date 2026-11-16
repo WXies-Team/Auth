@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"time"
+
+	"github.com/WXies-Team/auth/internal/db"
 )
 
 // 新设备登录提醒（W1）：登录成功建会话后，若本次 UA 的规范化指纹与该用户**其它**
@@ -34,7 +36,7 @@ func isNewDevice(known map[string]bool, ua string) bool { return !known[uaFinger
 // otherSessionFingerprints 取该用户**除本次会话外**全部未吊销会话的 UA 指纹集合。
 // 排除 sid 是必须的：新会话行在判定前已落库，不排掉它，自己的 UA 永远「匹配」。
 func (s *Service) otherSessionFingerprints(uid, sid int64) (map[string]bool, error) {
-	rows, err := s.pool.QueryContext(context.Background(),
+	rows, err := s.pool.QueryContext(db.QueryCtx(),
 		"SELECT user_agent FROM sessions WHERE user_id = ? AND revoked_at IS NULL AND id <> ?", uid, sid)
 	if err != nil {
 		return nil, err

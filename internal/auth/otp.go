@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"math/big"
 	"time"
+
+	"github.com/WXies-Team/auth/internal/db"
 )
 
 // 验证码口径（对齐行业惯例与客户端 60 秒倒计时，与热量日记服务逐条一致）：
@@ -110,7 +112,7 @@ func (s *otpStore) issue(uid int64, purpose, email string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	ctx := context.Background()
+	ctx := db.SlowCtx()
 	now := time.Now()
 
 	// 持锁段走独立方法：RELEASE 的 defer 在它返回时就跑，锁先于外层清理释放——
@@ -212,7 +214,7 @@ func (s *otpStore) verify(uid int64, purpose, email, code string) error {
 	if len(code) == 0 {
 		return badRequest("请先获取验证码")
 	}
-	ctx := context.Background()
+	ctx := db.SlowCtx()
 	now := time.Now()
 
 	tx, err := s.pool.BeginTx(ctx, nil)
@@ -263,7 +265,7 @@ func (s *otpStore) verify(uid int64, purpose, email, code string) error {
 // 60 秒冷却。uid 同 issue：只废发出时归属该账号的那代，不误伤同地址别人的在途码。
 // 清理失败只记在返回值之外无从表达：撤销是尽力而为，最坏是多等 60 秒。
 func (s *otpStore) revoke(uid int64, purpose, email string) {
-	_, _ = s.pool.ExecContext(context.Background(),
+	_, _ = s.pool.ExecContext(db.QueryCtx(),
 		"UPDATE otp_codes SET used = 1 WHERE email = ? AND purpose = ? AND uid = ? AND used = 0", email, purpose, uid)
 }
 

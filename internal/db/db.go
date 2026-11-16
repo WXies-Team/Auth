@@ -74,10 +74,14 @@ func openDSN(dsn string) (*sql.DB, error) {
 	if err != nil {
 		return nil, fmt.Errorf("打开连接池: %w", err)
 	}
-	// 账号服务的流量远小于日记同步：8 条连接足够（验证码与登录都是短查询），
-	// 空闲 60s 回收防长连堆积。
-	pool.SetMaxOpenConns(8)
-	pool.SetMaxIdleConns(8)
+	// 连接池 8 → 24（P0，2026-11-17）：8 条时一条慢查询（行锁等待、OTP 发码的
+	// GET_LOCK 持锁占连接）就能把池占满 → 全站 503，极端时 /health 的 ping 也拿
+	// 不到连接、部署健康检查误触发自动回滚。24 取笔记建议的 16~32 中段：配合
+	// ctx.go 的查询超时（普通 5s / 事务 30s），慢查询最多占住 24 条里的若干条
+	// 且到点释放，/health 还有余量。空闲连接由 ConnMaxIdleTime 60s 收回，
+	// 不会长期占着 MySQL 的 max_connections。
+	pool.SetMaxOpenConns(24)
+	pool.SetMaxIdleConns(24)
 	pool.SetConnMaxLifetime(time.Hour)
 	pool.SetConnMaxIdleTime(60 * time.Second)
 
@@ -117,6 +121,8 @@ func EnsureSchema(pool *sql.DB) error {
 	}
 
 	for i, stmt := range stmts {
+		// 启动期 DDL 豁免查询超时（见 ctx.go 的分类）：建表/补列本身可能慢，
+		// 且启动阶段没有在途流量可被拖累——这里卡住只会让部署等出明确报错。
 		if _, err := pool.Exec(stmt); err != nil {
 			return fmt.Errorf("执行第 %d 条建表语句失败: %w\n语句: %s", i+1, err, truncate(stmt, 160))
 		}
@@ -171,9 +177,17 @@ var extraColumns = []columnDef{
 	// sessions.web_token_hash 同款「列+索引一条 DDL」）。
 	{"otp_codes", "uid",
 		"ALTER TABLE otp_codes ADD COLUMN uid BIGINT NOT NULL DEFAULT 0, ADD KEY idx_otp_uid (uid, purpose)"},
+	// AI 用量记 token（2026-11-17 记账补层）：consume 由日记服务带上本次
+	// prompt/completion token，两列与 count 同一条 UPSERT 累加（见 internal/ai 的
+	// bumpCount）。历史行没有 token 数据，按 0 起算——看板口径只对新增行报 token。
+	{"ai_usage", "prompt_tokens",
+		"ALTER TABLE ai_usage ADD COLUMN prompt_tokens INT NOT NULL DEFAULT 0"},
+	{"ai_usage", "completion_tokens",
+		"ALTER TABLE ai_usage ADD COLUMN completion_tokens INT NOT NULL DEFAULT 0"},
 }
 
 // ensureColumn 幂等地补一列：先查 information_schema，没有才执行 DDL。
+// 启动期探测，与 EnsureSchema 同属豁免类（无 ctx 超时，见上面的说明）。
 func ensureColumn(pool *sql.DB, table, column, ddl string) error {
 	var found int
 	err := pool.QueryRow(

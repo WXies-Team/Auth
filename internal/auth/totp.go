@@ -2,7 +2,6 @@ package auth
 
 import (
 	"bytes"
-	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/hmac"
@@ -20,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/WXies-Team/auth/internal/db"
 	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
 )
@@ -128,7 +128,7 @@ func (s *Service) loadFactor(uid int64) (*totpFactor, error) {
 		step, confirmed sql.NullInt64
 		createdAt       int64
 	)
-	err := s.pool.QueryRowContext(context.Background(),
+	err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT secret_cipher, enabled, last_used_timestep, created_at, confirmed_at FROM totp_factors WHERE user_id = ?", uid).
 		Scan(&blob, &enabled, &step, &createdAt, &confirmed)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -169,7 +169,7 @@ func (s *Service) TOTPStatus(uid int64) (TOTPStatus, error) {
 		// 余量取「当前这一批」：换发后旧码会被删掉或标记，这里按总量与已用数现算。
 		// 查不到不影响主流程（0 值 = 不展示余量），不让状态接口因副信息失败。
 		var total, left int
-		if err := s.pool.QueryRowContext(context.Background(),
+		if err := s.pool.QueryRowContext(db.QueryCtx(),
 			// COALESCE：一行都没有时 SUM(used) 是 NULL，直接扫进 int 会报错
 			"SELECT COUNT(*), COUNT(*) - COALESCE(SUM(used), 0) FROM recovery_codes WHERE user_id = ?",
 			uid).Scan(&total, &left); err == nil {
@@ -215,7 +215,7 @@ func (s *Service) SetupTOTP(c Caller) (setup *TOTPSetup, err error) {
 	if err != nil {
 		return nil, err
 	}
-	ctx := context.Background()
+	ctx := db.QueryCtx()
 	if f == nil {
 		if _, err := s.pool.ExecContext(ctx,
 			`INSERT INTO totp_factors (user_id, secret_cipher, enabled, last_used_timestep, created_at)
@@ -309,23 +309,23 @@ func (s *Service) EnableTOTP(c Caller, code string) (codes []string, err error) 
 	}
 	pepper := s.recoveryPepper
 
-	tx, err := s.pool.BeginTx(context.Background(), nil)
+	tx, err := s.pool.BeginTx(db.SlowCtx(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("开事务: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(context.Background(),
+	if _, err := tx.ExecContext(db.QueryCtx(),
 		`UPDATE totp_factors SET secret_cipher = ?, enabled = 1, last_used_timestep = ?, confirmed_at = ?
 		 WHERE user_id = ?`, cipherText, step, now.UnixMilli(), c.UID); err != nil {
 		return nil, fmt.Errorf("启用 TOTP: %w", err)
 	}
 	// 旧恢复码整组作废：新码表接替，留着旧的等于多一份没主的后门
-	if _, err := tx.ExecContext(context.Background(),
+	if _, err := tx.ExecContext(db.QueryCtx(),
 		"DELETE FROM recovery_codes WHERE user_id = ?", c.UID); err != nil {
 		return nil, fmt.Errorf("清空旧恢复码: %w", err)
 	}
 	for _, rc := range codes {
-		if _, err := tx.ExecContext(context.Background(),
+		if _, err := tx.ExecContext(db.QueryCtx(),
 			"INSERT INTO recovery_codes (user_id, code_hash, used, created_at) VALUES (?, ?, 0, ?)",
 			c.UID, hashRecoveryCode(pepper, normalizeRecoveryCode(rc)), now.UnixMilli()); err != nil {
 			return nil, fmt.Errorf("落恢复码: %w", err)
@@ -372,21 +372,21 @@ func (s *Service) DisableTOTP(c Caller, code string) (err error) {
 			return wrongCodeError(code)
 		}
 		// 记下命中步进：解绑用过的码，不能再拿来换发恢复码
-		if _, err := s.pool.ExecContext(context.Background(),
+		if _, err := s.pool.ExecContext(db.QueryCtx(),
 			"UPDATE totp_factors SET last_used_timestep = ? WHERE user_id = ?", step, c.UID); err != nil {
 			return fmt.Errorf("记录 TOTP timestep: %w", err)
 		}
 	}
-	tx, err := s.pool.BeginTx(context.Background(), nil)
+	tx, err := s.pool.BeginTx(db.SlowCtx(), nil)
 	if err != nil {
 		return fmt.Errorf("开事务: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(context.Background(),
+	if _, err := tx.ExecContext(db.QueryCtx(),
 		"DELETE FROM totp_factors WHERE user_id = ?", c.UID); err != nil {
 		return fmt.Errorf("删除 TOTP 因子: %w", err)
 	}
-	if _, err := tx.ExecContext(context.Background(),
+	if _, err := tx.ExecContext(db.QueryCtx(),
 		"DELETE FROM recovery_codes WHERE user_id = ?", c.UID); err != nil {
 		return fmt.Errorf("删除恢复码: %w", err)
 	}
@@ -429,7 +429,7 @@ func (s *Service) RegenerateRecoveryCodes(c Caller, code string) (codes []string
 		if !ok {
 			return nil, wrongCodeError(code)
 		}
-		if _, err := s.pool.ExecContext(context.Background(),
+		if _, err := s.pool.ExecContext(db.QueryCtx(),
 			"UPDATE totp_factors SET last_used_timestep = ? WHERE user_id = ?", step, c.UID); err != nil {
 			return nil, fmt.Errorf("记录 TOTP timestep: %w", err)
 		}
@@ -438,18 +438,18 @@ func (s *Service) RegenerateRecoveryCodes(c Caller, code string) (codes []string
 	if err != nil {
 		return nil, err
 	}
-	tx, err := s.pool.BeginTx(context.Background(), nil)
+	tx, err := s.pool.BeginTx(db.SlowCtx(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("开事务: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(context.Background(),
+	if _, err := tx.ExecContext(db.QueryCtx(),
 		"DELETE FROM recovery_codes WHERE user_id = ?", c.UID); err != nil {
 		return nil, fmt.Errorf("清空旧恢复码: %w", err)
 	}
 	now := time.Now().UnixMilli()
 	for _, rc := range codes {
-		if _, err := tx.ExecContext(context.Background(),
+		if _, err := tx.ExecContext(db.QueryCtx(),
 			"INSERT INTO recovery_codes (user_id, code_hash, used, created_at) VALUES (?, ?, 0, ?)",
 			c.UID, hashRecoveryCode(s.recoveryPepper, normalizeRecoveryCode(rc)), now); err != nil {
 			return nil, fmt.Errorf("落恢复码: %w", err)
@@ -484,7 +484,7 @@ func (s *Service) VerifyTOTPCode(uid int64, code string) (bool, error) {
 	if !ok {
 		return false, nil
 	}
-	res, err := s.pool.ExecContext(context.Background(),
+	res, err := s.pool.ExecContext(db.QueryCtx(),
 		"UPDATE totp_factors SET last_used_timestep = ? WHERE user_id = ? AND last_used_timestep < ?",
 		step, uid, step)
 	if err != nil {
@@ -546,7 +546,7 @@ func (s *Service) consumeRecoveryCode(uid int64, email, code string, meta Sessio
 		return false, nil
 	}
 	hash := hashRecoveryCode(s.recoveryPepper, norm)
-	res, err := s.pool.ExecContext(context.Background(),
+	res, err := s.pool.ExecContext(db.QueryCtx(),
 		"UPDATE recovery_codes SET used = 1, used_at = ? WHERE user_id = ? AND code_hash = ? AND used = 0",
 		time.Now().UnixMilli(), uid, hash)
 	if err != nil {
@@ -568,7 +568,7 @@ func (s *Service) consumeRecoveryCode(uid int64, email, code string, meta Sessio
 // TOTPEnabled 是登录编排要问的一句话（有无启用中的 2FA），与状态端点同源。
 func (s *Service) TOTPEnabled(uid int64) (bool, error) {
 	var n int
-	if err := s.pool.QueryRowContext(context.Background(),
+	if err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT COUNT(*) FROM totp_factors WHERE user_id = ? AND enabled = 1", uid).Scan(&n); err != nil {
 		return false, fmt.Errorf("查两步验证状态: %w", err)
 	}

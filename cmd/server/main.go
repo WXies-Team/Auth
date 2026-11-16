@@ -254,6 +254,13 @@ type verifier interface {
 //（600 = 给多租户共享留的余量，挡的是误配置成公网可达后的打爆）。
 const verifyRatePerApp = 600
 
+// verifyUidWarnPerMin 是单 uid 每分钟 verify 次数的**告警线**——只记 Warn、
+// 不拒绝：600/分按 app 分键是共享桶，单个风暴客户端经日记服务放大就能吃掉整桶、
+// 挤兑该 app 全部用户（P1-3）；但把拒绝下沉到 per-uid 会给正常大流量用户
+//（首同步突发）新增一刀切的天花板。取 300/分：正常客户端单账号的各端点 per-uid
+// 额度之和到不了它，越线即在日志里点名 uid，运维据此决定是否提额或处置。
+const verifyUidWarnPerMin = 300
+
 // internalVerify 是日记服务 withUID 中间件要调的端点：POST /internal/verify，
 // Bearer 用户 token + body {"app":"<期望 aud>"}。通过回 uid/email/app，
 // 否则 401（错误体走 writeResult，含 503 的 DB 抖动分支）。
@@ -274,13 +281,19 @@ func internalVerify(v verifier) http.Handler {
 		// 误配公网可达时攻击者换 IP 也换不出新桶，整体打爆面仍然有界。
 		// 未知 app 值乱敲会攒出无主桶，由 allow 的 >4096 惰性清理兜底。
 		if !limiter.allow("verify:"+req.App, verifyRatePerApp, time.Minute) {
-			limit429(w, r, "verify:"+req.App)
+			limit429(w, r, "verify", "verify:"+req.App)
 			return
 		}
 		res, err := v.Verify(r.Header.Get("Authorization"), req.App)
 		if err != nil {
 			writeResult(w, nil, err)
 			return
+		}
+		// 单 uid 用量监控（只告警不拒绝，见 verifyUidWarnPerMin）：跨过告警线的
+		// 那一次记一条 Warn，同窗口不重复刷屏（计数过线后 n恒大于线，只在线+1
+		// 这一次命中）。
+		if n := limiter.observe("verifyuid:"+req.App+":"+strconv.FormatInt(res.UID, 10), time.Minute); n == verifyUidWarnPerMin+1 {
+			slog.Warn("verify 单用户调用异常频繁", "app", req.App, "uid", res.UID, "per_min", n)
 		}
 		writeJSON(w, http.StatusOK, protocol.VerifyResponse{UID: res.UID, Email: res.Email, App: res.App})
 	})
@@ -668,23 +681,70 @@ func limit(scope string, next http.Handler) http.Handler {
 // 拒绝分支因此要自带 nosniff 与访问日志，否则 429 轮次在运维侧不可见。
 func limitN(scope string, max int, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !limiter.allow(scope+":"+clientIP(r), max, time.Minute) {
-			limit429(w, r, scope)
+		bucket := scope + ":" + clientIP(r)
+		if !limiter.allow(bucket, max, time.Minute) {
+			limit429(w, r, scope, bucket)
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
 }
 
-// limit429 是限流拒绝的统一回执（limitN 与 internalVerify 的按 app 分键共用）：
-// 429 + Retry-After + nosniff，外加一条 429 状态的访问日志——限流拒绝发生在
-// withLogging 内外的路由都有，少了这条日志，429 轮次在运维侧不可见。
-func limit429(w http.ResponseWriter, r *http.Request, scope string) {
+// limit429 是限流拒绝的统一回执（limitN、internalVerify 的按 app 分键与 AI 三
+// 端点共用）：429 + Retry-After + nosniff，外加两条日志——
+//
+//   - `限流命中`（Warn，stderr）是**可检索的取证记录**：scope=闸名、bucket=实际
+//     分键（IP 桶带 ip、verify/AI 桶带 app，uid 桶在调用处直接带 uid）、ip=受信
+//     代理口径的客户端 IP。限流误伤（CGNAT 共享出口、风暴挤兑）事后要能回答
+//     「谁在什么时候被哪个桶拒了」。走结构化日志而不是 audit_logs：429 不是业务
+//     动作，风暴时逐条写库的放大面正好打在要保护的连接池上；保留期由 supervisord
+//     的日志轮转负责（≥7 天）。
+//   - 原 `request` 行（Info，stdout）保留：与 withLogging 同构，按 status 检索
+//     429 的老习惯不断线。
+func limit429(w http.ResponseWriter, r *http.Request, scope, bucket string) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Retry-After", "60")
+	slog.Warn("限流命中", "scope", scope, "bucket", bucket, "ip", clientIP(r),
+		"method", r.Method, "path", r.URL.Path)
 	slog.Info("request", "method", r.Method, "path", r.URL.Path,
 		"status", http.StatusTooManyRequests, "scope", scope)
 	writeError(w, http.StatusTooManyRequests, "操作过于频繁，请稍后再试")
+}
+
+// observe 记一次命中并返回该键在窗口内的计数，**只记不拒**——/internal/verify
+// 的单 uid 用量监控用：共享桶（600/分/app）被单个风暴客户端吃掉时，日志里要能
+// 指名道姓是哪个 uid 在吃。与 allow 同一套窗口与惰性清理，单实例假设一致。
+func (l *rateLimiter) observe(key string, win time.Duration) int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	now := time.Now()
+	if len(l.windows) > 4096 {
+		for k, w := range l.windows {
+			stale := true
+			for _, t := range w.hits {
+				if now.Sub(t) < win {
+					stale = false
+					break
+				}
+			}
+			if stale {
+				delete(l.windows, k)
+			}
+		}
+	}
+	w := l.windows[key]
+	if w == nil {
+		w = &window{}
+		l.windows[key] = w
+	}
+	kept := w.hits[:0]
+	for _, t := range w.hits {
+		if now.Sub(t) < win {
+			kept = append(kept, t)
+		}
+	}
+	w.hits = append(kept, now)
+	return len(w.hits)
 }
 
 // clientIP 解析真实客户端 IP，只用于限流键。

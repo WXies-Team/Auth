@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"context"
 	"database/sql"
 	"encoding/base64"
 	"errors"
@@ -12,6 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/WXies-Team/auth/internal/db"
 	"github.com/WXies-Team/auth/internal/protocol"
 )
 
@@ -57,7 +57,7 @@ func (s *Service) GetProfile(userID int64) (*protocol.ProfileResponse, error) {
 		avatar   sql.NullString
 		updated  int64
 	)
-	err = s.pool.QueryRowContext(context.Background(),
+	err = s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT nickname, avatar_color, avatar_image, updated_at FROM user_profile WHERE user_id = ?",
 		userID).Scan(&nickname, &color, &avatar, &updated)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -81,7 +81,7 @@ func (s *Service) GetProfile(userID int64) (*protocol.ProfileResponse, error) {
 // 注销的竞态）按默认 true：档案接口对已登录调用者不该 404，开关值宁可给默认也别拦读。
 func (s *Service) loginNotify(userID int64) (bool, error) {
 	var v int
-	err := s.pool.QueryRowContext(context.Background(),
+	err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT login_notify FROM users WHERE id = ?", userID).Scan(&v)
 	if errors.Is(err, sql.ErrNoRows) {
 		return true, nil
@@ -131,7 +131,7 @@ func (s *Service) UpdateProfile(c Caller, req protocol.ProfileUpdateRequest) (re
 	// upsert 而不是 update-then-insert：档案行由首个写入者创建，与「无行回默认值」
 	// 的读口径配对（无行 ≠ 不存在的用户）。ON DUPLICATE KEY 走重复参数而不是
 	// VALUES()——后者自 MySQL 8.0.20 起废弃。
-	if _, err = s.pool.ExecContext(context.Background(),
+	if _, err = s.pool.ExecContext(db.QueryCtx(),
 		`INSERT INTO user_profile (user_id, nickname, avatar_color, avatar_image, updated_at)
 		 VALUES (?, ?, ?, ?, ?)
 		 ON DUPLICATE KEY UPDATE nickname = ?, avatar_color = ?, avatar_image = ?, updated_at = ?`,
@@ -148,7 +148,7 @@ func (s *Service) UpdateProfile(c Caller, req protocol.ProfileUpdateRequest) (re
 		if notify {
 			v = 1
 		}
-		if _, err = s.pool.ExecContext(context.Background(),
+		if _, err = s.pool.ExecContext(db.QueryCtx(),
 			"UPDATE users SET login_notify = ? WHERE id = ?", v, c.UID); err != nil {
 			return nil, fmt.Errorf("写登录提醒开关: %w", err)
 		}

@@ -2,7 +2,6 @@ package auth
 
 import (
 	"bytes"
-	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/base64"
@@ -17,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/WXies-Team/auth/internal/db"
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/go-sql-driver/mysql"
@@ -130,7 +130,7 @@ func uidFromWebAuthnID(b []byte) (int64, error) {
 // passkeyUserFor 装配用户（邮箱 + 该 RP 下的全部凭证）。
 func (s *Service) passkeyUserFor(uid int64) (*passkeyUser, error) {
 	var email string
-	err := s.pool.QueryRowContext(context.Background(), "SELECT email FROM users WHERE id = ?", uid).Scan(&email)
+	err := s.pool.QueryRowContext(db.QueryCtx(), "SELECT email FROM users WHERE id = ?", uid).Scan(&email)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, unauthorized("登录已过期，请重新登录")
 	}
@@ -180,7 +180,7 @@ func (s *Service) saveChallenge(kind string, userID *int64, sd *webauthn.Session
 		return 0, err
 	}
 	for attempt := 0; ; attempt++ {
-		_, err := s.pool.ExecContext(context.Background(),
+		_, err := s.pool.ExecContext(db.QueryCtx(),
 			`INSERT INTO webauthn_challenges (id, kind, user_id, session_data, expires_at, created_at)
 			 VALUES (?,?,?,?,?,?)`,
 			id, kind, userID, string(raw), now.Add(challengeTTL).UnixMilli(), now.UnixMilli())
@@ -195,7 +195,7 @@ func (s *Service) saveChallenge(kind string, userID *int64, sd *webauthn.Session
 		}
 	}
 	// 顺手清过期行（表常年只有个位数行，全表删可忽略）
-	_, _ = s.pool.ExecContext(context.Background(),
+	_, _ = s.pool.ExecContext(db.QueryCtx(),
 		"DELETE FROM webauthn_challenges WHERE expires_at < ?", now.Add(-challengeTTL).UnixMilli())
 	return id, nil
 }
@@ -204,7 +204,7 @@ func (s *Service) saveChallenge(kind string, userID *int64, sd *webauthn.Session
 //（「失败可以再试一次」的余地不给——重放同一 ceremonyId 是最常见的绕过姿势）。
 // 缺行、过期、kind 或 uid 不对，统一回 404（不区分，免得当探针）。
 func (s *Service) takeChallenge(ceremonyID int64, kind string, uid int64) (*webauthn.SessionData, error) {
-	ctx := context.Background()
+	ctx := db.SlowCtx()
 	tx, err := s.pool.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("开事务: %w", err)
@@ -370,7 +370,7 @@ func (s *Service) FinishPasskeyLogin(ceremonyID int64, body []byte) (int64, stri
 func (s *Service) recordCredentialUse(uid int64, cred *webauthn.Credential) error {
 	credID := base64.RawURLEncoding.EncodeToString(cred.ID)
 	var oldCount int64
-	err := s.pool.QueryRowContext(context.Background(),
+	err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT sign_count FROM passkeys WHERE credential_id = ? AND user_id = ? AND rp_id = ?",
 		credID, uid, passkeyRPID).Scan(&oldCount)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -384,7 +384,7 @@ func (s *Service) recordCredentialUse(uid int64, cred *webauthn.Credential) erro
 		slog.Warn("passkey 计数器未前进，可能是克隆或同步型实现",
 			"uid", uid, "old", oldCount, "new", newCount)
 	}
-	_, err = s.pool.ExecContext(context.Background(),
+	_, err = s.pool.ExecContext(db.QueryCtx(),
 		`UPDATE passkeys SET sign_count = ?, backup_state = ?, last_used_at = ?
 		 WHERE credential_id = ? AND user_id = ?`,
 		newCount, boolInt(cred.Flags.BackupState), time.Now().UnixMilli(), credID, uid)
@@ -461,7 +461,7 @@ func (s *Service) FinishPasskeyReauth(c Caller, ceremonyID int64, body []byte) (
 
 // ListPasskeys 回当前账号的全部凭证；current 标出**本会话登录用的那把**。
 func (s *Service) ListPasskeys(uid, currentSID int64) ([]PasskeyInfo, error) {
-	rows, err := s.pool.QueryContext(context.Background(),
+	rows, err := s.pool.QueryContext(db.QueryCtx(),
 		`SELECT id, name, created_at, last_used_at FROM passkeys
 		 WHERE user_id = ? AND rp_id = ? ORDER BY created_at DESC, id DESC`, uid, passkeyRPID)
 	if err != nil {
@@ -508,7 +508,7 @@ func (s *Service) RenamePasskey(c Caller, id int64, name string) (err error) {
 	if name == "" {
 		return badRequest("名称不能为空")
 	}
-	res, err := s.pool.ExecContext(context.Background(),
+	res, err := s.pool.ExecContext(db.QueryCtx(),
 		"UPDATE passkeys SET name = ? WHERE id = ? AND user_id = ? AND rp_id = ?",
 		name, id, c.UID, passkeyRPID)
 	if err != nil {
@@ -535,7 +535,7 @@ func (s *Service) DeletePasskey(c Caller, id int64) (err error) {
 		})
 	}()
 	uid := c.UID
-	ctx := context.Background()
+	ctx := db.SlowCtx()
 	tx, err := s.pool.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("开事务: %w", err)
@@ -602,7 +602,7 @@ func (s *Service) insertCredential(uid int64, name string, cred *webauthn.Creden
 		aaguid = hex.EncodeToString(cred.Authenticator.AAGUID)
 	}
 	for attempt := 0; ; attempt++ {
-		_, err = s.pool.ExecContext(context.Background(),
+		_, err = s.pool.ExecContext(db.QueryCtx(),
 			`INSERT INTO passkeys
 		 (id, user_id, name, credential_id, rp_id, public_key, sign_count, transports, aaguid,
 		  backup_eligible, backup_state, created_at)
@@ -634,7 +634,7 @@ func (s *Service) insertCredential(uid int64, name string, cred *webauthn.Creden
 // rp_id 必须进 WHERE——另一 RP 的行在这里一律不算数（credentials MUST be
 // partitioned by RP ID）。
 func (s *Service) loadCredentials(uid int64) ([]webauthn.Credential, error) {
-	rows, err := s.pool.QueryContext(context.Background(),
+	rows, err := s.pool.QueryContext(db.QueryCtx(),
 		`SELECT credential_id, public_key, sign_count, transports, aaguid, backup_eligible, backup_state
 		 FROM passkeys WHERE user_id = ? AND rp_id = ?`, uid, passkeyRPID)
 	if err != nil {
@@ -686,7 +686,7 @@ func (s *Service) loadCredentials(uid int64) ([]webauthn.Credential, error) {
 // credentialIDFor 把列表行的 id 换成 credential_id（current 标记要比对它）。
 func (s *Service) credentialIDFor(passkeyID int64) (string, error) {
 	var cred string
-	err := s.pool.QueryRowContext(context.Background(),
+	err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT credential_id FROM passkeys WHERE id = ?", passkeyID).Scan(&cred)
 	return cred, err
 }

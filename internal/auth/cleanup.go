@@ -1,10 +1,11 @@
 package auth
 
 import (
-	"context"
 	"database/sql"
 	"log/slog"
 	"time"
+
+	"github.com/WXies-Team/auth/internal/db"
 )
 
 // 过期行的顺路清理（与 otp_codes / audit_logs 同一套路）：不引入后台 goroutine
@@ -23,7 +24,7 @@ func (s *Service) CleanAIUsage() { cleanAIUsage(s.pool) }
 func cleanAIUsage(pool *sql.DB) {
 	// day 是 'YYYY-MM-DD' 的本地日期串，字典序即时间序，直接比大小；
 	// user / global 两层同一天到期，一并清（看板 30 天窗口不受影响）。
-	if _, err := pool.ExecContext(context.Background(),
+	if _, err := pool.ExecContext(db.SlowCtx(),
 		"DELETE FROM ai_usage WHERE day < ?", time.Now().Add(-aiUsageRetention).Format("2006-01-02")); err != nil {
 		slog.Warn("清理过期 AI 用量行失败（下次发码再试）", "err", err)
 	}
@@ -45,7 +46,7 @@ func cleanDeadSessions(pool *sql.DB) {
 	// 撤销行从 revoked_at 起算保留；未撤销行从 created_at 起算「寿命 + 保留」。
 	// web 会话的**空闲** 7 天超时不参与删行——它只影响验票，按 last_seen_at 删会把
 	// 一台刚闲置过久、仍在回看窗内的行提前抹掉。
-	if _, err := pool.ExecContext(context.Background(),
+	if _, err := pool.ExecContext(db.SlowCtx(),
 		"DELETE FROM sessions WHERE (revoked_at IS NOT NULL AND revoked_at < ?)"+
 			" OR (revoked_at IS NULL AND created_at < ?)",
 		now.Add(-sessionKeepAfterDeath).UnixMilli(),

@@ -1,12 +1,13 @@
 package auth
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/WXies-Team/auth/internal/db"
 )
 
 // W2 分级授权的口径（作者定稿 + 业界 scoped-RBAC 精简版）：
@@ -40,7 +41,7 @@ func IsSuperRole(role string) bool { return role == adminRoleSuper }
 // AdminScopes 查一个 uid 的 app 授权清单（app-admin 的数据过滤范围）。
 // super 的调用方不该走到这里（路由层已按 role 分流）；查错上报、查无回空切片。
 func (s *Service) AdminScopes(uid int64) ([]string, error) {
-	rows, err := s.pool.QueryContext(context.Background(),
+	rows, err := s.pool.QueryContext(db.QueryCtx(),
 		"SELECT app FROM admin_scopes WHERE uid = ? ORDER BY app", uid)
 	if err != nil {
 		return nil, fmt.Errorf("查应用授权: %w", err)
@@ -83,7 +84,7 @@ func (s *Service) AdminSetScope(actor Caller, targetUID int64, app string, grant
 		return badRequest("未知项目，请重新选择后重试")
 	}
 	var role string
-	scanErr := s.pool.QueryRowContext(context.Background(),
+	scanErr := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT role FROM users WHERE id = ?", targetUID).Scan(&role)
 	if errors.Is(scanErr, sql.ErrNoRows) {
 		return &HTTPError{404, "该用户不存在，请刷新用户列表后重试"}
@@ -95,35 +96,35 @@ func (s *Service) AdminSetScope(actor Caller, targetUID int64, app string, grant
 		return badRequest("平台管理员的权限覆盖全部项目，无需按项目授权")
 	}
 
-	tx, err := s.pool.BeginTx(context.Background(), nil)
+	tx, err := s.pool.BeginTx(db.SlowCtx(), nil)
 	if err != nil {
 		return fmt.Errorf("开事务: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 	if grant {
-		if _, err := tx.ExecContext(context.Background(),
+		if _, err := tx.ExecContext(db.QueryCtx(),
 			"INSERT IGNORE INTO admin_scopes (uid, app, granted_by, granted_at) VALUES (?,?,?,?)",
 			targetUID, app, actor.UID, time.Now().UnixMilli()); err != nil {
 			return fmt.Errorf("授予应用: %w", err)
 		}
 		if role == adminRoleUser {
-			if _, err := tx.ExecContext(context.Background(),
+			if _, err := tx.ExecContext(db.QueryCtx(),
 				"UPDATE users SET role = ? WHERE id = ?", adminRoleAdmin, targetUID); err != nil {
 				return fmt.Errorf("提升为管理员: %w", err)
 			}
 		}
 	} else {
-		if _, err := tx.ExecContext(context.Background(),
+		if _, err := tx.ExecContext(db.QueryCtx(),
 			"DELETE FROM admin_scopes WHERE uid = ? AND app = ?", targetUID, app); err != nil {
 			return fmt.Errorf("回收应用: %w", err)
 		}
 		var rest int
-		if err := tx.QueryRowContext(context.Background(),
+		if err := tx.QueryRowContext(db.QueryCtx(),
 			"SELECT COUNT(*) FROM admin_scopes WHERE uid = ?", targetUID).Scan(&rest); err != nil {
 			return fmt.Errorf("数剩余授权: %w", err)
 		}
 		if rest == 0 && role == adminRoleAdmin {
-			if _, err := tx.ExecContext(context.Background(),
+			if _, err := tx.ExecContext(db.QueryCtx(),
 				"UPDATE users SET role = ? WHERE id = ?", adminRoleUser, targetUID); err != nil {
 				return fmt.Errorf("降回普通用户: %w", err)
 			}

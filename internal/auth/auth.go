@@ -32,6 +32,7 @@ import (
 	"time"
 
 	"github.com/go-webauthn/webauthn/webauthn"
+	"github.com/WXies-Team/auth/internal/db"
 	"github.com/WXies-Team/auth/internal/protocol"
 	"github.com/bwmarrin/snowflake"
 	"github.com/go-sql-driver/mysql"
@@ -162,6 +163,8 @@ type Service struct {
 	loginByEmail *attemptLimiter
 	codeByIP     *attemptLimiter
 	codeByEmail  *attemptLimiter
+	// 登录失败渐进退避（backoff.go）：按邮箱的连续失败指数退避 + 失败突增告警。
+	loginBackoff *loginBackoff
 }
 
 // SetEnforceApps 注入兼容开关的配置读取器（生产传 cfg.Require，测试不设即全放行）。
@@ -236,6 +239,7 @@ func NewService(pool *sql.DB, jwtSecret string, mailer Mailer, hooks *Hooks, wa 
 		loginByEmail: newAttemptLimiter(5, time.Minute),
 		codeByIP:     newAttemptLimiter(30, time.Minute),
 		codeByEmail:  newAttemptLimiter(10, time.Minute),
+		loginBackoff: newLoginBackoff(),
 	}
 	// 启动即解析根 su 的 uid（W7-2）：root 换绑邮箱不再失权；失败回退邮箱比对
 	//（resolveRootSuper 内打 Error 日志，isRootSuper 还会惰性补解析）。
@@ -445,7 +449,7 @@ func (s *Service) Verify(bearer, expectApp string) (*VerifyResult, error) {
 	// uid 是权威标识（Entra uid-权威口径），ver 与 email 同一条查询取回。
 	var stored int
 	var dbEmail string
-	err = s.pool.QueryRowContext(context.Background(),
+	err = s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT token_version, email FROM users WHERE id = ?", uid).Scan(&stored, &dbEmail)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, unauthorized("登录已过期，请重新登录")
@@ -476,7 +480,7 @@ func (s *Service) Verify(bearer, expectApp string) (*VerifyResult, error) {
 
 func (s *Service) tokenVersion(userID int64) (int, error) {
 	var v int
-	err := s.pool.QueryRowContext(context.Background(), "SELECT token_version FROM users WHERE id = ?", userID).Scan(&v)
+	err := s.pool.QueryRowContext(db.QueryCtx(), "SELECT token_version FROM users WHERE id = ?", userID).Scan(&v)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, nil
 	}
@@ -486,7 +490,7 @@ func (s *Service) tokenVersion(userID int64) (int, error) {
 // userExists 查邮箱是否已注册（Register 的查重与 SendCode 的用途分流共用一处）。
 func (s *Service) userExists(email string) (bool, error) {
 	var exists bool
-	if err := s.pool.QueryRowContext(context.Background(),
+	if err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT EXISTS(SELECT 1 FROM users WHERE email = ?)", email).Scan(&exists); err != nil {
 		return false, fmt.Errorf("查重: %w", err)
 	}
@@ -547,7 +551,7 @@ func (s *Service) Register(rawEmail, password, code, app string, meta SessionMet
 
 	// 用户行与会话行同批提交：会话插入单走一次、失败了却把账号留下，用户重试
 	// 只会撞「该邮箱已注册」，而他手里既没有 token 也没有会话。
-	ctx := context.Background()
+	ctx := db.SlowCtx()
 	tx, err := s.pool.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("开事务: %w", err)
@@ -611,7 +615,7 @@ func (s *Service) EnsureUsers(entries []protocol.EnsureUserEntry) ([]protocol.En
 	}
 	results := make([]protocol.EnsureUserResult, 0, len(entries))
 
-	tx, err := s.pool.BeginTx(context.Background(), nil)
+	tx, err := s.pool.BeginTx(db.SlowCtx(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("开事务: %w", err)
 	}
@@ -624,7 +628,7 @@ func (s *Service) EnsureUsers(entries []protocol.EnsureUserEntry) ([]protocol.En
 			return nil, badRequest(fmt.Sprintf("下标 %d 的条目: %s", i, err.Error()))
 		}
 		var uid int64
-		err := tx.QueryRowContext(context.Background(),
+		err := tx.QueryRowContext(db.QueryCtx(),
 			"SELECT id FROM users WHERE email = ?", email).Scan(&uid)
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
@@ -634,7 +638,7 @@ func (s *Service) EnsureUsers(entries []protocol.EnsureUserEntry) ([]protocol.En
 				hash = *e.PasswordHash
 			}
 			uid, err = newUserID(randUserID, func(id int64) error {
-				_, insErr := tx.ExecContext(context.Background(),
+				_, insErr := tx.ExecContext(db.QueryCtx(),
 					"INSERT INTO users (id, email, password_hash, created_at, token_version) VALUES (?, ?, ?, ?, 1)",
 					id, email, hash, e.CreatedAt)
 				return insErr
@@ -675,10 +679,17 @@ func (s *Service) Login(rawEmail, password, app string, meta SessionMeta) (resp 
 		return nil, err
 	}
 	// 先过暴力破解闸：同一个邮箱每分钟 5 次、同一 IP 每分钟 30 次；超限不再验密码
-	// （bcrypt 本身也是可被拿来做 CPU 打点的开销）
+	// （bcrypt 本身也是可被拿来做 CPU 打点的开销）。命中落可查记录（限流命中，
+	// 含分键/ip/端点）——撞库与误伤的事后取证靠它。
 	now := time.Now()
-	if !s.loginByIP.allow(meta.IP, now) ||
-		!s.loginByEmail.allow(normalizeEmail(rawEmail), now) {
+	if !s.loginByIP.allow(meta.IP, now) {
+		slog.Warn("限流命中", "scope", "login-attempt", "bucket", "ip:"+meta.IP,
+			"ip", meta.IP, "path", "/auth/login")
+		return nil, &HTTPError{429, "尝试过于频繁，请稍后再试"}
+	}
+	if !s.loginByEmail.allow(normalizeEmail(rawEmail), now) {
+		slog.Warn("限流命中", "scope", "login-attempt", "bucket", "email:"+maskEmail(normalizeEmail(rawEmail)),
+			"ip", meta.IP, "path", "/auth/login")
 		return nil, &HTTPError{429, "尝试过于频繁，请稍后再试"}
 	}
 	uid, version, err := s.checkPassword(rawEmail, password)
@@ -721,7 +732,32 @@ func (s *Service) Login(rawEmail, password, app string, meta SessionMeta) (resp 
 // 恒时假比对（邮箱不存在也烧一次 cost12 bcrypt）才不会在某条路上漏掉。
 // 语义与旧版逐条一致：邮箱格式错、超长密码一律按「邮箱或密码错误」回 401——
 // 客户端把它们当凭据类处理，细分原因等于给爆破递进度条。
+//
+// 渐进退避（backoff.go）也在这里收口，两条登录路一起生效：退避中的尝试在查库
+// 之前直接 429——不烧 bcrypt、不打 DB、**不计数**；401（凭据错）记一次连续失败，
+// 成功清零。DB 抖动（非 HTTPError）不计数：抖动不是猜测，计了会把故障期的
+// 重试堆成退避。
 func (s *Service) checkPassword(rawEmail, password string) (int64, int, error) {
+	email := normalizeEmail(rawEmail)
+	if wait := s.loginBackoff.retryAfter(email, time.Now()); wait > 0 {
+		return 0, 0, &HTTPError{429, "尝试过于频繁，请稍后再试"}
+	}
+	id, version, err := s.verifyPassword(rawEmail, password)
+	switch {
+	case err == nil:
+		s.loginBackoff.succeed(email)
+	default:
+		var he *HTTPError
+		if errors.As(err, &he) && he.Code == 401 {
+			s.loginBackoff.fail(email, time.Now())
+		}
+	}
+	return id, version, err
+}
+
+// verifyPassword 是 checkPassword 的查库 + bcrypt 主体（原实现原样搬入），
+// 退避闸与失败记账由 checkPassword 包一层负责。
+func (s *Service) verifyPassword(rawEmail, password string) (int64, int, error) {
 	email := normalizeEmail(rawEmail)
 	if err := validateEmail(email); err != nil {
 		return 0, 0, unauthorized("邮箱或密码错误")
@@ -735,7 +771,7 @@ func (s *Service) checkPassword(rawEmail, password string) (int64, int, error) {
 		hashed  sql.NullString
 		version int
 	)
-	err := s.pool.QueryRowContext(context.Background(),
+	err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT id, password_hash, token_version FROM users WHERE email = ?", email).
 		Scan(&id, &hashed, &version)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -818,7 +854,7 @@ func (s *Service) SendCode(rawEmail, purpose, app string) error {
 			return badRequest("邮箱未注册，请先注册")
 		}
 		var uid int64
-		if err := s.pool.QueryRowContext(context.Background(),
+		if err := s.pool.QueryRowContext(db.QueryCtx(),
 			"SELECT id FROM users WHERE email = ?", email).Scan(&uid); err != nil {
 			return fmt.Errorf("查用户: %w", err)
 		}
@@ -938,10 +974,17 @@ func (s *Service) LoginByEmailCode(rawEmail, code, app string, meta SessionMeta)
 	if err := validateApp(app); err != nil {
 		return nil, err
 	}
-	// 验证码同样限速：6 位码在 5 分钟有效期内可枚举，必须按 IP/邮箱计窗
+	// 验证码同样限速：6 位码在 5 分钟有效期内可枚举，必须按 IP/邮箱计窗。
+	// 命中同样落可查记录（口径与密码登录的限流命中一致）。
 	now := time.Now()
-	if !s.codeByIP.allow(meta.IP, now) ||
-		!s.codeByEmail.allow(normalizeEmail(rawEmail), now) {
+	if !s.codeByIP.allow(meta.IP, now) {
+		slog.Warn("限流命中", "scope", "code-attempt", "bucket", "ip:"+meta.IP,
+			"ip", meta.IP, "path", "/auth/login-code")
+		return nil, &HTTPError{429, "尝试过于频繁，请稍后再试"}
+	}
+	if !s.codeByEmail.allow(normalizeEmail(rawEmail), now) {
+		slog.Warn("限流命中", "scope", "code-attempt", "bucket", "email:"+maskEmail(normalizeEmail(rawEmail)),
+			"ip", meta.IP, "path", "/auth/login-code")
 		return nil, &HTTPError{429, "尝试过于频繁，请稍后再试"}
 	}
 	uid, _, email, err := s.checkLoginCode(rawEmail, code)
@@ -972,7 +1015,7 @@ func (s *Service) checkLoginCode(rawEmail, code string) (int64, int, string, err
 		id      int64
 		version int
 	)
-	err := s.pool.QueryRowContext(context.Background(),
+	err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT id, token_version FROM users WHERE email = ?", email).Scan(&id, &version)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, 0, "", badRequest("邮箱未注册，请先注册")
@@ -1000,7 +1043,7 @@ func (s *Service) ResetPassword(rawEmail, code, newPassword string) error {
 		return err
 	}
 	var uid int64
-	err := s.pool.QueryRowContext(context.Background(),
+	err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT id FROM users WHERE email = ?", email).Scan(&uid)
 	if errors.Is(err, sql.ErrNoRows) {
 		return badRequest("该邮箱尚未注册")
@@ -1024,7 +1067,7 @@ func (s *Service) ResetPassword(rawEmail, code, newPassword string) error {
 // 否则设备列表里留下的是一批「token 早死了、行还活着」的活死行，用户踢也踢不掉。
 // 两个动作放一个事务——只成一半（token 死了行还挂着）就是上面那种半吊子状态。
 func (s *Service) Logout(userID int64) error {
-	ctx := context.Background()
+	ctx := db.SlowCtx()
 	tx, err := s.pool.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("开事务: %w", err)
@@ -1049,7 +1092,7 @@ func (s *Service) Logout(userID int64) error {
 //（原密码比对用；验码路径不用）。uid 已过期（账号被删）按未授权处理。
 func (s *Service) loadUserAuth(userID int64) (email, hashed string, err error) {
 	var h sql.NullString
-	err = s.pool.QueryRowContext(context.Background(),
+	err = s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT email, password_hash FROM users WHERE id = ?", userID).Scan(&email, &h)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", "", unauthorized("登录已过期，请重新登录")
@@ -1074,7 +1117,7 @@ func (s *Service) loadUserAuth(userID int64) (email, hashed string, err error) {
 // 收在这一处，三条改密路不会漏；管理员重置（AdminResetPassword）**不走这里**——
 // 它按 forceChange 显式置位。
 func (s *Service) setPasswordAndRevoke(userID int64, newHash string) error {
-	ctx := context.Background()
+	ctx := db.SlowCtx()
 	tx, err := s.pool.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("开事务: %w", err)
@@ -1112,7 +1155,7 @@ func (s *Service) setPasswordAndRevoke(userID int64, newHash string) error {
 func (s *Service) reissueToken(c Caller) (*Response, error) {
 	var next int
 	var email string
-	if err := s.pool.QueryRowContext(context.Background(),
+	if err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT token_version, email FROM users WHERE id = ?", c.UID).Scan(&next, &email); err != nil {
 		return nil, fmt.Errorf("读新版本号: %w", err)
 	}
@@ -1283,7 +1326,7 @@ func (s *Service) ChangeEmail(c Caller, password, rawEmail, code string) (err er
 	if err := s.otps.verify(c.UID, PurposeChangeEmail, email, code); err != nil {
 		return err
 	}
-	if _, err := s.pool.ExecContext(context.Background(),
+	if _, err := s.pool.ExecContext(db.QueryCtx(),
 		"UPDATE users SET email = ? WHERE id = ?", email, c.UID); err != nil {
 		// 并发下另一个账号先占了这个邮箱：uq_users_email 挡住，翻译成同一句人话
 		var me *mysql.MySQLError
@@ -1346,7 +1389,7 @@ func (s *Service) DeleteAccount(userID int64, password string) error {
 	}
 	var email string
 	var hashed sql.NullString
-	err := s.pool.QueryRowContext(context.Background(),
+	err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT email, password_hash FROM users WHERE id = ?", userID).Scan(&email, &hashed)
 	if errors.Is(err, sql.ErrNoRows) {
 		return unauthorized("登录已过期，请重新登录")

@@ -68,7 +68,7 @@ func aiLimitPerApp(w http.ResponseWriter, r *http.Request, app string) bool {
 	if limiter.allow("ai-app:"+app, aiRatePerApp, time.Minute) {
 		return true
 	}
-	limit429(w, r, "ai-app:"+app)
+	limit429(w, r, "ai-app", "ai-app:"+app)
 	return false
 }
 
@@ -137,14 +137,16 @@ func internalAIConsume(quotaSvc *ai.Service) http.Handler {
 		if !decodeOr400(w, r, &req) {
 			return
 		}
-		if !auth.AppAllowed(req.App) || req.UID < 1000000 || req.UID > 9999999 || req.Weight < 1 {
-			writeError(w, http.StatusBadRequest, "参数不正确，请检查 app、uid 与 weight 字段后重试")
+		if !auth.AppAllowed(req.App) || req.UID < 1000000 || req.UID > 9999999 || req.Weight < 1 ||
+			req.PromptTokens < 0 || req.CompletionTokens < 0 {
+			writeError(w, http.StatusBadRequest, "参数不正确，请检查 app、uid、weight 与 token 字段后重试")
 			return
 		}
 		if !aiLimitPerApp(w, r, req.App) {
 			return
 		}
-		dailyUser, dailyGlobal, err := quotaSvc.Consume(r.Context(), req.UID, req.Weight)
+		dailyUser, dailyGlobal, err := quotaSvc.Consume(r.Context(), req.UID, req.Weight,
+			req.PromptTokens, req.CompletionTokens)
 		if err != nil {
 			slog.Error("AI 用量入账失败", "uid", req.UID, "err", err)
 			writeError(w, http.StatusServiceUnavailable, "服务暂时不可用，请稍后重试")

@@ -1,12 +1,13 @@
 package auth
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/WXies-Team/auth/internal/db"
 )
 
 // Web 登录编排的两段式（规格 A1.2 / A2.3）：
@@ -284,7 +285,7 @@ func (s *Service) WebLoginTOTP(loginToken, code, recoveryCode, emailCode string,
 	actorUID = st.uid
 	// 邮箱查一次：审计 actor 的掩码底稿与后面 completeLogin 共用同一行查询
 	var email string
-	if err := s.pool.QueryRowContext(context.Background(),
+	if err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT email FROM users WHERE id = ?", st.uid).Scan(&email); err != nil {
 		return nil, fmt.Errorf("查用户: %w", err)
 	}
@@ -393,7 +394,7 @@ func (s *Service) beginLoginState(uid int64, app string) (string, error) {
 		return "", err
 	}
 	now := time.Now()
-	if _, err := s.pool.ExecContext(context.Background(),
+	if _, err := s.pool.ExecContext(db.QueryCtx(),
 		`INSERT INTO login_states (token_hash, user_id, method, attempts, expires_at, created_at, app)
 		 VALUES (?,?,?,?,?,?,?)`,
 		sha256Hex(token), uid, "totp", 0, now.Add(loginStateTTL).UnixMilli(), now.UnixMilli(),
@@ -401,7 +402,7 @@ func (s *Service) beginLoginState(uid int64, app string) (string, error) {
 		return "", fmt.Errorf("落登录中间态: %w", err)
 	}
 	// 过期行顺手清（表只有「在途两步登录」那么几行）
-	_, _ = s.pool.ExecContext(context.Background(),
+	_, _ = s.pool.ExecContext(db.QueryCtx(),
 		"DELETE FROM login_states WHERE expires_at < ?", now.Add(-loginStateTTL).UnixMilli())
 	return token, nil
 }
@@ -415,7 +416,7 @@ func (s *Service) peekLoginState(token string) (loginStateRow, error) {
 	var row loginStateRow
 	var expires int64
 	var label string
-	err := s.pool.QueryRowContext(context.Background(),
+	err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT user_id, method, app, expires_at FROM login_states WHERE token_hash = ?", sha256Hex(token)).
 		Scan(&row.uid, &row.method, &label, &expires)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -434,13 +435,13 @@ func (s *Service) peekLoginState(token string) (loginStateRow, error) {
 
 // failLoginState 记一次错码；第 loginStateFails 次把整条删掉。
 func (s *Service) failLoginState(token string) error {
-	_, err := s.pool.ExecContext(context.Background(),
+	_, err := s.pool.ExecContext(db.QueryCtx(),
 		"UPDATE login_states SET attempts = attempts + 1 WHERE token_hash = ?", sha256Hex(token))
 	if err != nil {
 		return fmt.Errorf("记录错码: %w", err)
 	}
 	// 达到上限即烧（WHERE 带条件，避免「先查后删」的竞态窗口）
-	if _, err := s.pool.ExecContext(context.Background(),
+	if _, err := s.pool.ExecContext(db.QueryCtx(),
 		"DELETE FROM login_states WHERE token_hash = ? AND attempts >= ?",
 		sha256Hex(token), loginStateFails); err != nil {
 		return fmt.Errorf("烧毁登录中间态: %w", err)
@@ -450,7 +451,7 @@ func (s *Service) failLoginState(token string) error {
 
 // burnLoginState 删行（验码通过后的用后即焚；失败路径不调它，留给 attempts 计数）。
 func (s *Service) burnLoginState(token string) {
-	_, _ = s.pool.ExecContext(context.Background(),
+	_, _ = s.pool.ExecContext(db.QueryCtx(),
 		"DELETE FROM login_states WHERE token_hash = ?", sha256Hex(token))
 }
 
@@ -458,7 +459,7 @@ func (s *Service) burnLoginState(token string) {
 // beginLoginState 恒写 'totp'（密码路只有 TOTP 一种预告因子），恢复码与邮箱码
 // 真的被提交时改账——失败重试留下的行据此能看出爆破走的是哪条通道（n7）。
 func (s *Service) setLoginStateMethod(token, method string) error {
-	if _, err := s.pool.ExecContext(context.Background(),
+	if _, err := s.pool.ExecContext(db.QueryCtx(),
 		"UPDATE login_states SET method = ? WHERE token_hash = ?", method, sha256Hex(token)); err != nil {
 		return fmt.Errorf("记录登录因子: %w", err)
 	}

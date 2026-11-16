@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -73,6 +74,10 @@ func registerRoutes(mux *http.ServeMux, authSvc *auth.Service, cfg *config.Store
 	authedLimited := func(scope string, max int, h func(c auth.Caller, w http.ResponseWriter, r *http.Request)) http.Handler {
 		return limitN(scope+"-ip", 120, authed(func(c auth.Caller, w http.ResponseWriter, r *http.Request) {
 			if !limiter.allow(scope+":"+strconv.FormatInt(c.UID, 10), max, time.Minute) {
+				// uid 桶的拒绝同样落可查记录（限流命中，含 uid/端点/桶）——
+				// 登录态端点的误伤取证靠它，与 limit429 的日志口径一致
+				slog.Warn("限流命中", "scope", scope, "bucket", scope+":"+strconv.FormatInt(c.UID, 10),
+					"uid", c.UID, "ip", clientIP(r), "method", r.Method, "path", r.URL.Path)
 				w.Header().Set("Retry-After", "60")
 				writeError(w, http.StatusTooManyRequests, "操作过于频繁，请稍后再试")
 				return

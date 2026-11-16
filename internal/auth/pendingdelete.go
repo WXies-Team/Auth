@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/WXies-Team/auth/internal/db"
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -81,7 +82,7 @@ func (s *Service) RequestAccountDeletion(c Caller, rawEmail, code string) (err e
 // markPendingDelete 置 pending + token_version+1 + 吊销全部会话（含当前），
 // 一个事务提交（半吊子状态 = token 死了行还活着 / pending 没落却已登出）。
 func (s *Service) markPendingDelete(uid int64) error {
-	ctx := context.Background()
+	ctx := db.SlowCtx()
 	tx, err := s.pool.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("开事务: %w", err)
@@ -153,7 +154,7 @@ func (s *Service) pendingDeleteState(uid int64) (int64, string, error) {
 		pending int64
 		email   string
 	)
-	err := s.pool.QueryRowContext(context.Background(),
+	err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT pending_delete_at, email FROM users WHERE id = ?", uid).Scan(&pending, &email)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, "", nil
@@ -208,7 +209,7 @@ func (s *Service) CancelDelete(token string) (err error) {
 // cancelPendingDelete 清 pending + 发撤销信 + 审计（登录即撤销与撤销页共用一处，
 // 两路的审计/邮件不会漂）。WHERE 带 pending>0 守卫：并发双清只算一次（幂等）。
 func (s *Service) cancelPendingDelete(uid int64, email string, meta SessionMeta) error {
-	res, err := s.pool.ExecContext(context.Background(),
+	res, err := s.pool.ExecContext(db.QueryCtx(),
 		"UPDATE users SET pending_delete_at = 0 WHERE id = ? AND pending_delete_at > 0", uid)
 	if err != nil {
 		return fmt.Errorf("撤销注销申请: %w", err)
@@ -254,7 +255,7 @@ func (s *Service) purgeAccount(userID int64, email string) error {
 		}
 	}
 
-	tx, err := s.pool.BeginTx(context.Background(), nil)
+	tx, err := s.pool.BeginTx(db.SlowCtx(), nil)
 	if err != nil {
 		return fmt.Errorf("开事务: %w", err)
 	}
@@ -262,12 +263,12 @@ func (s *Service) purgeAccount(userID int64, email string) error {
 
 	// 验证码行按邮箱清：账号没了还留着验证码记录，既是隐私残留，
 	// 也拦不住同邮箱重新注册后被旧计数误伤
-	if _, err := tx.ExecContext(context.Background(),
+	if _, err := tx.ExecContext(db.QueryCtx(),
 		"DELETE FROM otp_codes WHERE email = ?", email); err != nil {
 		return fmt.Errorf("清空验证码记录: %w", err)
 	}
 	// 会话行按 uid 清：账号都删了，设备列表的行只剩隐私残留，没人再踢得掉它们
-	if _, err := tx.ExecContext(context.Background(),
+	if _, err := tx.ExecContext(db.QueryCtx(),
 		"DELETE FROM sessions WHERE user_id = ?", userID); err != nil {
 		return fmt.Errorf("清空登录会话: %w", err)
 	}
@@ -276,7 +277,7 @@ func (s *Service) purgeAccount(userID int64, email string) error {
 	// user_profile 也在列：档案归身份提供方，账号删了还留着昵称/头像就是隐私残留
 	//（日记侧的对应资料行由注销钩子清，本服务这行只能在这里删）。
 	for _, table := range []string{"passkeys", "totp_factors", "recovery_codes", "webauthn_challenges", "login_states", "user_profile"} {
-		if _, err := tx.ExecContext(context.Background(),
+		if _, err := tx.ExecContext(db.QueryCtx(),
 			"DELETE FROM "+table+" WHERE user_id = ?", userID); err != nil {
 			return fmt.Errorf("清空 %s: %w", table, err)
 		}
@@ -284,7 +285,7 @@ func (s *Service) purgeAccount(userID int64, email string) error {
 	// 同列名 uid 的三张表单独清：授权 / 项目名单 / 封禁指向已注销账号既无意义
 	// 也是残留（uid 复用时会把前任的权限与处罚送给人）。
 	for _, table := range []string{"admin_scopes", "project_access", "user_bans"} {
-		if _, err := tx.ExecContext(context.Background(),
+		if _, err := tx.ExecContext(db.QueryCtx(),
 			"DELETE FROM "+table+" WHERE uid = ?", userID); err != nil {
 			return fmt.Errorf("清空 %s: %w", table, err)
 		}
@@ -293,17 +294,17 @@ func (s *Service) purgeAccount(userID int64, email string) error {
 	// 防日后 uid 复用时把前任的用量算到新人头上。global 行与迁移映射表行**保留**：
 	// 它们不指向任何个人（global 是全站日计数，映射表是合并对账的守卫键）。
 	// subject 存的是 7 位随机 uid 的十进制串（ai_usage 口径，见 internal/ai 包注释）。
-	if _, err := tx.ExecContext(context.Background(),
+	if _, err := tx.ExecContext(db.QueryCtx(),
 		"DELETE FROM ai_usage WHERE scope = 'user' AND subject = ?", fmt.Sprintf("%d", userID)); err != nil {
 		return fmt.Errorf("清空 AI 用量: %w", err)
 	}
 	// 审计行**留着但匿名化**：删掉它等于给「注销自己账号就能抹掉操作痕迹」开后门，
 	// 事件本身要继续对得起 ASVS V16；邮箱清空后行里只剩 uid，账号已不存在。
-	if _, err := tx.ExecContext(context.Background(),
+	if _, err := tx.ExecContext(db.QueryCtx(),
 		"UPDATE audit_logs SET actor_email = '' WHERE actor_uid = ?", userID); err != nil {
 		return fmt.Errorf("匿名化审计: %w", err)
 	}
-	if _, err := tx.ExecContext(context.Background(),
+	if _, err := tx.ExecContext(db.QueryCtx(),
 		"DELETE FROM users WHERE id = ?", userID); err != nil {
 		return fmt.Errorf("删除账号: %w", err)
 	}
@@ -335,7 +336,7 @@ func (s *Service) RunPendingDeleteSweeper(ctx context.Context) {
 // **先把行读完再逐个执行**（不在持有 rows 时打钩子/事务，8 条池连接经不起长占）；
 // 多行失败互不影响，slog 带 uid。
 func (s *Service) sweepPendingDeletes() {
-	ctx := context.Background()
+	ctx := db.QueryCtx()
 	cutoff := time.Now().Add(-deleteGrace).UnixMilli()
 	rows, err := s.pool.QueryContext(ctx,
 		"SELECT id, email FROM users WHERE pending_delete_at > 0 AND pending_delete_at <= ?", cutoff)

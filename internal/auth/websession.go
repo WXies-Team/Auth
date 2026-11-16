@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"context"
 	"crypto/rand"
 	"crypto/subtle"
 	"database/sql"
@@ -11,6 +10,8 @@ import (
 	"log/slog"
 	"strings"
 	"time"
+
+	"github.com/WXies-Team/auth/internal/db"
 )
 
 // Web 会话的两个 cookie 名。__Host- 前缀把 Secure/Path=/ 绑进浏览器（子域伪造与
@@ -89,7 +90,7 @@ func (s *Service) createWebSessionOn(ex execer, userID int64, meta SessionMeta) 
 	now := time.Now()
 	sid := s.ids.Generate().Int64()
 	ua := meta.uaWithCH() // web 登录采到 CH 就并进后缀（与 createSessionOn 同一口径）
-	if _, err := ex.ExecContext(context.Background(),
+	if _, err := ex.ExecContext(db.QueryCtx(),
 		`INSERT INTO sessions (id, user_id, app, device, ip, user_agent, created_at, last_seen_at, web_token_hash, web_csrf_hash)
 		 VALUES (?,?,?,?,?,?,?,?,?,?)`,
 		sid, userID, webAppLabel, truncateRunes(shortDevice(ua), 191),
@@ -121,7 +122,7 @@ func (s *Service) ValidWebSession(token string) (WebCaller, error) {
 	if token == "" {
 		return WebCaller{}, unauthorized("登录已过期，请重新登录")
 	}
-	ctx := context.Background()
+	ctx := db.QueryCtx()
 	var (
 		sid, uid, createdAt, lastSeen int64
 		revokedAt                     sql.NullInt64
@@ -200,7 +201,7 @@ func (c WebCaller) CheckCSRF(provided string) bool {
 
 // MarkReauth 记下「刚刚强认证过」，写在**本会话行**上：换设备、换登录方式都不串。
 func (s *Service) MarkReauth(sid int64) error {
-	_, err := s.pool.ExecContext(context.Background(),
+	_, err := s.pool.ExecContext(db.QueryCtx(),
 		"UPDATE sessions SET reauth_at = ? WHERE id = ? AND revoked_at IS NULL", time.Now().UnixMilli(), sid)
 	if err != nil {
 		return fmt.Errorf("记录强认证时间: %w", err)
@@ -212,7 +213,7 @@ func (s *Service) MarkReauth(sid int64) error {
 // 前端弹重新验证框后调 /web/reauth 刷新。
 func (s *Service) RequireReauth(sid int64) error {
 	var reauth sql.NullInt64
-	err := s.pool.QueryRowContext(context.Background(),
+	err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT reauth_at FROM sessions WHERE id = ? AND revoked_at IS NULL", sid).Scan(&reauth)
 	if errors.Is(err, sql.ErrNoRows) {
 		return unauthorized("登录已过期，请重新登录")
@@ -319,7 +320,7 @@ func (s *Service) reauthByRecovery(c Caller, code string) error {
 // 「吊销从不缓存」同款理由：撤销管理员资格必须当场生效）。
 func (s *Service) SessionRole(uid int64) (string, error) {
 	var role string
-	err := s.pool.QueryRowContext(context.Background(), "SELECT role FROM users WHERE id = ?", uid).Scan(&role)
+	err := s.pool.QueryRowContext(db.QueryCtx(), "SELECT role FROM users WHERE id = ?", uid).Scan(&role)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", unauthorized("登录已过期，请重新登录")
 	}

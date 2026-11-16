@@ -24,6 +24,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/WXies-Team/auth/internal/db"
 )
 
 // Quota 与日记侧枚举一一对应，路由据此给出不同的状态码、文案与 Retry-After。
@@ -35,6 +37,10 @@ const (
 	QuotaConcurrency
 	QuotaDaily
 	QuotaGlobal
+	// QuotaGlobalConcurrency 是全站并发总闸（per-uid 8 之外的第二道，见 Acquire）。
+	// 路由对它与 QuotaConcurrency 回同款 429/Retry-After 30，枚举值分开只为
+	// 测试与日志能区分拒的是哪一层。
+	QuotaGlobalConcurrency
 )
 
 // allowFunc 是进程内滑动窗口（与路由的 IP 限流共用同一实现，单实例部署语义与
@@ -85,8 +91,14 @@ func (s *Service) AllowRate(cfg IntConfig, uid int64) Quota {
 // Acquire 第二层（并发）：每 uid 在途 ai_concurrency 个（默认 8），满即拒不排队。
 // 返回 QuotaConcurrency 表示在途已满。**调用方必须配对 Release**（拿到 200 就要
 // Release，用 defer：错误返回与 panic 都要走）——10 分钟 TTL 只是崩溃兜底，不是常规路径。
+//
+// 全站并发总闸（2026-11-17 补层）：per-uid 8 挡不住「N 个用户 × 8 槽」把上游
+// 打满（Denial of Wallet），所以在 uid 档之外再加一个全站上限
+// ai_concurrency_global（默认 64），满即返回 QuotaGlobalConcurrency——同样
+// 不排队，与 per-uid 档同款语义。
 func (s *Service) Acquire(cfg IntConfig, uid int64) Quota {
 	limit := cfg("ai_concurrency", 8)
+	globalLimit := cfg("ai_concurrency_global", 64)
 	now := time.Now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -108,8 +120,25 @@ func (s *Service) Acquire(cfg IntConfig, uid int64) Quota {
 		}
 		return QuotaConcurrency
 	}
+	if globalLimit > 0 && s.globalLiveLocked(now) >= globalLimit {
+		return QuotaGlobalConcurrency
+	}
 	s.slots[uid] = append(live, now)
 	return QuotaOK
+}
+
+// globalLiveLocked 汇总全站在途槽（含过期项的过滤，不分配新切片——每次
+// Acquire 都要数一遍，热路径上不能按 uid 数量放大分配）。调用方必须持锁。
+func (s *Service) globalLiveLocked(now time.Time) int {
+	total := 0
+	for _, held := range s.slots {
+		for _, t := range held {
+			if now.Sub(t) < s.ttl {
+				total++
+			}
+		}
+	}
+	return total
 }
 
 // Release 归还一个并发槽；**幂等**——没有在途槽时是无操作（调用方崩溃重试、
@@ -143,7 +172,10 @@ func (s *Service) liveLocked(uid int64, now time.Time) []time.Time {
 
 // CheckDaily 第三层预检：当日 user / global 计数**已达限额就拒**（只读不写）。
 // 计数写入统一在 Consume（原子加，即使加完越线也照记——越线由下一次 check 拒）。
+// 调用方给的是请求 ctx（可能没有 deadline），这里补一道 5s 查询预算（P0 口径）。
 func (s *Service) CheckDaily(ctx context.Context, cfg IntConfig, uid int64) (Quota, error) {
+	ctx, cancel := context.WithTimeout(ctx, db.QueryTimeout)
+	defer cancel()
 	day := time.Now().Format("2006-01-02") // 与 calorie quota.go 逐字一致：本地时区 YYYY-MM-DD
 	daily := cfg("ai_daily_per_user", 500)
 	global := cfg("ai_daily_global", 5000)
@@ -175,9 +207,24 @@ func (s *Service) CheckDaily(ctx context.Context, cfg IntConfig, uid int64) (Quo
 // user → global，与日记侧一致不交叉死锁），**不设上限判定**——即使加完越线也照记，
 // 越线由下一次 CheckDaily 拒。返回入账后的两层计数，回执即看板数据。
 //
+// promptTokens / completionTokens 是本次请求的上游 token 用量（2026-11-17 记账
+// 补层）：由日记服务从上游回执带入，与 weight 同批累进 ai_usage 的两列；调用方
+// 不传（老版本日记服务）按 0 记，兼容不影响现有调用。负数按 0 夹紧——内部端点
+// 的入参错误不该变成一次500 或负数账。
+//
 // 占行用 INSERT … ON DUPLICATE KEY UPDATE（直接对不存在的行 UPDATE 会拿 gap 键锁，
 // 两个首请求互持再改同一行会撞死锁——日记侧踩过，见其 bumpCount 注释）。
-func (s *Service) Consume(ctx context.Context, uid int64, weight int) (dailyUser, dailyGlobal int, err error) {
+func (s *Service) Consume(ctx context.Context, uid int64, weight, promptTokens, completionTokens int) (dailyUser, dailyGlobal int, err error) {
+	if promptTokens < 0 {
+		promptTokens = 0
+	}
+	if completionTokens < 0 {
+		completionTokens = 0
+	}
+	// 请求 ctx 通常没有 deadline，补 30s 的事务预算（与 db.SlowCtx 同口径：
+	// 事务到点整体回滚，不能用普通查询的 5s 一刀切）
+	ctx, cancel := context.WithTimeout(ctx, db.SlowTimeout)
+	defer cancel()
 	day := time.Now().Format("2006-01-02")
 	subject := strconv.FormatInt(uid, 10)
 
@@ -187,10 +234,10 @@ func (s *Service) Consume(ctx context.Context, uid int64, weight int) (dailyUser
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if err := bumpCount(ctx, tx, "user", subject, day, weight); err != nil {
+	if err := bumpCount(ctx, tx, "user", subject, day, weight, promptTokens, completionTokens); err != nil {
 		return 0, 0, err
 	}
-	if err := bumpCount(ctx, tx, "global", "", day, weight); err != nil {
+	if err := bumpCount(ctx, tx, "global", "", day, weight, promptTokens, completionTokens); err != nil {
 		return 0, 0, err
 	}
 	// 读回入账后的两层计数（同一事务内，与自增原子一致）
@@ -210,12 +257,15 @@ func (s *Service) Consume(ctx context.Context, uid int64, weight int) (dailyUser
 	return dailyUser, dailyGlobal, nil
 }
 
-// bumpCount 占行 + 自增一行计数。必须在事务里按 user → global 的固定顺序调用。
-func bumpCount(ctx context.Context, tx *sql.Tx, scope, subject, day string, weight int) error {
+// bumpCount 占行 + 自增一行计数（次数与两列 token 同一条 SQL 累加，原子性与
+// count 一致）。必须在事务里按 user → global 的固定顺序调用。
+func bumpCount(ctx context.Context, tx *sql.Tx, scope, subject, day string, weight, promptTokens, completionTokens int) error {
 	_, err := tx.ExecContext(ctx, `
-		INSERT INTO ai_usage (scope, subject, day, `+"`count`"+`) VALUES (?,?,?,?)
-		ON DUPLICATE KEY UPDATE `+"`count`"+` = `+"`count`"+` + VALUES(`+"`count`"+`)`,
-		scope, subject, day, weight)
+		INSERT INTO ai_usage (scope, subject, day, `+"`count`"+`, prompt_tokens, completion_tokens) VALUES (?,?,?,?,?,?)
+		ON DUPLICATE KEY UPDATE `+"`count`"+` = `+"`count`"+` + VALUES(`+"`count`"+`),
+			prompt_tokens = prompt_tokens + VALUES(prompt_tokens),
+			completion_tokens = completion_tokens + VALUES(completion_tokens)`,
+		scope, subject, day, weight, promptTokens, completionTokens)
 	if err != nil {
 		return fmt.Errorf("入账 %s/%s: %w", scope, subject, err)
 	}

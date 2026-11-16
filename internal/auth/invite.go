@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/WXies-Team/auth/internal/db"
 	"github.com/go-sql-driver/mysql"
 )
 
@@ -107,7 +108,7 @@ func (s *Service) AdminCreateInvite(actor Caller, scope AdminScope, rawEmail, ap
 		return 0, badRequest("该邮箱已注册")
 	}
 	var dup int
-	if qerr := s.pool.QueryRowContext(context.Background(),
+	if qerr := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT EXISTS(SELECT 1 FROM user_invites WHERE email = ? AND accepted_at = 0 AND revoked_at = 0 AND expires_at > ?)",
 		email, time.Now().UnixMilli()).Scan(&dup); qerr != nil {
 		return 0, fmt.Errorf("查邀请: %w", qerr)
@@ -121,7 +122,7 @@ func (s *Service) AdminCreateInvite(actor Caller, scope AdminScope, rawEmail, ap
 	}
 	now := time.Now().UnixMilli()
 	expiresAt = now + inviteTTL.Milliseconds()
-	if _, err = s.pool.ExecContext(context.Background(),
+	if _, err = s.pool.ExecContext(db.QueryCtx(),
 		"INSERT INTO user_invites (id, email, app, invited_by, token_hash, created_at, expires_at) VALUES (?,?,?,?,?,?,?)",
 		s.ids.Generate().Int64(), email, app, actor.UID, sha256Hex(token), now, expiresAt); err != nil {
 		return 0, fmt.Errorf("创建邀请: %w", err)
@@ -152,7 +153,7 @@ func (s *Service) AdminListInvites(scope AdminScope, query string) ([]AdminInvit
 	}
 	// 待接受排最前（accepted_at <> 0 是 MySQL 的布尔排序：0 在前）——管理台先看
 	// 还能动手的行，接受/撤销/过期的沉底。
-	rows, err := s.pool.QueryContext(context.Background(),
+	rows, err := s.pool.QueryContext(db.QueryCtx(),
 		"SELECT id, email, app, created_at, expires_at, accepted_at, revoked_at FROM user_invites"+
 			cond+" ORDER BY accepted_at <> 0, created_at DESC, id DESC", args...)
 	if err != nil {
@@ -211,7 +212,7 @@ func (s *Service) AdminResendInvite(actor Caller, scope AdminScope, id int64) (e
 	expires := now + inviteTTL.Milliseconds()
 	// WHERE 带 accepted_at=0：与「接受」并发时只有一边生效——接受先落库的话这里
 	// 0 行命中，不会给一个已消费的邀请续命。
-	if _, err = s.pool.ExecContext(context.Background(),
+	if _, err = s.pool.ExecContext(db.QueryCtx(),
 		"UPDATE user_invites SET token_hash = ?, created_at = ?, expires_at = ? WHERE id = ? AND accepted_at = 0",
 		sha256Hex(token), now, expires, id); err != nil {
 		return fmt.Errorf("重发邀请: %w", err)
@@ -243,7 +244,7 @@ func (s *Service) AdminRevokeInvite(actor Caller, scope AdminScope, id int64) (e
 		return nil // 幂等
 	}
 	// 条件 UPDATE 带 accepted_at=0：与「接受」并发时只有一边生效
-	if _, err = s.pool.ExecContext(context.Background(),
+	if _, err = s.pool.ExecContext(db.QueryCtx(),
 		"UPDATE user_invites SET revoked_at = ? WHERE id = ? AND accepted_at = 0",
 		time.Now().UnixMilli(), id); err != nil {
 		return fmt.Errorf("撤销邀请: %w", err)
@@ -255,7 +256,7 @@ func (s *Service) AdminRevokeInvite(actor Caller, scope AdminScope, id int64) (e
 // scopes 内（含 app='' 的账号级邀请）→ 403。super 全通。
 func (s *Service) adminInviteRow(scope AdminScope, id int64) (inviteRow, error) {
 	var r inviteRow
-	err := s.pool.QueryRowContext(context.Background(),
+	err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT email, app, accepted_at, revoked_at FROM user_invites WHERE id = ?", id).
 		Scan(&r.email, &r.app, &r.acceptedAt, &r.revokedAt)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -298,7 +299,7 @@ func (s *Service) inviteByToken(token string) (*inviteRow, error) {
 		return nil, badRequest("邀请链接不完整，请从邀请邮件重新打开")
 	}
 	var r inviteRow
-	err := s.pool.QueryRowContext(context.Background(),
+	err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT id, email, app, invited_by, accepted_at, revoked_at, expires_at FROM user_invites WHERE token_hash = ?",
 		sha256Hex(token)).Scan(&r.id, &r.email, &r.app, &r.invitedBy, &r.acceptedAt, &r.revokedAt, &r.expiresAt)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -352,7 +353,7 @@ func (s *Service) AcceptInvite(token, password, nickname string, meta SessionMet
 	if err != nil {
 		return nil, err
 	}
-	ctx := context.Background()
+	ctx := db.SlowCtx()
 	tx, err := s.pool.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("开事务: %w", err)

@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"context"
 	"crypto/sha256"
 	"crypto/subtle"
 	"database/sql"
@@ -13,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/WXies-Team/auth/internal/db"
 )
 
 // OAuth 跳转授权（授权码 + PKCE，RFC 9700 业界序列）：
@@ -130,7 +131,7 @@ func (s *Service) OAuthAuthorizeView(tx string, uid int64) (*OAuthView, error) {
 	// 绑定当前 uid（锁内写：map 值被并发 resume/confirm 读，裸改是数据竞争）
 	s.oauthStore.bindTx(tx, uid)
 	var email string
-	if err := s.pool.QueryRowContext(context.Background(),
+	if err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT email FROM users WHERE id = ?", uid).Scan(&email); err != nil {
 		return nil, unauthorized("登录已过期，请重新登录")
 	}
@@ -161,7 +162,7 @@ func (s *Service) OAuthDecide(uid int64, tx, decision string, meta SessionMeta) 
 		return buildOAuthRedirect(e.RedirectURI, url.Values{"error": {"access_denied"}, "state": {e.State}})
 	}
 	var email string
-	if err := s.pool.QueryRowContext(context.Background(),
+	if err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT email FROM users WHERE id = ?", uid).Scan(&email); err != nil {
 		return "", unauthorized("登录已过期，请重新登录")
 	}
@@ -258,7 +259,7 @@ func (s *Service) OAuthExchangeToken(req OAuthTokenRequest) (*OAuthTokenResult, 
 		return nil, err
 	}
 	var email string
-	if err := s.pool.QueryRowContext(context.Background(),
+	if err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT email FROM users WHERE id = ?", code.UID).Scan(&email); err != nil {
 		return nil, oauthErr(400, "invalid_grant", "授权账号已不可用，请重新发起授权")
 	}
@@ -312,7 +313,7 @@ func (s *Service) oauthClientByClientID(clientID string) (*OAuthClientRow, error
 		row    OAuthClientRow
 		rawURI string
 	)
-	err := s.pool.QueryRowContext(context.Background(),
+	err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT app, client_id, secret_hash, redirect_uris FROM oauth_clients WHERE client_id = ?", clientID).
 		Scan(&row.App, &row.ClientID, &row.SecretHash, &rawURI)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -369,7 +370,7 @@ func (s *Service) AdminConfigureOAuth(actor Caller, scope AdminScope, app string
 	if err != nil {
 		return nil, err
 	}
-	ctx := context.Background()
+	ctx := db.QueryCtx()
 	var existing OAuthClientRow
 	scanErr := s.pool.QueryRowContext(ctx,
 		"SELECT client_id, secret_hash FROM oauth_clients WHERE app = ?", app).
@@ -417,7 +418,7 @@ func (s *Service) OAuthClientIDFor(app string) (string, []string) {
 		clientID string
 		rawURIs  string
 	)
-	err := s.pool.QueryRowContext(context.Background(),
+	err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT client_id, redirect_uris FROM oauth_clients WHERE app = ?", app).
 		Scan(&clientID, &rawURIs)
 	if err != nil {

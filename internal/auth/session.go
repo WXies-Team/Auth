@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/WXies-Team/auth/internal/db"
 	"github.com/WXies-Team/auth/internal/geoip"
 	"github.com/WXies-Team/auth/internal/protocol"
 )
@@ -54,7 +55,7 @@ func (s *Service) createSessionOn(ex execer, userID int64, app string, meta Sess
 	now := time.Now().UnixMilli()
 	sid := s.ids.Generate().Int64()
 	ua := meta.uaWithCH() // web 登录带 CH 就并进后缀；App 调用方无 CH，原样落库
-	if _, err := ex.ExecContext(context.Background(),
+	if _, err := ex.ExecContext(db.QueryCtx(),
 		"INSERT INTO sessions (id, user_id, app, device, ip, user_agent, created_at, last_seen_at) VALUES (?,?,?,?,?,?,?,?)",
 		sid, userID, app, truncateRunes(shortDevice(ua), 191),
 		meta.IP, truncateRunes(ua, 512), now, now); err != nil {
@@ -73,7 +74,7 @@ func (s *Service) sessionAlive(userID, sid int64) (bool, error) {
 	if sid <= 0 {
 		return false, nil
 	}
-	ctx := context.Background()
+	ctx := db.QueryCtx()
 	var owner, lastSeen int64
 	var revokedAt sql.NullInt64
 	err := s.pool.QueryRowContext(ctx,
@@ -124,7 +125,7 @@ func (s *Service) ListSessions(userID, currentSID int64, apps []string) ([]proto
 			args = append(args, a)
 		}
 	}
-	rows, err := s.pool.QueryContext(context.Background(),
+	rows, err := s.pool.QueryContext(db.QueryCtx(),
 		"SELECT id, app, user_agent, ip, created_at, last_seen_at FROM sessions"+cond+
 			" ORDER BY last_seen_at DESC, id DESC", args...)
 	if err != nil {
@@ -160,7 +161,7 @@ func (s *Service) ListSessions(userID, currentSID int64, apps []string) ([]proto
 func (s *Service) RevokeSession(userID, sid int64, apps []string) error {
 	var owner int64
 	var sessApp string
-	err := s.pool.QueryRowContext(context.Background(),
+	err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT user_id, app FROM sessions WHERE id = ?", sid).Scan(&owner, &sessApp)
 	if errors.Is(err, sql.ErrNoRows) || (err == nil && (owner != userID || (len(apps) > 0 && !containsStr(apps, sessApp)))) {
 		return &HTTPError{404, msgSessionGone}
@@ -168,7 +169,7 @@ func (s *Service) RevokeSession(userID, sid int64, apps []string) error {
 	if err != nil {
 		return fmt.Errorf("查会话归属: %w", err)
 	}
-	if _, err := s.pool.ExecContext(context.Background(),
+	if _, err := s.pool.ExecContext(db.QueryCtx(),
 		"UPDATE sessions SET revoked_at = ? WHERE id = ? AND user_id = ?",
 		time.Now().UnixMilli(), sid, userID); err != nil {
 		return fmt.Errorf("吊销会话: %w", err)
@@ -200,7 +201,7 @@ func (s *Service) RevokeSessions(userID int64, ids []int64, apps []string) (int,
 	for _, id := range ids {
 		args = append(args, id)
 	}
-	rows, err := s.pool.QueryContext(context.Background(),
+	rows, err := s.pool.QueryContext(db.QueryCtx(),
 		"SELECT id, user_id, app FROM sessions WHERE id IN ("+holders+")", args...)
 	if err != nil {
 		return 0, fmt.Errorf("查待退出会话: %w", err)
@@ -230,7 +231,7 @@ func (s *Service) RevokeSessions(userID int64, ids []int64, apps []string) (int,
 		// 缺行（别人会话 / 超范围 / 已被清理）一律 404，与单踢同口径
 		return 0, &HTTPError{404, msgSessionGone}
 	}
-	res, err := s.pool.ExecContext(context.Background(),
+	res, err := s.pool.ExecContext(db.QueryCtx(),
 		"UPDATE sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL AND id IN ("+holders+")",
 		append([]any{time.Now().UnixMilli(), userID}, args...)...)
 	if err != nil {
@@ -247,7 +248,7 @@ func (s *Service) RevokeSessions(userID int64, ids []int64, apps []string) (int,
 // **可见范围内**的行（apps 空 = 不限）。**不碰 token_version**：只在会话层动手，
 // 当前设备的 token 照用——与踢人同一套语义。
 func (s *Service) RevokeOtherSessions(userID, keepSID int64, apps []string) error {
-	return revokeUserSessions(context.Background(), s.pool, userID, keepSID, apps)
+	return revokeUserSessions(db.QueryCtx(), s.pool, userID, keepSID, apps)
 }
 
 // revokeUserSessions 吊销该用户可见范围内的全部未吊销会话；keepSID > 0 时保留它自己。
