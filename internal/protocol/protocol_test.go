@@ -15,6 +15,8 @@ import (
 // 日记仓是**私有仓**（gh api repos/HoratioShaw/calorie-diary
 // 确认 private=true），本仓 CI 的凭据跨仓读不到真文件，checkout 对拍走不通——
 // 只能钉快照：日记侧改字段需来这里同步更新。
+// 2026-11-17 服务器审计补钉 ChangePasswordResponse：日记侧 AuthDtos.kt 早有该类
+//（改密回执只读 token），快照漏了它，双向比对对「日记新增类」一直是盲区。
 var diaryAuthDTOSnapshot = map[string][]string{
 	"AuthRequest":                {"email", "password", "code", "app"},
 	"AuthResponse":               {"token", "email", "mustChangePassword", "deletePendingCancelled"},
@@ -25,6 +27,7 @@ var diaryAuthDTOSnapshot = map[string][]string{
 	"ChangeEmailRequest":         {"password", "email", "code"},
 	"ChangePasswordRequest":      {"oldPassword", "newPassword"},
 	"ChangePasswordCodeRequest":  {"code", "password"},
+	"ChangePasswordResponse":     {"token"},
 	"DeleteAccountRequest":       {"email", "code"},
 }
 
@@ -39,6 +42,7 @@ var protocolAuthDTOs = map[string]reflect.Type{
 	"ChangeEmailRequest":         reflect.TypeOf(ChangeEmailRequest{}),
 	"ChangePasswordRequest":      reflect.TypeOf(ChangePasswordRequest{}),
 	"ChangePasswordCodeRequest":  reflect.TypeOf(ChangePasswordCodeRequest{}),
+	"ChangePasswordResponse":     reflect.TypeOf(ChangePasswordResponse{}),
 	"DeleteAccountRequest":       reflect.TypeOf(DeleteAccountRequest{}),
 }
 

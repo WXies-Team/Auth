@@ -16,6 +16,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/WXies-Team/auth/internal/db"
 )
 
 // ErrNotFound 表示键不存在或值为空（空值当「没配」，与热量日记服务一致）。
@@ -56,7 +58,9 @@ func (s *Store) Get(key string) (string, error) {
 		return v, err
 	}
 	var raw string
-	err := s.pool.QueryRow("SELECT `value` FROM app_config WHERE `key` = ?", key).Scan(&raw)
+	// 带 QueryCtx 的 5s 预算：Get 会走到请求路径（发码/健康检查点查），裸点查
+	// 无上限，一条慢查询就能占住连接直到拖垮池（全链路超时改造漏网的一处，审计 A-P1-1）
+	err := s.pool.QueryRowContext(db.QueryCtx(), "SELECT `value` FROM app_config WHERE `key` = ?", key).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
 		s.remember(key, "", ErrNotFound)
 		return "", ErrNotFound

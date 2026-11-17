@@ -92,6 +92,14 @@ type ChangePasswordCodeRequest struct {
 	Password string `json:"password"`
 }
 
+// ChangePasswordResponse 对应日记客户端的 ChangePasswordResponse——**客户端视角**的
+// 改密回执：只读换发的新 token（web cookie 调用者 token 恒空串，凭据走 Set-Cookie 刷新）。
+// 服务端实际写出的是 AuthResponse 全形（routes.go 的 writeResult(resp)），多出的字段
+// 由客户端 ignoreUnknownKeys 忽略；本结构体只为快照对拍钉住日记侧形状，不参与回执序列化。
+type ChangePasswordResponse struct {
+	Token string `json:"token"`
+}
+
 // DeleteAccountRequest 对应 DeleteAccountRequest：注销申请改为**邮箱验证码**确认
 //（{email, code}，purpose=delete 的 6 位码发到注册邮箱）。
 //
