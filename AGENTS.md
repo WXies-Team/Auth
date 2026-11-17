@@ -178,6 +178,11 @@ the same PR**—a stale guide ships wrong integrations.
 - `MYSQL_DSN` is the **only** env name accepted (`db.FromEnv`); calorie uses `DB_DSN` — don't mix.
 - `app_config` reads are cached 10s in-process: after inserting mail keys, wait ≤10s (or
   restart) before `/health` `mailConfigured:true`. Quote `` `key` `` in every app_config SQL.
+- Mail has **two credential sets**: `mail_smtp_host/port/user/pass` (Tencent exmail SMTP,
+  primary) and `mail_tenant_id/client_id/client_secret` (Graph, fallback). `Send`
+  dispatches on `mail_smtp_host`; `/health` `mailConfigured` and the startup Warn are
+  "either set complete" (`mail.ConfigState`) — flipping the primary path must not delete
+  the Graph keys, and a health/startup check against only one set reports false negatives.
 - self-hosted runner: the step process has **no HOME** — workflows set it per-step
   (`HOME: ${{ github.workspace }}/../go-home`); don't hoist to job level.
 - `.github/**` and `*.md` pushes don't trigger build.yml; verify workflow edits with

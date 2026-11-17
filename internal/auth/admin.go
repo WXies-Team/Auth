@@ -756,10 +756,11 @@ func (s *Service) AdminRevokeUserSessions(actor Caller, targetUID int64) (err er
 var adminConfigPrefixes = []string{"mail_", "hook_", "llm_", "ai_"}
 
 // isSecretConfigKey 判定「只显示末 4 位」的键：名字里带凭据语义的一律算。
+// "pass" 覆盖 mail_smtp_pass 这类缩写（SMTP 密码在后台配置中心只回末 4 位）。
 // 判不出来宁可当 secret（多遮一次不亏，漏遮一次是泄密）。
 func isSecretConfigKey(key string) bool {
 	lower := strings.ToLower(key)
-	for _, marker := range []string{"secret", "token", "password", "_key", "apikey", "credential"} {
+	for _, marker := range []string{"secret", "token", "password", "pass", "_key", "apikey", "credential"} {
 		if strings.Contains(lower, marker) {
 			return true
 		}

@@ -97,7 +97,8 @@ ci/build-server.sh    # 测试 + 打包 dist/server.tar（CI 部署用的同一�
 | 环境变量 | `MYSQL_DSN` | MySQL 连接串，密码绝不入库（模板见 `.env.example`） |
 | 环境变量 | `JWT_SECRET` | HS256 密钥，**少于 32 字节拒启** |
 | 环境变量 | `TOTP_ENC_KEY` | TOTP secret 的 AES-256-GCM 密钥，**少于 32 字节拒启**；丢失 = 已绑用户的两步验证全部作废（只剩恢复码），要单独备份 |
-| `app_config` 表 | `mail_tenant_id` / `mail_client_id` / `mail_client_secret` | Microsoft Graph 发信凭据，部署时人工灌，改库 10 秒内热生效 |
+| `app_config` 表 | `mail_smtp_host` / `mail_smtp_port` / `mail_smtp_user` / `mail_smtp_pass` | 腾讯企业邮箱 SMTP 发信凭据（**主路径**，`mail_smtp_host` 非空即启用；账户名与发件人 = 完整地址，邮箱开了安全登录时密码填授权码），部署时人工灌，改库 10 秒内热生效 |
+| `app_config` 表 | `mail_tenant_id` / `mail_client_id` / `mail_client_secret` | Microsoft Graph 发信凭据（SMTP 键缺失时的**回退**路径），部署时人工灌，改库 10 秒内热生效 |
 | `app_config` 表 | `hook_token` | 注销钩子与 `/internal/users/ensure` 共用的 Bearer，与日记侧共享；没配则并入端点一律 401 |
 | `app_config` 表 | `hook_calorie_diary` / `hook_expense_diary` | 各 App 的 `/internal/delete-user` 地址；**键缺失 = 注销时跳过该 App**（只在测试/开发态成立），改库 10 秒内热生效 |
 | `app_config` 表 | `webauthn_opaque_origins`（可选） | 逗号分隔的 `android:apk-key-hash:<签名证书指纹>`；**没配 = 只有网页端能用 Passkey**，两个日记 App 的原生仪式被 origin 校验挡下（写错也只降级不拒启，见启动日志） |

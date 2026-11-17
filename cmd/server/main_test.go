@@ -395,3 +395,41 @@ func TestHealthConfigFailureIsNeutral(t *testing.T) {
 		t.Errorf("应回中性的「配置读取失败」，得到 %s", rec.Body.String())
 	}
 }
+
+// /health 的 mailConfigured 口径（2026-11 切腾讯企业邮箱 SMTP 后）：SMTP 四键齐
+// **或** Graph 三键齐，任一齐 true——与 Send 分流同源（mail.ConfigState），
+// 只查一套会把另一套配好的正常态报成 false。真库用例（Ping 要连库）。
+func TestHealthMailConfiguredEitherKeySet(t *testing.T) {
+	e := newRouteEnv(t)
+	cases := []struct {
+		name string
+		keys map[string]string
+		want bool
+	}{
+		{"SMTP 四键齐", map[string]string{
+			"mail_smtp_host": "smtp.exmail.qq.com", "mail_smtp_port": "465",
+			"mail_smtp_user": "service@example.com", "mail_smtp_pass": "x"}, true},
+		{"只有 Graph 三键齐", map[string]string{
+			"mail_tenant_id": "t", "mail_client_id": "c", "mail_client_secret": "s"}, true},
+		{"两套都缺", map[string]string{}, false},
+		{"SMTP 缺 pass、Graph 也不齐", map[string]string{
+			"mail_smtp_host": "smtp.exmail.qq.com", "mail_smtp_user": "service@example.com"}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			require := func(k string) (string, error) { return tc.keys[k], nil }
+			rec := httptest.NewRecorder()
+			health(e.pool, require).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health", nil))
+			if rec.Code != http.StatusOK {
+				t.Fatalf("健康检查应 200，得到 %d（%s）", rec.Code, rec.Body.String())
+			}
+			var body healthResponse
+			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+				t.Fatalf("回执不可解析: %v", err)
+			}
+			if body.MailConfigured != tc.want {
+				t.Errorf("mailConfigured 应为 %v，得到 %v", tc.want, body.MailConfigured)
+			}
+		})
+	}
+}

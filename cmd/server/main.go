@@ -88,13 +88,14 @@ func main() {
 	cfg := config.New(pool)
 	// 邮件凭据从 app_config 现读（10s 缓存，改库即热生效）。没配好时发码回 503
 	//「邮件服务暂不可用」，属于可自愈的配置态而不是崩溃；启动时 Warn 一次，
-	// 免得等用户注册失败才发现。
-	for _, key := range []string{"mail_tenant_id", "mail_client_id", "mail_client_secret"} {
-		v, err := cfg.Require(key)
+	// 免得等用户注册失败才发现。SMTP 四键与 Graph 三键**任一配齐即可发信**
+	//（与 Send 分流、/health 同源判定），只在两套都没配齐时喊：只喊 Graph 那
+	// 三键会把「SMTP 已配好、Graph 没配」的正常态误报成故障。
+	if ok, missing, err := mailsvc.ConfigState(cfg.Require); err != nil {
 		// 读库失败 ≠ 没配：分开喊，否则 DB 抖动会被「未配置」这条 Warn 带偏
-		if err != nil {
-			slog.Error("读邮件凭据失败（继续启动）", "key", key, "err", err)
-		} else if v == "" {
+		slog.Error("读邮件凭据失败（继续启动）", "err", err)
+	} else if !ok {
+		for _, key := range missing {
 			slog.Warn("邮件凭据未配置，注册与验证码邮件会失败", "key", key)
 		}
 	}
@@ -221,9 +222,11 @@ func health(pool *sql.DB, require func(string) (string, error)) http.Handler {
 			return
 		}
 		// 邮件凭据没有兜底值：缺键时发码全 503，/health 给个开关位让部署方自查，
-		// 不用翻日志。读配置失败与「数据库挂了」是两回事，文案分开（n9）——
+		// 不用翻日志。配齐口径 = SMTP 四键或 Graph 三键任一齐（与 Send 分流同源，
+		// 见 mail.ConfigState——只查一套会把另一套配好的正常态报成 false）；
+		// 读配置失败与「数据库挂了」是两回事，文案分开（n9）——
 		// 写成「数据库不可用」会把排障方向带偏到 DB 上。
-		mailKey, err := require("mail_client_secret")
+		mailOK, _, err := mailsvc.ConfigState(require)
 		if err != nil {
 			slog.Error("读邮件凭据配置失败", "err", err)
 			writeError(w, http.StatusServiceUnavailable, "配置读取失败，请检查邮件凭据配置")
@@ -231,7 +234,7 @@ func health(pool *sql.DB, require func(string) (string, error)) http.Handler {
 		}
 		writeJSON(w, http.StatusOK, healthResponse{
 			Status:         "ok",
-			MailConfigured: mailKey != "",
+			MailConfigured: mailOK,
 			// 能启动到这里就说明 JWT_SECRET 已通过 ≥32 字节校验（拒启在 main 最前面），
 			// 恒为 true——给部署方一眼确认「这个进程带着可用密钥在跑」
 			JWTConfigured: true,

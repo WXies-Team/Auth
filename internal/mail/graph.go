@@ -1,22 +1,29 @@
-// Package mail 通过 Microsoft Graph 发验证码邮件。
+// Package mail 发验证码等通知邮件：**两条发送路径，Send 入口一处分流**——
+// `mail_smtp_host` 非空走**腾讯企业邮箱 SMTP**（smtp.go，主路径），否则回退
+// **Microsoft Graph**（本文件，Exchange Online）。凭据只在生产库 `app_config`、
+// 仓库不出现任何值；/health 的 mailConfigured 与启动未配置 Warn 用同一套配齐
+// 判定（[ConfigState]：SMTP 四键齐 或 Graph 三键齐）。
 //
-// **为什么是 Graph 而不是 SMTP**：Exchange Online 的 SMTP 基础认证 2026-12 底对存量租户
-// 默认关闭，OAuth + SMTP AUTH 还要自己实现 XOAUTH2 与 MIME 编码；Graph 只需一次
-// HTTPS POST，微软官方口径也是「新应用优先 Graph」。热量日记服务联调实测
-// （2026-10-08）：token 200、sendMail 202，邮件实际送达——本包照抄其成熟实现。
+// **为什么 Graph 还留着**：它是切换前的主路径（2026-11 切到腾讯企业邮箱 SMTP），
+// 实现原样保留当回退——Exchange Online 的 SMTP 基础认证 2026-12 底对存量租户
+// 默认关闭，OAuth + SMTP AUTH 还要自己实现 XOAUTH2，Graph 只需一次 HTTPS POST。
+// 热量日记服务联调实测（2026-10-08）：token 200、sendMail 202，邮件实际送达。
 //
-// **凭据只在生产库 `app_config`，仓库不出现任何值**。键：`mail_tenant_id` /
-// `mail_client_id` / `mail_client_secret`；缺任一键 Send 回「未配置」错误，
-// 路由侧表现为 503，启动日志另有一条 Warn 提醒（省得等用户注册失败才发现）。
+// **缺键错误口径不变**：Graph 路径缺任一键 Send 回「未配置」错误
+// （errNoCredential，键：`mail_tenant_id` / `mail_client_id` /
+// `mail_client_secret`），路由侧表现为 503，启动日志另有一条 Warn 提醒
+//（省得等用户注册失败才发现）；SMTP 路径对应 errNoSMTPCredential。
 //
 // **发信身份**：`/users/{upn}` 必须填主邮箱 UPN——别名填进去会得到
 // `ErrorInvalidUser`（实测）。
 //
-// **发件人显示名随信取品牌**：From 落在信封头里（见 buildMIME），地址恒为 sender、
-// 显示名是这封信的品牌名（热量日记 / 开支日记 / Auth），与正文品牌同源。
-// 历史实测（2026-10-08，热量日记服务）Exchange 会把显示名覆盖成邮箱对象的
-// DisplayName：若收件箱仍显示旧名，兜底办法是改邮箱 DisplayName（M365 管理中心 /
-// `Set-Mailbox -DisplayName`），改完即生效。
+// **发件人显示名随信取品牌**：From 落在信封头里（见 buildMIME），显示名是这封信
+// 的品牌名（热量日记 / 开支日记 / Auth，来自 email.go 注册表、随 Send 入参传下
+// 来），与正文品牌同源；两条路径共用 buildMIME 这一处，腾讯 SMTP 不改写 From
+// 显示名，收件人看到的仍是品牌名。发件地址两条路径各取：Graph 恒 sender 常量，
+// SMTP 取 mail_smtp_user。历史实测（2026-10-08，热量日记服务）Exchange 会把显示名
+// 覆盖成邮箱对象的 DisplayName：若收件箱仍显示旧名，兜底办法是改邮箱 DisplayName
+//（M365 管理中心 / `Set-Mailbox -DisplayName`），改完即生效。
 //
 // **正文以 raw MIME 实体提交（完整 RFC 5322 信件）**：信封头 + multipart/
 // alternative 双部件（text/plain 降级 + text/html，见 buildMIME），整体 base64 后
@@ -24,13 +31,15 @@
 // user-sendmail Example 4「Send a new message using MIME format」形态）。
 // **不走 JSON 的 message.body.content**：Graph 不解析塞在 JSON 字符串里的 MIME，
 // 会把 multipart 原文当正文投出去——收件人看到 boundary 串、样式全无
-//（2026-10-22 用户实收证据，本形态即为该次乱码的修复）。
+//（2026-10-22 用户实收证据，本形态即为该次乱码的修复）。SMTP 路径把同一份实体
+// 直接写进 DATA（见 smtp.go），没有这层提交形态差异。
 // 品牌 logo 走 https 托管图（auth.horatio.cn/brand/…），不内嵌 CID。
 package mail
 
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -91,15 +100,19 @@ func base64CTE(s string) string {
 	return b.String()
 }
 
-// buildMIME 拼出投给 Graph 的完整 RFC 5322 信件：信封头（Date/From/To/Subject/
-// MIME-Version/Content-Type）+ multipart/alternative 正文（text/plain 在前、
-// text/html 在后，两部件均 base64 传输编码），所有行尾 CRLF。
+// buildMIME 拼出完整 RFC 5322 信件（两条发送路径共用这一份）：信封头
+//（Date/From/To/Subject/MIME-Version/Content-Type）+ multipart/alternative 正文
+//（text/plain 在前、text/html 在后，两部件均 base64 传输编码），所有行尾 CRLF。
+//
+// fromName 是发件显示名（品牌名，来自 email.go 注册表、随 Send 入参传入），
+// fromAddr 是发件地址——Graph 路径恒 sender 常量、SMTP 路径取 mail_smtp_user，
+// 发件地址没有独立键。Subject/From 含中文时按 RFC 2047 B 编码（Graph 不会代编码，
+// 裸 UTF-8 头在部分收件链路上被按 Latin-1 误读）。
 //
 // **为什么必须补信封头**：旧实现只拼裸 multipart 实体塞进 JSON，Graph 不解析；改走
 // raw MIME 提交后（见 Send），收件人与主题只能从信封头来——缺 To/Subject 的 MIME
-// 要么被 Exchange 拒、要么丢收件人。Subject/From 含中文时按 RFC 2047 B 编码，
-// Graph 不会代编码。
-func buildMIME(fromName, to, subject, html, text string, now time.Time) (string, error) {
+// 要么被 Exchange 拒、要么丢收件人。
+func buildMIME(fromName, fromAddr, to, subject, html, text string, now time.Time) (string, error) {
 	var body bytes.Buffer
 	w := multipart.NewWriter(&body)
 	plain, err := w.CreatePart(textproto.MIMEHeader{
@@ -129,7 +142,7 @@ func buildMIME(fromName, to, subject, html, text string, now time.Time) (string,
 	var msg bytes.Buffer
 	// Date 走 RFC 5322 date-time（time.RFC1123Z 同型）：Exchange 校验信封头形态。
 	fmt.Fprintf(&msg, "Date: %s\r\n", now.Format(time.RFC1123Z))
-	fmt.Fprintf(&msg, "From: %s <%s>\r\n", rfc2047B(fromName), sender)
+	fmt.Fprintf(&msg, "From: %s <%s>\r\n", rfc2047B(fromName), fromAddr)
 	fmt.Fprintf(&msg, "To: %s\r\n", to)
 	fmt.Fprintf(&msg, "Subject: %s\r\n", rfc2047B(subject))
 	msg.WriteString("MIME-Version: 1.0\r\n")
@@ -139,8 +152,9 @@ func buildMIME(fromName, to, subject, html, text string, now time.Time) (string,
 }
 
 const (
-	// sender 是发信身份（显示地址，不是密钥），保持常量：它出现在每封信的 From 里，
-	// 换它属于产品决策而不是环境差异。
+	// sender 是 Graph 路径的发信身份（显示地址，不是密钥），保持常量：它出现在
+	// 该路径每封信的 From 与 sendMail 端点里，换它属于产品决策而不是环境差异。
+	// SMTP 路径的发件地址取 mail_smtp_user（见 smtp.go）。
 	sender = "service@horatio.cn"
 
 	graphTokenURL = "https://login.microsoftonline.com/" // 后接 {tenant}/oauth2/v2.0/token
@@ -174,9 +188,13 @@ type Sender struct {
 	// 测试把这两个字段指到 httptest 才需要填——生产恒空。
 	tokenURL string
 	sendURL  string
+	// SMTP 的 TLS 信任覆盖：生产恒 nil（默认配置 + ServerName=host 校验证书），
+	// 测试指到自签证书的信任配置（见 dialSMTP）。
+	smtpTLSConfig *tls.Config
 }
 
-// sendTimeout 是**一次 Send 的总预算**，罩住「取 token」与「sendMail」两次网络往返。
+// sendTimeout 是**一次 Send 的总预算**：Graph 罩住「取 token」与「sendMail」两次
+// 网络往返，SMTP 罩住建连、握手、AUTH 与投信全程。
 // 声明成变量只是让测试能塞进毫秒级预算，生产不改。
 var sendTimeout = 15 * time.Second
 
@@ -195,11 +213,16 @@ func New(cfg ConfigFunc) *Sender {
 	}
 }
 
-// Send 发一封邮件：正文为完整 RFC 5322 信件（信封头 + multipart/alternative 双部件，
-// 见 buildMIME），整体 base64 后走 Graph 的 raw MIME 提交路径（sendMail +
-// Content-Type: text/plain）。fromName 是发件人显示名（品牌名），落进信封 From 头
-//（非 ASCII 按 RFC 2047 编码）；text 是 HTML 的忠实纯文本降级（auth 模板逐封提供）。
-// 成功 = Graph 回 202（已接受；投递仍受 Exchange 限流约束，
+// Send 发一封邮件：**分流只此一处**——`mail_smtp_host` 非空走腾讯企业邮箱 SMTP
+//（sendSMTP），否则走下面这条 Graph 路径（缺键错误口径不变，见 errNoCredential）。
+//
+// 两条路径的正文都是完整 RFC 5322 信件（信封头 + multipart/alternative 双部件，
+// 见 buildMIME）。fromName 是发件人显示名（品牌名），落进信封 From 头
+//（非 ASCII 按 RFC 2047 编码，两条路径同一函数）；text 是 HTML 的忠实纯文本降级
+//（auth 模板逐封提供）。
+//
+// Graph 路径：正文整体 base64 后走 raw MIME 提交（sendMail + Content-Type:
+// text/plain）。成功 = Graph 回 202（已接受；投递仍受 Exchange 限流约束，
 // 微软官方口径：sendMail 成功返回 202 Accepted、响应体为空）。
 // 失败返回带状态码与响应体片段的错误——只进服务端日志，客户端只看到白话。
 //
@@ -207,18 +230,23 @@ func New(cfg ConfigFunc) *Sender {
 // sendMail 文档口径信件会存进发信邮箱的已发送项——与旧 JSON 路径显式 false 不同，
 // 属 MIME 提交的固有形态，验证码频次下可接受。
 //
-// **不自动重试**：429/5xx 的重试语义按微软节流指引要先等 Retry-After 再发，
+// **不自动重试**：Graph 侧 429/5xx 的重试语义按微软节流指引要先等 Retry-After 再发，
 // 而发码本身有 60 秒冷却与每 IP 5 次/分的闸，重试省不下用户等待、还多一份
 // 与「202 但带 Retry-After」撞出重复投递的风险——失败就把码撤销回 503，
-// 让用户手动重发，是最短也最安全的路径。
+// 让用户手动重发，是最短也最安全的路径（SMTP 路径同样单次会话、不重试）。
 func (s *Sender) Send(ctx context.Context, fromName, to, subject, html, text string) error {
+	// 分流只此一处：mail_smtp_host 非空 → 腾讯企业邮箱 SMTP（smtp.go），否则
+	// 回退 Graph。键现读（app_config，10s 缺省缓存），改库即热生效。
+	if s.cfg(smtpHostKey) != "" {
+		return s.sendSMTP(ctx, fromName, to, subject, html, text)
+	}
 	// 凭据现读（app_config，10s 缺省缓存）：改库即热生效，缺键直接不出网。
-	tenantID, clientID, secret := s.cfg("mail_tenant_id"), s.cfg("mail_client_id"), s.cfg("mail_client_secret")
+	tenantID, clientID, secret := s.cfg(graphTenantKey), s.cfg(graphClientKey), s.cfg(graphSecretKey)
 	if tenantID == "" || clientID == "" || secret == "" {
 		return errNoCredential
 	}
 	// 信件先拼：完整信封头 + multipart/alternative（纯文本 + HTML 双部件）
-	mimeMsg, err := buildMIME(fromName, to, subject, html, text, time.Now())
+	mimeMsg, err := buildMIME(fromName, sender, to, subject, html, text, time.Now())
 	if err != nil {
 		return err
 	}

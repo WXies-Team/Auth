@@ -350,6 +350,18 @@ func TestAdminListSessionsQuery(t *testing.T) {
 	}
 }
 
+// SMTP 密码键必须按 secret 处理：isSecretConfigKey 的旧标记表只有 password，
+// 不认 mail_smtp_pass 这种缩写——漏遮一次就是把 SMTP 密码全文回给后台页面。
+// 不依赖真库，CI 上也跑得到（下面的配置中心用例要 DSN）。
+func TestSecretConfigKeyCoversSMTPPass(t *testing.T) {
+	if !isSecretConfigKey("mail_smtp_pass") {
+		t.Error("mail_smtp_pass 应按 secret 处理（配置中心只回末 4 位）")
+	}
+	if isSecretConfigKey("mail_smtp_host") {
+		t.Error("mail_smtp_host 不是凭据，应回全文")
+	}
+}
+
 // 配置中心：secret 只回末 4 位、白名单外的键不出现、写入只记 key 不记值。
 func TestAdminConfigMaskingAndWrite(t *testing.T) {
 	svc, mailer := newTestService(t)

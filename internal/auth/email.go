@@ -221,8 +221,9 @@ func antiPhishHTML() string {
 	return `            <p style="` + emailFont + `margin:16px 0 0;font-size:13px;line-height:1.6;color:` + mailSub + `;">` + antiPhish + `</p>`
 }
 
-// mailLog 发信失败要留排障线索：客户端只看到白话，根因（Graph 状态码/响应体）只在
-// 服务端日志。邮箱过 maskEmail 脱敏——日志会进排障链路与备份，全文邮箱是 PII。
+// mailLog 发信失败要留排障线索：客户端只看到白话，根因（Graph 状态码/响应体、
+// SMTP 会话错误）只在服务端日志。邮箱过 maskEmail 脱敏——日志会进排障链路与备份，
+// 全文邮箱是 PII。
 func mailLog(err error, purpose, email string) {
 	slog.Error("发送邮件失败", "purpose", purpose, "email", maskEmail(email), "err", err)
 }

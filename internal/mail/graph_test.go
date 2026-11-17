@@ -133,7 +133,7 @@ func TestSendCarriesBrandDisplayName(t *testing.T) {
 // Content-Type。ASCII 主题与显示名保持原样不编码（编码只服务非 ASCII）。
 func TestBuildMIMEEnvelope(t *testing.T) {
 	now := time.Date(2026, 10, 22, 15, 4, 5, 0, time.UTC)
-	msg, err := buildMIME("Auth", "u@example.com", "Auth 注册验证码", "<p>b</p>", "b", now)
+	msg, err := buildMIME("Auth", sender, "u@example.com", "Auth 注册验证码", "<p>b</p>", "b", now)
 	if err != nil {
 		t.Fatalf("buildMIME 失败: %v", err)
 	}
@@ -158,7 +158,7 @@ func TestBuildMIMEEnvelope(t *testing.T) {
 	}
 
 	// ASCII 主题/显示名原样直出，不做多余编码
-	msgASCII, err := buildMIME("Auth", "u@example.com", "code 123456", "<p>b</p>", "b", now)
+	msgASCII, err := buildMIME("Auth", sender, "u@example.com", "code 123456", "<p>b</p>", "b", now)
 	if err != nil {
 		t.Fatalf("buildMIME 失败: %v", err)
 	}
