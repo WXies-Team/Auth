@@ -31,7 +31,7 @@
   <h2 id="ai-days-title">每日用量</h2>
   <p class="hint" id="ai-today"></p>
   <div class="bars" id="ai-bars"></div>
-  <div class="empty hidden" id="ai-empty">所选区间内暂无用量记录。</div>
+  <div class="empty hidden" id="ai-empty"><span class="empty-title">所选区间内暂无用量</span><span class="empty-hint">换一个时间范围试试。</span></div>
 </section>
 
 <section class="card" aria-labelledby="ai-users-title">
@@ -71,7 +71,7 @@
   <span class="bar-track" style="max-width:320px"><span class="bar-fill" id="aid-limit-bar" style="width:0%"></span></span>
   <p class="hint" id="aid-limit-hint"></p>
   <div class="bars" id="aid-bars"></div>
-  <div class="empty hidden" id="aid-empty">该区间内暂无用量记录。</div>
+  <div class="empty hidden" id="aid-empty"><span class="empty-title">该区间内暂无用量</span><span class="empty-hint">换一个时间范围试试。</span></div>
 </section>
 
 <!-- 编辑限额（super only）：ai_* 四键，走 PUT /admin/config/{key} -->

@@ -49,6 +49,16 @@
   </div>
 </div>
 
+<!-- 单条退出的确认（与用户侧「登录会话」页同款：点名设备再动手） -->
+<dialog class="dlg" id="sd-kick-dialog" aria-labelledby="sd-kick-title">
+  <h2 id="sd-kick-title">退出会话</h2>
+  <p id="sd-kick-desc" class="dim"></p>
+  <form method="dialog" class="row end" style="margin-top:12px">
+    <button type="button" class="btn" id="sd-kick-cancel">取消</button>
+    <button type="button" class="btn danger" id="sd-kick-ok">确认退出</button>
+  </form>
+</dialog>
+
 <!-- 层级二：单用户会话列表（页内滑入） -->
 <section class="card detail hidden" id="sess-detail" aria-labelledby="sd-title" aria-live="polite">
   <div class="row between">

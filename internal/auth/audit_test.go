@@ -270,6 +270,46 @@ func TestAuditQueryFilters(t *testing.T) {
 	}
 }
 
+// IP 前缀过滤：限流命中只进结构化日志（不落审计表），管理员拿着日志里的来源
+// 地址靠这个条件把同源事件折回审计视图——前缀命中、通配符被剥、无关前缀为 0。
+func TestAuditQueryIPPrefix(t *testing.T) {
+	svc, mailer := newTestService(t)
+	registerViaCode(t, svc, mailer, "audit-ip@example.com", "secret123")
+	if _, err := svc.Login("audit-ip@example.com", "nope", "calorie-diary", testMeta); err == nil {
+		t.Fatal("错密码应失败")
+	}
+
+	// testMeta.IP = 127.0.0.1：前缀 "127.0" 应命中该来源的全部事件
+	rows, total, err := svc.QueryAudit(AuditQuery{IP: "127.0", Limit: 50})
+	if err != nil {
+		t.Fatalf("按 IP 查: %v", err)
+	}
+	if total == 0 || len(rows) == 0 {
+		t.Fatalf("IP 前缀应命中 127.0.0.1 的事件，得到 total=%d", total)
+	}
+	for _, r := range rows {
+		if !strings.HasPrefix(r.IP, "127.0") {
+			t.Errorf("前缀过滤失效，混入 IP %q", r.IP)
+		}
+	}
+
+	// LIKE 通配符在输入里也不放大范围：剥成前缀 "127.0"，结果与上一致
+	wild, wildTotal, err := svc.QueryAudit(AuditQuery{IP: "127.0%", Limit: 50})
+	if err != nil {
+		t.Fatalf("通配符输入: %v", err)
+	}
+	if wildTotal != total || len(wild) != len(rows) {
+		t.Errorf("通配符应被剥掉后等价匹配：total %d→%d, len %d→%d",
+			total, wildTotal, len(rows), len(wild))
+	}
+
+	// 从未出现过的来源 → 0 行（TEST-NET-1 段，测试里没有用过）
+	_, none, err := svc.QueryAudit(AuditQuery{IP: "192.0.2."})
+	if err != nil || none != 0 {
+		t.Errorf("无关前缀应 0 行，得到 %d err=%v", none, err)
+	}
+}
+
 // ---- 审计筛选下拉 ↔ 事件常量的对拍（纯测试，无 DB）----
 
 // auditTemplateSelect 取管理台审计筛选 #audit-action 的 <select> 段原文。下拉在

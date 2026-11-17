@@ -628,7 +628,15 @@ input:disabled { opacity: .6; }
   align-items: end;
 }
 .toolbar > .field { margin: 0; }
+/* .toolbar-inline（审计页的时间范围档位、用户页的搜索/批量两行）也独占整行：
+   它没写 grid-column 时只落进**一个** auto-fit 列（1280 视口下 203px），而它的
+   内容按整行设计——时间范围四颗 chip 实测被裁到只剩三颗（第 4 颗 x=548 已越出
+   容器右缘 539）。整行铺开后 chip 不裁、用户页的批量条也不再挤在半栏里。 */
+.toolbar > .toolbar-inline { grid-column: 1 / -1; }
 .toolbar .toolbar-row { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* 行内字段按栅格同款拉伸：flex 默认按内容宽左挤、右侧留一段空白，与 .toolbar
+   直接子项的 1fr 拉伸不一致（IP 筛选并进来独占一行时最明显）。 */
+.toolbar .toolbar-row > .field { flex: 1 1 190px; }
 /* 工具条里的按钮排右侧；窄屏自动落到下一行 */
 .toolbar .toolbar-actions { grid-column: 1 / -1; display: flex; gap: 8px; justify-content: flex-end; }
 
@@ -947,6 +955,32 @@ tbody tr:nth-child(7) { animation-delay: 240ms; }
 tbody tr:nth-child(8) { animation-delay: 270ms; }
 tbody tr:nth-child(9) { animation-delay: 300ms; }
 tbody tr:nth-child(10) { animation-delay: 330ms; }
+
+/* 列表行（登录会话 / Passkey / 详情面板里的 .list）：这些行是取到数据后才由 JS
+   插进来的，容器的入场动画早已播完——行自身补一段同款错峰，与表格行同一节奏。
+   只给前 8 行（第 9 行起齐步进），时长用 --dur-2，reduced-motion 由文件末一刀切。 */
+.list > .item { animation: rise-in-sm var(--dur-2) var(--ease) backwards; }
+.list > .item:nth-child(1) { animation-delay: 40ms; }
+.list > .item:nth-child(2) { animation-delay: 70ms; }
+.list > .item:nth-child(3) { animation-delay: 100ms; }
+.list > .item:nth-child(4) { animation-delay: 130ms; }
+.list > .item:nth-child(5) { animation-delay: 160ms; }
+.list > .item:nth-child(6) { animation-delay: 190ms; }
+.list > .item:nth-child(7) { animation-delay: 220ms; }
+.list > .item:nth-child(n+8) { animation-delay: 250ms; }
+
+/* AI 用量的每日柱行：同样是取数后才出现，前 10 行错峰（与表格行同款封顶） */
+.bars > .bar-row { animation: rise-in-sm var(--dur-2) var(--ease) backwards; }
+.bars > .bar-row:nth-child(1) { animation-delay: 60ms; }
+.bars > .bar-row:nth-child(2) { animation-delay: 90ms; }
+.bars > .bar-row:nth-child(3) { animation-delay: 120ms; }
+.bars > .bar-row:nth-child(4) { animation-delay: 150ms; }
+.bars > .bar-row:nth-child(5) { animation-delay: 180ms; }
+.bars > .bar-row:nth-child(6) { animation-delay: 210ms; }
+.bars > .bar-row:nth-child(7) { animation-delay: 240ms; }
+.bars > .bar-row:nth-child(8) { animation-delay: 270ms; }
+.bars > .bar-row:nth-child(9) { animation-delay: 300ms; }
+.bars > .bar-row:nth-child(10) { animation-delay: 330ms; }
 
 /* ---- ② 区块切换（页内 tab 换面板）：crossfade + 4px 上浮，180ms ----
    JS 用 WAAPI 给目标面板挂 swapIn()（见 app.js）；这里给无 JS 场景兜底一个 class。 */

@@ -211,6 +211,12 @@ function emptyState(title, hint) {
   return `<div class="empty"><span class="empty-title">${esc(title)}</span>${hint ? `<span class="empty-hint">${esc(hint)}</span>` : ''}</div>`;
 }
 
+/* 表格空态单元格：同一套「标题 + 下一步」，只是嵌在 <tr> 里（colspan 调用方给）。
+   此前多数表格空态只有一句灰字，与列表页的双行空态两种观感。 */
+function emptyCell(colspan, title, hint) {
+  return `<tr><td colspan="${esc(colspan)}" class="empty"><span class="empty-title">${esc(title)}</span>${hint ? `<span class="empty-hint">${esc(hint)}</span>` : ''}</td></tr>`;
+}
+
 /* 表单提交按钮的忙态：这些表单此前没有 setBusy，双击会发两次请求
    （验证码/重置类第二次必然失败，还把「验证码已使用」当错误丢给用户）。
    e.submitter 是真正被点的按钮，取不到就退回表单里的第一个 submit。 */
@@ -950,6 +956,7 @@ async function initConsole() {
     const badge = $('#role-badge');
     badge.textContent = me.role === 'super' ? '平台管理员' : '项目管理员';
     badge.classList.remove('hidden');   // 徽标 display:inline-flex，hidden 属性盖不住——走 .hidden 类
+    badge.classList.add('on');          // 角色是状态徽标，与用户表「平台管理员」同一档蓝（原先灰着，两处不一致）
     popIn(badge);   // 徽标浮现
   }
 
@@ -1014,7 +1021,7 @@ function initSessions() {
       const revokeOthers = $('#revoke-others');
       if (revokeOthers) revokeOthers.classList.toggle('hidden', others === 0);
     } catch (err) {
-      list.innerHTML = `<div class="empty">${esc(err.message)}</div>`;
+      list.innerHTML = emptyState('读取失败', err.message);
       return;
     }
     if (!rows.length) {
@@ -1133,7 +1140,7 @@ function initPasskeys() {
         list.appendChild(el);
       });
     } catch (err) {
-      list.innerHTML = `<div class="empty">${esc(err.message)}</div>`;
+      list.innerHTML = emptyState('读取失败', err.message);
     }
   }
 
@@ -2116,7 +2123,7 @@ function initAdminUsers() {
       });
     } catch (err) {
       $('#invites-count').textContent = '';
-      tbody.innerHTML = `<tr><td colspan="5" class="empty">读取失败：${esc(err.message)}</td></tr>`;
+      tbody.innerHTML = emptyCell(5, '读取失败', err.message);
     }
   }
 
@@ -2291,7 +2298,7 @@ function initAdminUsers() {
       refreshBulkBar();
     } catch (err) {
       showErr('#users-error', err.message);
-      body.innerHTML = '<tr><td colspan="7" class="empty">读取失败</td></tr>';
+      body.innerHTML = emptyCell(7, '读取失败', '稍后重试；如果一直失败，把上面的提示语发给管理员。');
       refreshBulkBar();
     }
   }
@@ -2317,7 +2324,7 @@ function initAdminUsers() {
           <span class="grow"><span class="title">${esc(s.device)}</span><br>
           <span class="meta">${esc(appLabel(s.app))} · ${ipWithRegion(s.ip, s.ipRegion)} · 最近活跃 ${esc(relTime(s.lastSeenAt))}</span></span>
           <button type="button" class="btn small danger" data-kick="${esc(s.id)}">退出</button>
-        </div>`).join('') || '<div class="empty">暂无活跃会话</div>';
+        </div>`).join('') || emptyState('没有活跃会话', '该用户的所有会话被退出或过期后，这里会清空。');
       const passkeys = (d.passkeys || []).map(p =>
         `<li>${esc(p.name)} · ${esc(fmtTime(p.createdAt))}</li>`).join('') || '<li>未添加</li>';
       // 封禁列表（W3）：全局/项目名 + 永久或解除时间 + 原因 + 解除按钮
@@ -2326,7 +2333,7 @@ function initAdminUsers() {
           <span class="grow"><span class="title">${b.app === '*' ? '全局' : esc(appLabel(b.app))}</span>
           <br><span class="meta">${Number(b.until) > 0 ? `将于 ${esc(fmtTime(b.until))} 解除` : '永久'}${b.reason ? ` · ${esc(b.reason)}` : ''}</span></span>
           <button type="button" class="btn small danger" data-unban="${esc(b.app)}">解除</button>
-        </div>`).join('') || '<div class="empty">当前没有生效中的封禁。</div>';
+        </div>`).join('') || emptyState('没有生效中的封禁', '封禁后会在这里列出范围、解除时间与原因。');
       const isSelf = d.uid === window.__meUid;
       const roleCtl = `
         <label class="row" style="gap:8px"><span class="dim">角色</span>
@@ -2422,12 +2429,17 @@ function initAdminUsers() {
           <button type="button" class="btn small danger" id="ud-kick-all">退出该用户全部会话</button>
         </div>`;
       decorateSelects($('#ud-body'));   // W9：抽屉里的角色/封禁范围下拉换站内形态
-      $$('#ud-body [data-kick]').forEach(btn => btn.addEventListener('click', async () => {
-        try {
-          await api('/admin/sessions/' + btn.dataset.kick, { method: 'DELETE' });
-          toast('已退出该会话');
-          openDetail(uid, email);
-        } catch (err) { toast(err.message, true); }
+      // 单条会话退出也走确认（与用户侧「登录会话」页同口径：点名设备再动手）
+      $$('#ud-body [data-kick]').forEach(btn => btn.addEventListener('click', () => {
+        const row = btn.closest('.item');
+        const title = row && row.querySelector('.title');
+        const device = (title && title.textContent) || '该设备';
+        confirmAction(
+          '退出会话',
+          `将退出「${device}」上的这条会话，它下次请求时会退出登录。`,
+          `已退出「${device}」上的会话`,
+          () => api('/admin/sessions/' + btn.dataset.kick, { method: 'DELETE' }),
+          true);
       }));
       $$('#ud-body [data-app]').forEach(btn => btn.addEventListener('click', () => {
         const app = btn.dataset.app;
@@ -2779,12 +2791,13 @@ function initAdminAccess() {
       list = res.projects || [];
     } catch (err) {
       showErr('#access-error', err.message);
-      wrap.innerHTML = '<div class="empty">读取失败，请刷新重试。</div>';
+      wrap.innerHTML = emptyState('读取失败', '刷新页面重试；如果一直失败，把提示语发给管理员。');
       return;
     }
     wrap.innerHTML = '';
     if (!list.length) {
-      wrap.innerHTML = '<div class="empty">当前没有可管理的项目。</div>';
+      wrap.innerHTML = emptyState('当前没有可管理的项目',
+        '平台管理员看全部接入项目，项目管理员只看被授权的项目。');
       return;
     }
     list.forEach(p => {
@@ -2930,6 +2943,28 @@ function initAdminSessions() {
   // 不给 makePager 传 label：页码文案按**用户**说（见 loadUsers），按钮仍按会话数分页
   const pager = makePager({ prev: '#sess-prev', next: '#sess-next', limit: 100 });
 
+  // 单条退出的确认（点名设备与项目，与用户侧「登录会话」页同口径）
+  let pendingKick = null;
+  $('#sd-kick-cancel').addEventListener('click', () => closeDialog($('#sd-kick-dialog')));
+  $('#sd-kick-ok').addEventListener('click', async () => {
+    const job = pendingKick;
+    const okBtn = $('#sd-kick-ok');
+    if (!job) { closeDialog($('#sd-kick-dialog')); return; }
+    setBusy(okBtn, true);
+    try {
+      await api('/admin/sessions/' + job.id, { method: 'DELETE' });
+      closeDialog($('#sd-kick-dialog'));
+      toast(`已退出「${job.device}」上的会话`);
+      fadeOutRow(job.el, () => openDetail(job.uid, job.email));
+    } catch (err) {
+      closeDialog($('#sd-kick-dialog'));
+      toast(err.message, true);
+    } finally {
+      setBusy(okBtn, false);
+      pendingKick = null;
+    }
+  });
+
   async function loadUsers() {
     showErr('#sess-error', '');
     try {
@@ -2953,7 +2988,11 @@ function initAdminSessions() {
         `第 ${Math.floor(st.offset / st.limit) + 1} 页 · 共 ${res.totalUsers || 0} 位用户`;
       ubody.innerHTML = '';
       if (!users.length) {
-        ubody.innerHTML = '<tr><td colspan="5" class="empty">暂无匹配的活跃会话</td></tr>';
+        const q = $('#sess-user-query').value.trim() || $('#sess-user-ip').value.trim();
+        ubody.innerHTML = emptyCell(5,
+          q ? '没有匹配的活跃会话' : '当前没有活跃会话',
+          q ? '换一个邮箱片段、uid 或 IP 试试。'
+            : '所有用户都不在线时这里是空的；有人登录后会出现在这里。');
         return;
       }
       users.sort((a, b) => b.last - a.last);
@@ -2971,7 +3010,7 @@ function initAdminSessions() {
       });
     } catch (err) {
       showErr('#sess-error', err.message);
-      ubody.innerHTML = '<tr><td colspan="5" class="empty">读取失败</td></tr>';
+      ubody.innerHTML = emptyCell(5, '读取失败', '稍后重试；如果一直失败，把上面的提示语发给管理员。');
     }
   }
 
@@ -2994,7 +3033,7 @@ function initAdminSessions() {
       // 用户被静默截断——管理员踢完 100 条以为清干净了。
       $('#sd-meta').textContent = `uid ${uid} · 共 ${total} 条会话 · 点击「退出」可逐条退出`;
       if (!items.length) {
-        $('#sd-body').innerHTML = '<div class="empty">该用户已无活跃会话。</div>';
+        $('#sd-body').innerHTML = emptyState('该用户已无活跃会话', '会话被退出或过期后不再列出；该用户重新登录会再次出现。');
         return;
       }
       $('#sd-body').innerHTML = '';
@@ -3013,12 +3052,11 @@ function initAdminSessions() {
             </span>
             <button type="button" class="btn small danger">退出</button>
           </div>`);
-        el.querySelector('button').addEventListener('click', async () => {
-          try {
-            await api('/admin/sessions/' + s.id, { method: 'DELETE' });
-            toast('已退出该会话');
-            fadeOutRow(el, () => openDetail(uid, email));
-          } catch (err) { toast(err.message, true); }
+        el.querySelector('button').addEventListener('click', () => {
+          pendingKick = { id: s.id, device: s.device, app: s.app, el, uid, email };
+          $('#sd-kick-desc').textContent =
+            `将退出「${s.device}」上的「${appLabel(s.app)}」会话，它下次请求时会退出登录。`;
+          openDialog($('#sd-kick-dialog'), '#sd-kick-cancel');
         });
         $('#sd-body').appendChild(el);
       });
@@ -3079,6 +3117,8 @@ function initAdminAudit() {
     if (target) p.set('target', target);
     const result = $('#audit-result') ? $('#audit-result').value : '';
     if (result) p.set('result', result);
+    const ip = $('#audit-ip').value.trim();
+    if (ip) p.set('ip', ip);
     const from = $('#audit-from').value;
     if (from) p.set('from', String(new Date(from + 'T00:00:00').getTime()));
     const to = $('#audit-to').value;
@@ -3090,7 +3130,7 @@ function initAdminAudit() {
     p.set('offset', String(pager.state.offset));
     // 同一份条件同步进地址栏（刷新/分享/后退都还原）
     syncQuery({
-      action, actor, target, result,
+      action, actor, target, result, ip,
       from: $('#audit-from').value, to: $('#audit-to').value,
       app: new URLSearchParams(location.search).get('app') || '',
       offset: pager.state.offset || '',
@@ -3109,7 +3149,14 @@ function initAdminAudit() {
       const uq = new URLSearchParams(location.search);
       body.innerHTML = '';
       if (!res.items.length) {
-        body.innerHTML = '<tr><td colspan="7" class="empty">暂无匹配的审计记录</td></tr>';
+        // 有筛选时说「换条件」，没筛选时说「表里还没有事件」——一句灰字分不清
+        // 「没数据」和「筛没了」（筛选刚被同步进地址栏，读 URL 即当前条件）
+        const filtered = ['action', 'actor', 'target', 'ip', 'result', 'from', 'to', 'app']
+          .some(k => uq.get(k));
+        body.innerHTML = emptyCell(7,
+          filtered ? '没有匹配的审计记录' : '暂无审计记录',
+          filtered ? '换一个条件，或点「重置」清掉全部筛选。'
+                   : '注册、登录、改密与后台操作都会记在这里。');
         return;
       }
       res.items.forEach(it => {
@@ -3135,7 +3182,7 @@ function initAdminAudit() {
       });
     } catch (err) {
       showErr('#audit-error', err.message);
-      body.innerHTML = '<tr><td colspan="7" class="empty">读取失败</td></tr>';
+      body.innerHTML = emptyCell(7, '读取失败', '稍后重试；如果一直失败，把上面的提示语发给管理员。');
     }
   }
 
@@ -3146,6 +3193,7 @@ function initAdminAudit() {
     if (q.get('actor')) $('#audit-actor').value = q.get('actor');
     if (q.get('target')) $('#audit-target').value = q.get('target');
     if (q.get('result') && $('#audit-result')) $('#audit-result').value = q.get('result');
+    if (q.get('ip')) $('#audit-ip').value = q.get('ip');
     if (q.get('from')) $('#audit-from').value = q.get('from');
     if (q.get('to')) $('#audit-to').value = q.get('to');
     if (q.get('offset')) pager.state.offset = Number(q.get('offset')) || 0;
@@ -3185,6 +3233,7 @@ function initAdminAudit() {
     $(sel).addEventListener('change', () => rangeChipSync('custom')));
   $('#audit-reset').addEventListener('click', () => {
     $('#audit-action').value = ''; $('#audit-actor').value = ''; $('#audit-target').value = '';
+    $('#audit-ip').value = '';
     if ($('#audit-result')) $('#audit-result').value = '';
     $('#audit-from').value = ''; $('#audit-to').value = '';
     rangeChipSync('custom');
@@ -3288,7 +3337,7 @@ function initAdminConfig() {
         });
         wrap.appendChild(card);
       });
-      if (!rendered) wrap.innerHTML = '<div class="empty">暂无配置项。</div>';
+      if (!rendered) wrap.innerHTML = emptyState('暂无配置项', '本页只显示服务端登记过的配置键。');
     } catch (err) { showErr('#cfg-error', err.message); }
   }
 
@@ -3406,7 +3455,8 @@ function initAdminAI() {
       const users = rep.users || [];
       ubody.innerHTML = '';
       if (!users.length) {
-        ubody.innerHTML = '<tr><td colspan="5" class="empty">所选区间内暂无用户用量。</td></tr>';
+        ubody.innerHTML = emptyCell(5, '所选区间内暂无用户用量',
+          '换一个时间范围，或等有调用后再来看。');
         return;
       }
       users.forEach(u => {
@@ -3432,7 +3482,7 @@ function initAdminAI() {
       });
     } catch (err) {
       showErr('#ai-error', err.message);
-      $('#ai-users-body').innerHTML = '<tr><td colspan="5" class="empty">读取失败，请刷新重试</td></tr>';
+      $('#ai-users-body').innerHTML = emptyCell(5, '读取失败', '稍后重试；如果一直失败，把上面的提示语发给管理员。');
     }
   }
 

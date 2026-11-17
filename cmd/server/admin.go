@@ -603,6 +603,7 @@ func registerAdminRoutes(mux *http.ServeMux, svc *auth.Service) {
 		list, total, err := svc.QueryAudit(auth.AuditQuery{
 			Action: q.Get("action"),
 			Result: q.Get("result"),
+			IP:     q.Get("ip"),
 			Actor:  queryInt64(q.Get("actor")),
 			Target: queryInt64(q.Get("target")),
 			From:   queryInt64(q.Get("from")),

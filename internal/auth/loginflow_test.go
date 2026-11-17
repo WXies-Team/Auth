@@ -298,6 +298,9 @@ func TestLoginStateMethodRecordsRecoveryUse(t *testing.T) {
 // 名单内且账号开了 2FA 才拦，回 401 提示升级。
 func TestEnforceAppsSwitch(t *testing.T) {
 	svc, mailer := newTestService(t)
+	// 本用例连打 6 次登录只为验证应用开关语义，限流/退避不是被测目标——
+	// limit<=0 即放行（attempts.go:32），否则真库下第 6 次被 5次/分闸拦红
+	svc.loginByEmail = newAttemptLimiter(0, time.Minute)
 	reg := registerViaCode(t, svc, mailer, "web-enforce@example.com", "secret123")
 	c, err := svc.ValidUserID("Bearer " + reg.Token)
 	if err != nil {

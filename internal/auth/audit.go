@@ -176,10 +176,14 @@ type AuditRow struct {
 // AuditQuery 是审计查询条件（route 层从 query 参数填好再传）。
 type AuditQuery struct {
 	Action string
-	Actor  int64 // 0 = 不限
-	Target int64 // 0 = 不限
+	Actor  int64  // 0 = 不限
+	Target int64  // 0 = 不限
 	Result string // "ok" / "fail"；空 = 不限（审计系统标配的成功/失败过滤）
-	From   int64 // 毫秒，0 = 不限
+	// IP 是**前缀**匹配（"114.86" 命中该段全部来源，完整地址即精确匹配）：
+	// 限流命中只进结构化日志（见 cmd/server 的 limit429），管理员拿到日志里的
+	// bucket 地址后，靠这个条件把它折回审计事件——日志与审计表由此能对上。
+	IP     string // 空 = 不限
+	From   int64  // 毫秒，0 = 不限
 	To     int64
 	Limit  int
 	Offset int
@@ -234,6 +238,13 @@ func (s *Service) QueryAudit(q AuditQuery) ([]AuditRow, int, error) {
 			cond += " AND result = ?"
 			args = append(args, q.Result)
 		}
+	}
+	if ip := strings.TrimSpace(q.IP); ip != "" {
+		// 前缀匹配（"114.86" 命中该网段，完整地址即精确匹配）。输入里的 LIKE
+		// 通配符直接剥掉——IP 字符集里本就没有 %/_，剥比转义更省一道心；
+		// 与 result 同属未建索引的条件，审计行有保留期上限，全表扫可接受。
+		cond += " AND ip LIKE ?"
+		args = append(args, strings.NewReplacer("%", "", "_", "").Replace(ip)+"%")
 	}
 	if q.From > 0 {
 		cond += " AND ts >= ?"
