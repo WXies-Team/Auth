@@ -83,6 +83,14 @@ func registerPageRoutes(mux *http.ServeMux, svc *auth.Service) {
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			renderInvitePage(svc, w, r.URL.Query().Get("token"), "")
 		}))))
+	if !ui.Has("setup-password") {
+		slog.Error("页面模板缺失", "name", "setup-password")
+		os.Exit(1)
+	}
+	mux.Handle("GET /web/setup-password", withLogging(limitN("web-setup-password", 15,
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			renderSetupPasswordPage(svc, w, r.URL.Query().Get("token"), "")
+		}))))
 
 	// 项目注册表 JSON（SPA 的 slug→展示名唯一出口，与页面内联的 AppsJSON 同值）。
 	// 公开只读：展示名不是秘密（邀请页/邮件同款对外）；回执走 writeJSON（no-store）。
@@ -312,6 +320,26 @@ func renderInvitePage(svc *auth.Service, w http.ResponseWriter, token, formErr s
 	}); err != nil {
 		slog.Error("渲染接受邀请页失败", "err", err)
 	}
+}
+
+// renderSetupPasswordPage 渲染一次性设密页（GET 与 POST 被打回时共用）。
+func renderSetupPasswordPage(svc *auth.Service, w http.ResponseWriter, token, formErr string) {
+	info, err := svc.PasswordSetupLookup(token)
+	if err != nil {
+		_ = ui.Render(w, "setup-password", ui.Data{
+			Title: "无法设置密码", Minimal: true, Status: http.StatusBadRequest,
+			PasswordSetup: &ui.PasswordSetupView{ErrorTitle: "链接已失效", ErrorMessage: errText(err)},
+		})
+		return
+	}
+	status := 0
+	if formErr != "" {
+		status = http.StatusBadRequest
+	}
+	_ = ui.Render(w, "setup-password", ui.Data{
+		Title: "设置新密码", Minimal: true, Status: status,
+		PasswordSetup: &ui.PasswordSetupView{Token: token, Email: info.Email, Error: formErr},
+	})
 }
 
 // renderInviteError 渲染接受邀请页的错误变体（token 无效/过期/已用、表单体读不动）。

@@ -83,6 +83,8 @@ type Data struct {
 	// ErrorTitle 非空 = 同模板的错误变体（token 无效/过期/已用，400 起头），
 	// Error 非空 = 表单下方的就地报错（提交被业务打回时连表单一起重渲染）。
 	Invite *InviteView
+	// PasswordSetup 是一次性设密页的渲染上下文（管理员重置通知信的落地页）。
+	PasswordSetup *PasswordSetupView
 	// Status 非零时以该状态码起头（授权错误页要 400/403；0 = 200）
 	Status int
 	// AppsJSON 是服务端 knownApps 注册表的 JSON（template.JS 直出进
@@ -242,6 +244,15 @@ type InviteView struct {
 	Email        string
 	App          string
 	AppName      string // App 的展示名（空 = 账号级邀请，文案不点名项目）
+	Error        string
+	ErrorTitle   string
+	ErrorMessage string
+}
+
+// PasswordSetupView 是一次性设密页（setup-password 模板）的渲染上下文。
+type PasswordSetupView struct {
+	Token        string
+	Email        string
 	Error        string
 	ErrorTitle   string
 	ErrorMessage string

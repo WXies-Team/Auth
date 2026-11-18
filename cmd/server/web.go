@@ -126,6 +126,23 @@ func registerWebRoutes(mux *http.ServeMux, svc *auth.Service) {
 			http.Redirect(w, r, "/web/console", http.StatusFound)
 		})))))
 
+	// 管理员重置通知信里的「一次性设密」落地页：token 是凭证，表单只收它和新密码。
+	// 成功后不直接建会话——跳登录页用新密码登录，语义清楚且不与既有会话逻辑打架。
+	mux.Handle("POST /web/setup-password", withLogging(originGuard(limitN("web-setup-password", 15,
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
+			if err := r.ParseForm(); err != nil {
+				renderSetupPasswordPage(svc, w, "", "请求格式不正确，请从邮件重新打开")
+				return
+			}
+			token, password := r.PostFormValue("token"), r.PostFormValue("password")
+			if err := svc.CompletePasswordSetup(token, password); err != nil {
+				renderSetupPasswordPage(svc, w, token, errText(err))
+				return
+			}
+			http.Redirect(w, r, "/web/login", http.StatusFound)
+		})))))
+
 	// ---- 会话（当前身份 / 重新验证 / 登出）----
 	mux.Handle("POST /web/session", authed("web-session", 60,
 		func(c auth.WebCaller, w http.ResponseWriter, r *http.Request) {
@@ -361,7 +378,7 @@ func registerWebRoutes(mux *http.ServeMux, svc *auth.Service) {
 }
 
 // jsonAuthedWrapper 把「解 JSON 体」这步折进 reauthed 的签名里
-//（reauthed 的 handler 形状是固定三参，包一层再解体最省事）。
+// （reauthed 的 handler 形状是固定三参，包一层再解体最省事）。
 func jsonAuthedWrapper(h func(c auth.WebCaller, req *protocol.PasskeyFinishRequest, w http.ResponseWriter, r *http.Request)) func(auth.WebCaller, http.ResponseWriter, *http.Request) {
 	return func(c auth.WebCaller, w http.ResponseWriter, r *http.Request) {
 		var req protocol.PasskeyFinishRequest
@@ -489,7 +506,7 @@ p  { font-size:15px; line-height:1.7; margin:0 0 10px; color:#333; }
 <a class="link" href="/web/login">前往登录</a>
 </div>
 <script>
-const TOKEN = ` + string(tokJSON) + `;
+const TOKEN = `+string(tokJSON)+`;
 const go = document.getElementById('go');
 go.addEventListener('click', async () => {
   go.disabled = true; go.textContent = '处理中…';

@@ -21,7 +21,7 @@ import (
 
 // knownAppOrder 是项目展示序（allowedApps 的定序视图）：Go map 遍历无序，
 // 后台项目列表每请求要稳定排序。**新增应用时与 allowedApps 一起加**
-//（TestKnownAppOrderMatchesWhitelist 对拍漂移）。
+// （TestKnownAppOrderMatchesWhitelist 对拍漂移）。
 var knownAppOrder = []string{"calorie-diary", "expense-diary"}
 
 // appName 取项目展示名：走品牌注册表（与 internal/ui 的 knownApps 同键，
@@ -200,9 +200,9 @@ func (s *Service) AdminResetPassword(actor Caller, scope AdminScope, targetUID i
 	if err = tx.Commit(); err != nil {
 		return "", fmt.Errorf("提交重置: %w", err)
 	}
-	// 通知信尽力而为：临时密码已回执给管理员，信没发出去不该把重置翻成 500
+	// 通知信尽力而为：设密链接发不出去不该把重置翻成 500
 	if in.Notify {
-		s.sendPasswordResetNotice(email, tmp)
+		s.sendPasswordResetNotice(targetUID, email)
 	}
 	return tmp, nil
 }
@@ -228,14 +228,19 @@ func (s *Service) targetHasScopedSession(uid int64, apps []string) (bool, error)
 	return ok == 1, nil
 }
 
-// sendPasswordResetNotice 发「密码重置通知」（W8 第 1 封，含临时密码本体——
-// 用户已拍板两者都发）。品牌恒中性 Auth；失败只记日志。
-func (s *Service) sendPasswordResetNotice(email, temporary string) {
+// sendPasswordResetNotice 发「密码重置通知」：只发一次性设密链接，正文不再出现密码。
+// 品牌恒中性 Auth（账号级操作）；失败只记日志，不把重置翻成 500。
+func (s *Service) sendPasswordResetNotice(uid int64, email string) {
 	if s.mailer == nil {
 		return
 	}
+	setupURL, err := s.CreatePasswordSetup(uid, email)
+	if err != nil {
+		mailLog(err, "password_setup_link", email)
+		return
+	}
 	b := brandFor("")
-	subject, htmlBody, text := passwordResetNoticeEmail(b, temporary)
+	subject, htmlBody, text := passwordResetNoticeEmail(b, setupURL)
 	if err := s.mailer.Send(context.Background(), b.name, email, subject, htmlBody, text); err != nil {
 		mailLog(err, "password_reset_notice", email)
 	}

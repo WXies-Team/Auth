@@ -210,7 +210,9 @@ func TestAllEmailTemplatesRenderBothParts(t *testing.T) {
 			"管理员改邮旧": func() (string, string, string) {
 				return adminChangeEmailNoticeEmail(b, false, "old@example.com", "new@example.com")
 			},
-			"管理员重置": func() (string, string, string) { return passwordResetNoticeEmail(b, "TempPass123") },
+			"管理员重置": func() (string, string, string) {
+				return passwordResetNoticeEmail(b, siteBase+"/web/setup-password?token=abc")
+			},
 			"改密确认":  func() (string, string, string) { return passwordChangedNoticeEmail(b, at) },
 			"注销确认":  func() (string, string, string) { return deleteRequestEmail(b, cancelURL, at) },
 			"注销撤销":  func() (string, string, string) { return deleteCancelledEmail(b) },

@@ -367,26 +367,13 @@ func stripTags(s string) string {
 // 场景 + 重置时间 + 临时密码本体 + 「尽快登录并立即改密」的内联入口（登录页——
 // 登录后的强制改密步会接管）+ 非本人操作找管理员——正文最小化，不带 uid、角色、
 // 操作者等任何额外账号信息。重置时间由模板自取发信时刻（发信紧跟重置，同一时刻）。
-func passwordResetNoticeEmail(b brand, temporary string) (subject, htmlBody, text string) {
-	const loginURL = siteBase + "/web/login"
+func passwordResetNoticeEmail(b brand, setupURL string) (subject, htmlBody, text string) {
 	subject = b.prefix + "密码重置通知"
-	lead := "管理员已于 " + safeTime(time.Now()) + " 将你的密码重置为下面的临时密码："
-	tip := `请尽快<a href="` + loginURL + `" style="color:` + b.primaryHex + `;text-decoration:underline;">使用临时密码登录</a>，并立即设置新密码。`
+	lead := "管理员已于 " + safeTime(time.Now()) + " 重置了你的密码。请用下面的链接设置新密码。"
 	inner := brandEyebrow(b, "账号安全") + `            <h1 style="` + emailFont + `margin:0 0 8px;font-size:20px;font-weight:400;line-height:1.4;color:` + mailInk + `;">你的密码已被重置</h1>
-            <p style="` + emailFont + `margin:0 0 24px;font-size:16px;line-height:1.6;color:` + mailInk + `;">` + lead + `</p>
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="` + mailCodeBox + `" style="width:100%;background-color:` + mailCodeBox + `;border-radius:20px;">
-              <tr>
-                <td align="center" style="padding:26px 12px 22px;">
-                  <div class="code" style="` + emailFont + `margin:0;font-size:26px;font-weight:400;line-height:1.3;letter-spacing:2px;text-align:center;color:` + mailInk + `;">` + html.EscapeString(temporary) + `</div>
-                </td>
-              </tr>
-            </table>
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="` + mailTipBox + `" style="width:100%;background-color:` + mailTipBox + `;border-radius:16px;margin:24px 0 0;">
-              <tr>
-                <td style="` + emailFont + `padding:16px 18px;font-size:16px;line-height:1.6;color:` + mailSub + `;">` + tip + `</td>
-              </tr>
-            </table>
-            <p style="` + emailFont + `margin:16px 0 0;font-size:16px;line-height:1.6;color:` + mailWarn + `;">不是你本人操作？请联系管理员。</p>
+            <p style="` + emailFont + `margin:0 0 8px;font-size:16px;line-height:1.6;color:` + mailInk + `;">` + lead + `</p>
+            <p style="` + emailFont + `margin:0;font-size:13px;line-height:1.6;color:` + mailSub + `;">链接 1 小时内有效，只能用一次。</p>
+` + ctaButton(b, "设置新密码", setupURL) + `            <p style="` + emailFont + `margin:16px 0 0;font-size:16px;line-height:1.6;color:` + mailWarn + `;">不是你本人操作？请联系管理员。</p>
 ` + antiPhishHTML()
 	text = brandEyebrowText(b, "账号安全") + `
 
@@ -394,10 +381,9 @@ func passwordResetNoticeEmail(b brand, temporary string) (subject, htmlBody, tex
 
 ` + lead + `
 
-` + temporary + `
+链接 1 小时内有效，只能用一次。
 
-请尽快使用临时密码登录，并立即设置新密码。
-` + loginURL + `
+` + ctaText("设置新密码", setupURL) + `
 
 不是你本人操作？请联系管理员。
 
@@ -405,7 +391,7 @@ func passwordResetNoticeEmail(b brand, temporary string) (subject, htmlBody, tex
 
 ——
 ` + footText(b)
-	preheader := "你的密码已被管理员重置，请尽快用临时密码登录并立即设置新密码。"
+	preheader := "你的密码已被管理员重置，请在 1 小时内设置新密码。"
 	return subject, emailShell(b, preheader, inner), text
 }
 
