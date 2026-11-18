@@ -41,7 +41,7 @@ func TestBrandForSelection(t *testing.T) {
 
 // 三品牌选串：同一套外壳，主题前缀 / 头部行 / 警示句 / 落款 / 改绑属格逐条照抄定案表
 // （热量、开支两品牌的串与日记服务现有模板一字不差）。警示句已按业界对标强化为
-//「品牌句 + 无人索码句」（勿分享句的定案新文案，见 codeEmail），品牌可变部分仍走 b.join。
+// 「品牌句 + 无人索码句」（勿分享句的定案新文案，见 codeEmail），品牌可变部分仍走 b.join。
 func TestBrandEmailStrings(t *testing.T) {
 	cases := []struct {
 		app, subject, header, warning, footer, genitive string
@@ -128,13 +128,13 @@ func TestBrandEmailLogoURL(t *testing.T) {
 				}
 			}
 		}
-		// 品牌主色底随「真按钮」走：验证码信按定案零按钮（「前往账号台」已降级为
-		// 正文内联文字链接），主色 <td bgcolor> 只钉仍有主按钮的通知信
+		// 品牌主色底随「真按钮」走：验证码信按定案零 CTA（账号台链接已删除），
+		// 主色 <td bgcolor> 只钉仍有主按钮的通知信
 		if !strings.Contains(noticeBody, `bgcolor="`+b.primaryHex+`"`) {
 			t.Errorf("app=%q 的改绑通知缺主色按钮底 %q", app, b.primaryHex)
 		}
-		if !strings.Contains(codeBody, `<a href="`+accountURL+`" style="color:`+b.primaryHex) {
-			t.Errorf("app=%q 的验证码信应把「前往账号台」排成正文内联文字链", app)
+		if strings.Contains(codeBody, "前往账号台") || strings.Contains(codeBody, accountURL) {
+			t.Errorf("app=%q 的验证码信不该再带账号台链接", app)
 		}
 	}
 }
@@ -174,15 +174,16 @@ func TestEmailShellStructure(t *testing.T) {
 				t.Errorf("app=%q 的%s还引用 cid（已改托管 logo）", app, name)
 			}
 		}
-		// VML 兜底随「真按钮」走：验证码信按业界对标零 CTA 按钮（「前往账号台」是
-		// 正文内联文字链接），mso 兜底由仍带主按钮的新登录提醒钉住；验证码信同时
-		// 钉住内联链形态，防止按钮被悄悄加回来
+		// VML 兜底随「真按钮」走：验证码信按定案零 CTA，mso 兜底由仍带主按钮的
+		// 新登录提醒钉住；验证码信的 HTML 与纯文本都不该再出现账号台入口
 		if !strings.Contains(rendered["新登录提醒"][0], "<!--[if mso]>") {
 			t.Errorf("app=%q 的新登录提醒缺按钮的 VML 兜底", app)
 		}
-		if codeHTML := rendered["验证码信"][0]; strings.Contains(codeHTML, "<!--[if mso]>") ||
-			!strings.Contains(codeHTML, `<a href="`+accountURL+`" style="color:`+b.primaryHex+`;text-decoration:underline;">前往账号台</a>`) {
-			t.Errorf("app=%q 的验证码信应零按钮、账号台入口为内联文字链", app)
+		codeParts := rendered["验证码信"]
+		if strings.Contains(codeParts[0], "<!--[if mso]>") ||
+			strings.Contains(codeParts[0], "前往账号台") ||
+			strings.Contains(codeParts[1], "前往账号台") {
+			t.Errorf("app=%q 的验证码信应零按钮且无账号台链接", app)
 		}
 	}
 }
@@ -196,17 +197,25 @@ func TestAllEmailTemplatesRenderBothParts(t *testing.T) {
 	for _, app := range []string{"calorie-diary", "expense-diary", ""} {
 		b := brandFor(app)
 		mails := map[string]func() (string, string, string){
-			"验证码":     func() (string, string, string) { return codeEmail(b, "注册", "123456") },
-			"改绑新邮箱":  func() (string, string, string) { return changeEmailNoticeEmail(b, true, "old@example.com", "new@example.com") },
-			"改绑旧邮箱":  func() (string, string, string) { return changeEmailNoticeEmail(b, false, "old@example.com", "new@example.com") },
-			"管理员改邮新": func() (string, string, string) { return adminChangeEmailNoticeEmail(b, true, "old@example.com", "new@example.com") },
-			"管理员改邮旧": func() (string, string, string) { return adminChangeEmailNoticeEmail(b, false, "old@example.com", "new@example.com") },
-			"管理员重置":  func() (string, string, string) { return passwordResetNoticeEmail(b, "TempPass123") },
-			"改密确认":   func() (string, string, string) { return passwordChangedNoticeEmail(b, at) },
-			"注销确认":   func() (string, string, string) { return deleteRequestEmail(b, cancelURL, at) },
-			"注销撤销":   func() (string, string, string) { return deleteCancelledEmail(b) },
-			"注销完成":   func() (string, string, string) { return deleteDoneEmail(b) },
-			"新登录提醒":  func() (string, string, string) { return loginNotifyEmail(b, "Pixel 8", "热量日记", at) },
+			"验证码": func() (string, string, string) { return codeEmail(b, "注册", "123456") },
+			"改绑新邮箱": func() (string, string, string) {
+				return changeEmailNoticeEmail(b, true, "old@example.com", "new@example.com")
+			},
+			"改绑旧邮箱": func() (string, string, string) {
+				return changeEmailNoticeEmail(b, false, "old@example.com", "new@example.com")
+			},
+			"管理员改邮新": func() (string, string, string) {
+				return adminChangeEmailNoticeEmail(b, true, "old@example.com", "new@example.com")
+			},
+			"管理员改邮旧": func() (string, string, string) {
+				return adminChangeEmailNoticeEmail(b, false, "old@example.com", "new@example.com")
+			},
+			"管理员重置": func() (string, string, string) { return passwordResetNoticeEmail(b, "TempPass123") },
+			"改密确认":  func() (string, string, string) { return passwordChangedNoticeEmail(b, at) },
+			"注销确认":  func() (string, string, string) { return deleteRequestEmail(b, cancelURL, at) },
+			"注销撤销":  func() (string, string, string) { return deleteCancelledEmail(b) },
+			"注销完成":  func() (string, string, string) { return deleteDoneEmail(b) },
+			"新登录提醒": func() (string, string, string) { return loginNotifyEmail(b, "Pixel 8", "热量日记", at) },
 		}
 		for name, build := range mails {
 			subject, htmlBody, text := build()

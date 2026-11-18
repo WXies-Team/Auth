@@ -14,7 +14,7 @@ import (
 )
 
 // B9 管理端邀请建号：管理员发一封带链接的邀请信，收件人点开设置密码即完成建号
-//（链接只有目标邮箱的持有者收得到，邮箱因此视为已验证——不叠邮箱验证码）。
+// （链接只有目标邮箱的持有者收得到，邮箱因此视为已验证——不叠邮箱验证码）。
 //
 // 口径（调研定案，邀请链接流为主）：
 //   - token 32 字节 CSPRNG，库里**只存 sha256**（明文只在创建/重发那一刻进邮件），
@@ -129,7 +129,7 @@ func (s *Service) AdminCreateInvite(actor Caller, scope AdminScope, rawEmail, ap
 	}
 	// 邀请信尽力而为：邀请行已落库，管理员可在列表里重发——一封信投递失败
 	// 不该把已建的邀请翻成 500（与密码重置通知同口径）
-	s.sendInviteEmail(app, email, token, time.UnixMilli(expiresAt))
+	s.sendInviteEmail(app, email, token, time.UnixMilli(expiresAt), actor.Email)
 	return expiresAt, nil
 }
 
@@ -217,7 +217,7 @@ func (s *Service) AdminResendInvite(actor Caller, scope AdminScope, id int64) (e
 		sha256Hex(token), now, expires, id); err != nil {
 		return fmt.Errorf("重发邀请: %w", err)
 	}
-	s.sendInviteEmail(row.app, row.email, token, time.UnixMilli(expires))
+	s.sendInviteEmail(row.app, row.email, token, time.UnixMilli(expires), s.inviterEmail(row.invitedBy))
 	return nil
 }
 
@@ -253,7 +253,7 @@ func (s *Service) AdminRevokeInvite(actor Caller, scope AdminScope, id int64) (e
 }
 
 // adminInviteRow 取一行邀请并过 app-admin 的项目边界：查无 → 404；目标 app 不在
-// scopes 内（含 app='' 的账号级邀请）→ 403。super 全通。
+// scopes 内（含 app=” 的账号级邀请）→ 403。super 全通。
 func (s *Service) adminInviteRow(scope AdminScope, id int64) (inviteRow, error) {
 	var r inviteRow
 	err := s.pool.QueryRowContext(db.QueryCtx(),
@@ -275,7 +275,7 @@ func (s *Service) adminInviteRow(scope AdminScope, id int64) (inviteRow, error) 
 // ---- 公开接受流 ----
 
 // InvitePublic 是接受页（GET /web/invite）验过 token 后的展示信息。
-// App 为 '' = 账号级邀请（不限项目）。
+// App 为 ” = 账号级邀请（不限项目）。
 type InvitePublic struct {
 	Email string
 	App   string
@@ -430,12 +430,24 @@ func (s *Service) AcceptInvite(token, password, nickname string, meta SessionMet
 
 // sendInviteEmail 投邀请链接信。品牌按邀请 app（无 app = 中性 Auth）——
 // 收件人看到的是自己被邀请加入的那个项目的名头。
-func (s *Service) sendInviteEmail(app, email, token string, expiresAt time.Time) {
+// inviterEmail 把邀请行的 invited_by uid 解析成邮箱；查不到就回空串，模板退回「一位管理员」。
+func (s *Service) inviterEmail(uid int64) string {
+	if uid <= 0 || s.pool == nil {
+		return ""
+	}
+	var email string
+	if err := s.pool.QueryRowContext(db.QueryCtx(), "SELECT email FROM users WHERE id = ?", uid).Scan(&email); err != nil {
+		return ""
+	}
+	return email
+}
+
+func (s *Service) sendInviteEmail(app, email, token string, expiresAt time.Time, inviter string) {
 	if s.mailer == nil {
 		return
 	}
 	b := brandFor(app)
-	subject, htmlBody, text := inviteEmail(b, siteBase+"/web/invite?token="+token, expiresAt)
+	subject, htmlBody, text := inviteEmail(b, siteBase+"/web/invite?token="+token, inviter, expiresAt)
 	if err := s.mailer.Send(context.Background(), b.name, email, subject, htmlBody, text); err != nil {
 		mailLog(err, "user_invite", email)
 	}

@@ -256,7 +256,6 @@ func codeEmail(b brand, action, code string) (subject, htmlBody, text string) {
                 </td>
               </tr>
             </table>
-            <p style="` + emailFont + `margin:20px 0 0;font-size:16px;line-height:1.6;color:` + mailSub + `;">也可以<a href="` + accountURL + `" style="color:` + b.primaryHex + `;text-decoration:underline;">前往账号台</a>，管理账号与安全设置。</p>
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="` + mailTipBox + `" style="width:100%;background-color:` + mailTipBox + `;border-radius:16px;margin:24px 0 0;">
               <tr>
                 <td style="` + emailFont + `padding:16px 18px;font-size:16px;line-height:1.6;color:` + mailSub + `;">不是你操作？忽略这封邮件即可，账号不会有任何变化。</td>
@@ -273,7 +272,7 @@ func codeEmail(b brand, action, code string) (subject, htmlBody, text string) {
 ` + code + `
 5 分钟内有效
 
-` + ctaText("前往账号台", accountURL) + `
+
 
 不是你操作？忽略这封邮件即可，账号不会有任何变化。
 
@@ -493,7 +492,7 @@ func deleteRequestEmail(b brand, cancelURL string, dueAt time.Time) (subject, ht
 }
 
 // deleteCancelledEmail 注销已撤销的通知信：事实 + 安心句（账号与数据一切照常）+
-//「不是本人怎么办」；账号已回到正常态，保留账号台入口与反钓鱼声明。
+// 「不是本人怎么办」；账号已回到正常态，保留账号台入口与反钓鱼声明。
 func deleteCancelledEmail(b brand) (subject, htmlBody, text string) {
 	subject = b.prefix + "注销已撤销"
 	const reassure = "你的账号和数据是安全的，一切照常。"
@@ -525,7 +524,7 @@ func deleteCancelledEmail(b brand) (subject, htmlBody, text string) {
 }
 
 // deleteDoneEmail 注销完成的通知信：删除范围 + 不可逆陈述、**无任何链接**
-//（账号已不存在，再给入口就是死链），页脚前带反钓鱼声明——注销后的空窗期正是
+// （账号已不存在，再给入口就是死链），页脚前带反钓鱼声明——注销后的空窗期正是
 // 钓鱼信最爱冒名的时间点。
 func deleteDoneEmail(b brand) (subject, htmlBody, text string) {
 	subject = b.prefix + "注销已完成"
@@ -609,8 +608,8 @@ func adminChangeEmailNoticeEmail(b brand, toNew bool, oldEmail, newEmail string)
 }
 
 // loginNotifyEmail 新设备登录提醒（W1）：五段式——检测到新设备登录 → 降噪先手句
-//（「如果是你本人，无需任何行动。」）→ 设备/项目/时间细节 → 「不是我」的两步
-//（改密 + 退出其它设备，各带 auth web 深链）→ 页脚（含「管理登录提醒」入口与
+// （「如果是你本人，无需任何行动。」）→ 设备/项目/时间细节 → 「不是我」的两步
+// （改密 + 退出其它设备，各带 auth web 深链）→ 页脚（含「管理登录提醒」入口与
 // 反钓鱼声明）。**不带 IP**——业界登录告警的反面清单项，既非用户可对号的凭据，
 // 又给钓鱼信递素材。品牌按登录来源：App 登录取该 App 品牌，web 登录取中性
 // Auth（调用方 brandFor(app) 传入）。
@@ -644,9 +643,9 @@ func loginNotifyEmail(b brand, device, appLabel string, at time.Time) (subject, 
 
 如果这不是你本人的操作，请立即修改密码并退出其它设备。
 
-` + ctaText("账号安全设置", securityURL) + `
+` + ctaText("立即修改密码并退出其它设备", securityURL) + `
 
-` + ctaText("管理登录设备", sessionsURL) + `
+` + ctaText("审查登录设备", sessionsURL) + `
 
 管理登录提醒：` + accountURL + `
 
@@ -666,11 +665,16 @@ func loginNotifyEmail(b brand, device, appLabel string, at time.Time) (subject, 
 // 邀请人身份写「一位管理员」而非具体邮箱：邀请行只落 invited_by 的 uid（user_invites
 // 表无邀请人邮箱列），邀请信是模板纯函数、不查库；把 uid 解析成邮箱要动 invite.go
 // 两条发信路（创建取 actor、重发要回查 invited_by），本次改版不动业务层。
-func inviteEmail(b brand, inviteURL string, expiresAt time.Time) (subject, htmlBody, text string) {
+func inviteEmail(b brand, inviteURL, inviter string, expiresAt time.Time) (subject, htmlBody, text string) {
 	subject = b.prefix + "账号邀请"
 	expireLine := "此链接 24 小时内有效（" + safeTime(expiresAt) + " 前）；链接被使用、撤销或过期后即失效。"
+	if inviter == "" {
+		inviter = "一位管理员"
+	}
+	inviterE := html.EscapeString(inviter)
+	inviteLine := inviterE + " 邀请你创建账号。设置密码后即可完成创建并直接登录。"
 	inner := brandEyebrow(b, "账号邀请") + `            <h1 style="` + emailFont + `margin:0 0 8px;font-size:20px;font-weight:400;line-height:1.4;color:` + mailInk + `;">你被邀请创建账号</h1>
-            <p style="` + emailFont + `margin:0 0 16px;font-size:16px;line-height:1.6;color:` + mailInk + `;">一位管理员邀请你创建账号。点击下面的按钮设置密码，即可完成账号创建并直接登录。</p>
+            <p style="` + emailFont + `margin:0 0 16px;font-size:16px;line-height:1.6;color:` + mailInk + `;">` + inviteLine + `</p>
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="` + mailTipBox + `" style="width:100%;background-color:` + mailTipBox + `;border-radius:16px;margin:0 0 4px;">
               <tr>
                 <td style="` + emailFont + `padding:16px 18px;font-size:16px;line-height:1.8;color:` + mailSub + `;">` + expireLine + `</td>
@@ -682,7 +686,7 @@ func inviteEmail(b brand, inviteURL string, expiresAt time.Time) (subject, htmlB
 
 你被邀请创建账号
 
-一位管理员邀请你创建账号。点击下面的按钮设置密码，即可完成账号创建并直接登录。
+` + inviter + ` 邀请你创建账号。设置密码后即可完成创建并直接登录。
 
 ` + expireLine + `
 
@@ -694,7 +698,7 @@ func inviteEmail(b brand, inviteURL string, expiresAt time.Time) (subject, htmlB
 
 ——
 ` + footText(b)
-	preheader := "一位管理员邀请你创建账号，此链接 24 小时内有效。"
+	preheader := inviter + " 邀请你创建账号，此链接 24 小时内有效。"
 	return subject, emailShell(b, preheader, inner), text
 }
 
