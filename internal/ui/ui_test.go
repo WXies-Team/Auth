@@ -38,7 +38,7 @@ func TestLayoutHeadHasIconLinks(t *testing.T) {
 
 // 静态资产清单三件齐全、可按名取到，且 Content-Type 不缺。
 func TestStaticAssetRegistry(t *testing.T) {
-	want := []string{"apple-touch-icon.png", "favicon.ico", "favicon.svg"}
+	want := []string{"app.css", "app.js", "apple-touch-icon.png", "favicon.ico", "favicon.svg"}
 	got := StaticNames()
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("静态清单应为 %v（定序），得到 %v", want, got)
@@ -458,7 +458,7 @@ func TestAuthorizeTemplateRendersBothVariants(t *testing.T) {
 		t.Fatalf("渲染确认页: %v", err)
 	}
 	body := rec.Body.String()
-	for _, want := range []string{"热量日记", "app.example.com", "u@example.com", "tx-1", "继续", "取消"} {
+	for _, want := range []string{"热量日记", "app.example.com", "u@example.com", "tx-1", "继续", "拒绝并返回"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("确认页 HTML 缺 %q", want)
 		}

@@ -7,6 +7,7 @@
 package ui
 
 import (
+	"crypto/sha256"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -96,12 +97,16 @@ type Data struct {
 	PaletteJSON template.JS
 	Style       template.CSS
 	Script      template.JS
+	// AssetVersion 是 CSS/JS 内容哈希，作为静态资源 URL 的 ?v=；页面模板据此引用
+	// 可长期缓存的 /app.css、/app.js，不再把整份资源内联进每个 HTML 响应。
+	AssetVersion string
 }
 
 var (
-	pages    = map[string]*template.Template{}
-	styleCSS template.CSS
-	appJS    template.JS
+	pages        = map[string]*template.Template{}
+	styleCSS     template.CSS
+	appJS        template.JS
+	assetVersion string
 )
 
 // staticTypes 是站点静态资产清单（favicon 三件套，由 scripts/genicons 生成）：
@@ -110,6 +115,10 @@ var staticTypes = map[string]string{
 	"favicon.ico":          "image/x-icon",
 	"favicon.svg":          "image/svg+xml; charset=utf-8",
 	"apple-touch-icon.png": "image/png",
+	// 样式与脚本也走静态文件：此前每页内联整份 1000 行 CSS + 3800 行 JS，
+	// 逐页重复下载且永远无法缓存，是管理后台「卡」的直接原因。
+	"app.css": "text/css; charset=utf-8",
+	"app.js":  "text/javascript; charset=utf-8",
 }
 
 var staticFiles = map[string][]byte{}
@@ -141,9 +150,19 @@ func init() {
 		panic(fmt.Errorf("读内联脚本: %w", err))
 	}
 	appJS = template.JS(string(js)) //nolint:gosec // 静态自有资源，内容可信
+	// CSS/JS 以静态路径复用，URL 带内容哈希做版本；两份内容都进哈希，
+	// 任一份改动都会让所有页面拿到新 URL，避免半新半旧的缓存串味。
+	sum := sha256.Sum256(append(append([]byte{}, css...), js...))
+	assetVersion = fmt.Sprintf("%x", sum)[:10]
+	staticFiles["app.css"] = css
+	staticFiles["app.js"] = js
 
 	// 静态资产随二进制一起打包（零外链口径）：缺一个就在启动时炸
 	for name := range staticTypes {
+		// app.css / app.js 由根目录的 style.css / app.js 直接登记（见上）
+		if name == "app.css" || name == "app.js" {
+			continue
+		}
 		data, err := files.ReadFile("static/" + name)
 		if err != nil {
 			panic(fmt.Errorf("读静态资产 %s: %w", name, err))
@@ -491,6 +510,7 @@ func Render(w http.ResponseWriter, name string, data Data) error {
 		return fmt.Errorf("页面模板不存在: %s", name)
 	}
 	data.Style, data.Script = styleCSS, appJS
+	data.AssetVersion = assetVersion
 	if data.AppsJSON == "" {
 		data.AppsJSON = knownAppsJSON()
 	}

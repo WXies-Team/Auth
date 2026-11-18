@@ -10,7 +10,7 @@
 <link rel="icon" href="/favicon.ico" sizes="48x48">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <title>{{.Title}} · Auth</title>
-<style>{{.Style}}</style>
+<link rel="stylesheet" href="/app.css?v={{.AssetVersion}}">
 </head>
 <!-- data-super：平台管理员标记——与管理入口同一份 Data.IsSuper 依据，JS 侧 super 专属控件（封禁全局范围等）读它，不再自查角色 -->
 <body{{if .IsSuper}} data-super="1"{{end}}>
@@ -104,6 +104,6 @@
 <!-- 头像色板（internal/ui avatarPalette 的唯一序列化出口，JS 色块 chips 从这里取色） -->
 <script type="application/json" id="avatar-palette">{{.PaletteJSON}}</script>
 
-<script>{{.Script}}</script>
+<script src="/app.js?v={{.AssetVersion}}" defer></script>
 </body>
 </html>
