@@ -407,7 +407,7 @@ func TestDeniedPageRedressAndTimestamp(t *testing.T) {
 		t.Fatalf("读 denied 模板: %v", err)
 	}
 	tpl := string(raw)
-	for _, want := range []string{"管理员的邮箱在管理后台", "开通邀请邮件", `id="denied-at"`} {
+	for _, want := range []string{"service@horatio.cn", "开通邀请邮件", `id="denied-at"`} {
 		if !strings.Contains(tpl, want) {
 			t.Errorf("403 页缺求助/报障要素 %q", want)
 		}
