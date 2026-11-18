@@ -60,6 +60,7 @@
      固定说明，它属于各页面的上下文提示而非全站导航；miuix 的 Scaffold 也从不渲染页脚。
      需要说明会话策略的页面（概览、登录会话）各自在页首 hint 里说清楚。 -->
 
+{{if not .Minimal}}
 <!-- 重新验证：管理后台与安全操作的 401 会把它顶出来，验过再自动重试原请求。
      能力自适应（2026-10 定案）：有 Passkey 出主按钮；开了两步验证出码框（与
      Passkey 并列二选一，恢复码原地切换）；两者皆无才出密码框兜底——强因子
@@ -96,6 +97,7 @@
     </div>
   </form>
 </dialog>
+{{end}}
 
 <!-- 服务端应用注册表（internal/ui knownApps 的唯一序列化出口，JS 从这里读清单） -->
 <script type="application/json" id="known-apps">{{.AppsJSON}}</script>
