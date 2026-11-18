@@ -228,7 +228,7 @@ func TestRenderOptsIntoClientHints(t *testing.T) {
 }
 
 // 顶栏账号胶囊与管理后台入口都在 layout 里，且管理入口由 .IsAdmin 门控
-//（role 判定发生在 cmd/server 的 pageHandler，非管理员的 HTML 里没有这个按钮）。
+// （role 判定发生在 cmd/server 的 pageHandler，非管理员的 HTML 里没有这个按钮）。
 // 进入后台后入口变「返回控制台」（.InAdmin 门控）。
 func TestTopbarAccountAndAdminEntry(t *testing.T) {
 	raw, err := files.ReadFile("templates/layout.html")
@@ -730,7 +730,7 @@ func reducedMotionBlock(css string) string {
 
 // 品牌区两处（顶栏 `.brand` 与登录页 `.brand-lg`）**同源同款 = favicon.svg 的裸蓝
 // 矢量**；全站不得残留任何带底的 logo 图；图标与文字的垂直居中要有双保险
-//（flex 的 align-items:center 是主保险，inline 盒子的 vertical-align:middle 是兜底）。
+// （flex 的 align-items:center 是主保险，inline 盒子的 vertical-align:middle 是兜底）。
 func TestBrandMarksShareFaviconAndCenter(t *testing.T) {
 	// 1. 两处品牌区都用同一个 favicon.svg
 	for _, tpl := range []string{"templates/layout.html", "templates/login.html"} {
@@ -764,8 +764,10 @@ func TestBrandMarksShareFaviconAndCenter(t *testing.T) {
 				continue // 运行时才补 src（二维码）
 			}
 			// B5 顶栏档案头像：src 是 Render 拼好的 data URL（{{.AvatarSrc}}），
-			// 不是外链也不是品牌位——放行，其余仍只许站点 favicon
-			if m[1] == "/favicon.svg" || m[1] == "{{.AvatarSrc}}" {
+			// 不是外链也不是品牌位——放行，其余仍只许站点 favicon。
+			// 授权页的请求方 logo 是「谁在请求访问」的身份标识，由 appLogoPath
+			// 从 knownApps 白名单生成，不是站点品牌位，单独放行。
+			if m[1] == "/favicon.svg" || m[1] == "{{.AvatarSrc}}" || m[1] == "/brand/{{.App}}-v1.png" {
 				continue
 			}
 			t.Errorf("%s 里有非 favicon 的图片引用 %q——品牌图必须统一成裸蓝矢量，不许带底",
@@ -1150,11 +1152,11 @@ func TestAvatarDeriveByUID(t *testing.T) {
 	}
 	js := string(jsBytes)
 	for _, wantFrag := range []string{
-		"u % p.length",                        // uid%8 派生式
-		"/admin/users/${esc(u.uid)}/avatar",   // 列表/抽屉头像走真图端点
-		`class="avatar-img" loading="lazy"`,   // 懒加载
-		"wrap.dataset.initial",                // onerror 回退色块+首字
-		"avatar-img",                          // 捕获阶段 error 监听的选择器依据
+		"u % p.length",                      // uid%8 派生式
+		"/admin/users/${esc(u.uid)}/avatar", // 列表/抽屉头像走真图端点
+		`class="avatar-img" loading="lazy"`, // 懒加载
+		"wrap.dataset.initial",              // onerror 回退色块+首字
+		"avatar-img",                        // 捕获阶段 error 监听的选择器依据
 	} {
 		if !strings.Contains(js, wantFrag) {
 			t.Errorf("app.js 缺 W3 头像结构 %q", wantFrag)
@@ -1168,7 +1170,7 @@ func TestAvatarDeriveByUID(t *testing.T) {
 
 // reauth 弹框的能力自适应契约 + W4 Web 接入撤下的同步钉：
 // 三块能力区（Passkey 主钮 / 码框 / 密码兜底）齐全；app.js 有单例 in-flight
-//（并发 401 共享弹框，修「验完要手动刷新」）与 Passkey 仪式接线；
+// （并发 401 共享弹框，修「验完要手动刷新」）与 Passkey 仪式接线；
 // Web 接入的模板与脚本一并撤净不许回潮。
 func TestReauthStagedAndWebAccessRemoved(t *testing.T) {
 	layout, err := files.ReadFile("templates/layout.html")

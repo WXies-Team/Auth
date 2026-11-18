@@ -1,5 +1,5 @@
 // Package ui 是 Web 管理台的页面层：html/template + 内嵌 CSS/JS，**零外链**
-//（无 CDN、无字体外链、图标是内联 SVG——见 icons.go 的 ISC 出处）。
+// （无 CDN、无字体外链、图标是内联 SVG——见 icons.go 的 ISC 出处）。
 //
 // 分层口径：页面只负责「长什么样、点了调哪个端点」；鉴权与业务判定全在
 // cmd/server 的路由层与 internal/auth。模板按页加载（layout + 该页），
@@ -188,7 +188,7 @@ func init() {
 		}
 		// 骨架先解析（其中的空 style/js define 是默认值），页面后解析覆盖——
 		// 同名 define 后者生效，页面不写 style/js 也成立。
-		t, err := template.New(name).Funcs(template.FuncMap{"icon": iconHTML}).Parse(string(layout) + "\n" + string(page))
+		t, err := template.New(name).Funcs(template.FuncMap{"icon": iconHTML, "appLogo": appLogoPath}).Parse(string(layout) + "\n" + string(page))
 		if err != nil {
 			panic(fmt.Errorf("解析页面 %s: %w", name, err))
 		}
@@ -247,7 +247,7 @@ type InviteView struct {
 	ErrorMessage string
 }
 
-// AppLabel 返回项目 slug 的展示名（invite 页文案用）：未知 slug 回原串，'' 回 ""。
+// AppLabel 返回项目 slug 的展示名（invite 页文案用）：未知 slug 回原串，” 回 ""。
 // 展示名唯一来源是 knownApps 注册表——与序列化进页面的 AppsJSON 同一份值。
 func AppLabel(key string) string {
 	for _, a := range knownApps {
@@ -345,7 +345,7 @@ func AvatarPaletteHex(index int) string {
 }
 
 // AvatarPaletteHexFor 是 W3 的**展示色派生**（顶栏账号胶囊用）：显式设过的色
-//（index>0）原样用；未设（0 = 从未写过档案，或越界）按 uid%8 从同一 8 色色板
+// （index>0）原样用；未设（0 = 从未写过档案，或越界）按 uid%8 从同一 8 色色板
 // 派生——没有自定义头像的用户也是彩色首字，而不是全员一个色。0 与「未设」不可
 // 分（user_profile.avatarColor 默认 0），口径与 app.js avatarHex 同式镜像，
 // TestAvatarDeriveByUID 钉住两侧口径的 Go 半边。
@@ -423,7 +423,7 @@ func initialOf(email string) string {
 }
 
 // initialFor 是 B5 的首字回退链：昵称首字符优先，无昵称退邮箱首字符
-//（与前端 avatarInitial 同一逻辑，两处口径都钉在各自测试里）。
+// （与前端 avatarInitial 同一逻辑，两处口径都钉在各自测试里）。
 func initialFor(nickname, email string) string {
 	if s := strings.TrimSpace(nickname); s != "" {
 		for _, r := range s {
@@ -499,7 +499,7 @@ func Render(w http.ResponseWriter, name string, data Data) error {
 		data.Initial = initialFor(data.Nickname, data.Email)
 	}
 	data.AvatarColorHex = AvatarPaletteHexFor(data.UID, data.AvatarColor) // W3：未设色按 uid 派生
-	data.AvatarInkHex = avatarInkFor(data.AvatarColorHex) // 首字墨色与底色成对注入
+	data.AvatarInkHex = avatarInkFor(data.AvatarColorHex)                 // 首字墨色与底色成对注入
 	if img := strings.TrimSpace(data.AvatarImage); img != "" {
 		data.AvatarSrc = template.URL("data:image/jpeg;base64," + img) //nolint:gosec // 内容是服务端校验过的标准 base64（validateProfile 只收该字母表），无注入面
 	}
@@ -518,6 +518,17 @@ func Render(w http.ResponseWriter, name string, data Data) error {
 		w.WriteHeader(data.Status)
 	}
 	return t.Execute(w, data)
+}
+
+// appLogoPath 返回已注册 App 的托管 logo 路径，未知 app 返回空串——授权页据此显示
+// 「谁在请求访问」的品牌标识，与身份提供方 Auth 的外壳一眼分开。
+func appLogoPath(app string) string {
+	for _, a := range knownApps {
+		if a.key == app {
+			return "/brand/" + app + "-v1.png"
+		}
+	}
+	return ""
 }
 
 // iconHTML 把清单里的图标套上统一外壳：同 viewBox、同线宽、currentColor 取色，
@@ -549,7 +560,8 @@ func ConsoleNav(active string) []NavItem {
 //	app-admin 项目访问 / 会话总览 / 审计日志 / AI 用量 四项（已按 scope 过滤的数据页
 //	          ——项目访问页它也只拿到自己授权的项目；用户目录、配置是平台级功能，
 //	          入口在它的 HTML 里根本不出现）。
-//（原「角色管理」页已并入用户页：详情面板内直接改角色与应用授权。）
+//
+// （原「角色管理」页已并入用户页：详情面板内直接改角色与应用授权。）
 func AdminNav(active string, isSuper bool) []NavItem {
 	if isSuper {
 		return []NavItem{

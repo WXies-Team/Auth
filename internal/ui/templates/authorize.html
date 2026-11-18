@@ -14,6 +14,10 @@
   <!-- 轻确认页（GitHub 式，always 显示，不静默）：项目名 + 回跳域名 + 说明，
        继续/取消是同一张表单的两颗提交钮（decision 值分流），零 JS -->
   <div class="card" id="authorize-card">
+    <div class="req-app">
+      {{if appLogo .App}}<img src="/brand/{{.App}}-v1.png" alt="" width="32" height="32">{{end}}
+      <div><span class="req-app-label">请求方</span><strong>{{.AppName}}</strong></div>
+    </div>
     <h2>授权登录「{{.AppName}}」</h2>
     <p class="dim" style="margin-top:6px">当前账号：{{.Email}}</p>
     <!-- 逐项列 scope（Google 同意屏口径）：一句「获得你的账号标识与邮箱」看不出
