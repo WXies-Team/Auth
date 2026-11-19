@@ -207,6 +207,22 @@ func TestSessionsPageCurrentRowNeverKickable(t *testing.T) {
 	}
 }
 
+// 发码提示要给可执行的下一步：在垃圾箱里按发件人搜索，并说清 60 秒后可重发。
+// 旧文案「没收到可查看垃圾箱」太模糊，用户不知道搜什么，已退役。
+func TestSendCodeToastHasActionableNextStep(t *testing.T) {
+	jsBytes, err := files.ReadFile("app.js")
+	if err != nil {
+		t.Fatalf("读 app.js: %v", err)
+	}
+	js := string(jsBytes)
+	if !strings.Contains(js, "在垃圾箱里搜索发件人『Auth』，60 秒后可重新发送") {
+		t.Error("发码 toast 应告诉用户在垃圾箱搜哪个发件人，以及何时能重发")
+	}
+	if strings.Contains(js, "没收到可查看垃圾箱") {
+		t.Error("旧的无下一步发码文案不该残留")
+	}
+}
+
 // UA Client Hints 的 opt-in：Render 是全部页面（登录页/授权页/邀请页/控制台页）
 // 的响应头收口，浏览器见到 Accept-CH 后才会在本站后续请求带上高熵的
 // Sec-CH-UA-Model（机型），登录建会话时并进设备名（internal/auth 的 uaWithCH）。

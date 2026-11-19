@@ -769,7 +769,7 @@ function initLogin() {
     try {
       await api('/auth/send-code', { method: 'POST', body: { email, purpose } });
       cooldown(btn, 60);
-      toast('验证码已发送，没收到可查看垃圾箱');
+      toast('验证码已发送。没收到？在垃圾箱里搜索发件人『Auth』，60 秒后可重新发送');
       return true;
     } catch (err) { showErr(errSel, err.message); return false; }
   }
@@ -1533,7 +1533,7 @@ function initAccount() {
     try {
       await api('/auth/send-code', { method: 'POST', body: { email, purpose: 'delete' } });
       cooldown($('#send-delete-code'), 60);
-      toast('验证码已发送，没收到可查看垃圾箱');
+      toast('验证码已发送。没收到？在垃圾箱里搜索发件人『Auth』，60 秒后可重新发送');
     } catch (err) { showErr('#delete-error', err.message); }
   });
   $('#delete-cancel').addEventListener('click', () => closeDialog($('#delete-dialog')));
