@@ -1,7 +1,8 @@
 # AGENTS.md — 统一账号服务 (auth.horatio.cn)
 
-> Project-level rules only. Global standards (commit format, versioning, security) live in
-> `~/.config/opencode/AGENTS.md` — **this file wins on conflict**.
+> Project-level rules only. Global standards live in `~/.config/opencode/AGENTS.md`; rules shared
+> with the sister repos live in `~/.config/opencode/SISTER-REPOS.md`. **This file wins on conflict**
+> with the global file; shared rules are not restated here.
 
 ## At a glance
 
@@ -21,7 +22,6 @@ fail ⇒ auto-rollback), nginx (BT-panel vhost) terminates TLS.
 | You want to change | Read |
 |---|---|
 | Any auth DTO / JSON tag | `internal/protocol/protocol.go` **and** calorie-diary's `shared/.../dto/AuthDtos.kt` — diary-side snapshot pinned by `internal/protocol/protocol_test.go`; new contract ⇒ sync the snapshot same-PR |
-| Business logic reference | expense-diary `server/internal/auth/auth.go` + `otp.go` (this repo was照抄自 that family); divergences commented in place |
 | OTP / 2FA factors | `internal/auth/otp.go`, `loginflow.go`, `totp.go` + `otp_codes`/`login_states` comments in `internal/db/schema.sql` |
 | Sessions / devices | `internal/auth/session.go` (sid 63-bit snowflake ⇒ **JSON string**, JS-safe; kick = session layer only) |
 | IP 归属地 | `internal/geoip/`（ip2region v2 离线 xdb **随二进制内嵌**，v4 11 MB + v6 36 MB **双栈**；私网/回环/保留段返回空串，前端不渲染那一段） |
@@ -46,10 +46,9 @@ TEST_MYSQL_DSN='root@tcp(127.0.0.1:<port>)/<schema>?charset=utf8mb4&parseTime=tr
   go test -count=1 -p 1 ./internal/... ./cmd/...
 ```
 
-DB cases still Skip by default (no dedicated test DB by decision), but the whole suite was
-verified green against a real DB (2026-10-21, isolated mysqld) — use the DSN recipe before
-touching lifecycle/OTP code instead of trusting Skip-silence. The delivery gate remains CI
-build/test + deploy-time `/health` with auto-rollback.
+DB cases Skip by default (no dedicated test DB by decision) — use the DSN recipe before touching
+lifecycle/OTP code instead of trusting Skip-silence. The delivery gate remains CI build/test +
+deploy-time `/health` with auto-rollback.
 
 ## Boundaries
 
@@ -147,16 +146,10 @@ the same PR**—a stale guide ships wrong integrations.
 
 ## Known pitfalls
 
-- **卡片不许用 `box-shadow: inset` 当描边**：inset 阴影画在**子元素背景之下**，表格行
-  hover、选中 chip、按钮一触到卡片边缘就把它盖掉——表现为「选项点黑后圆角那条线消失」。
-  miuix 的 Card 本就是纯填充无描边（`CardDefaults.CornerRadius=16.dp`，靠 surface 与
-  surfaceContainer 的色差分离），行间分隔用 `border-top`（border 画在自身背景之上，
-  盖不掉）。圆角令牌全站唯一 16，不许在断点里另起一套。`TestMiuixCardForm` 钉住。
-- **居中不许用 `transform: translateX(-50%)` 给会跑入场动画的元素**：入场关键帧
-  （`rise-in` 之类）把 `transform` 整个覆盖掉，元素在动画期间没有水平位移、偏在
-  半边，动画结束再瞬间弹回——远端看到的就是「底栏乱飞」（实测中心 352px→195px）。
-  用 `left:0; right:0; margin-inline:auto` 居中，把 transform 完全留给动画。
-  `TestTabnavCenteringNeverUsesTransform` 钉住。
+- **卡片与居中**：卡片不许用 `box-shadow: inset` 当描边（inset 画在子元素背景之下，会被
+  hover/选中态盖掉）；居中不许用 `transform: translateX(-50%)` 给跑入场动画的元素
+  （关键帧覆盖 transform，动画期间偏半边）。用 `border-top` 分隔、`margin-inline:auto` 居中。
+  圆角令牌全站唯一 16。两条均由 `TestMiuixCardForm` / `TestTabnavCenteringNeverUsesTransform` 钉住。
 - **IP 归属地是离线内嵌库，不是外部 API**：`internal/geoip` 用 ip2region v2 的
   `ip2region_v4.xdb` + `ip2region_v6.xdb`（Apache-2.0/MIT，随二进制内嵌，合计 +47 MB，
   按地址族各查各的库）。会话页每次刷新都会算归属地，调第三方 API 等于把用户 IP
@@ -167,10 +160,8 @@ the same PR**—a stale guide ships wrong integrations.
 - **IPv6 在列表里做中段截断**（`2408:8207…1234:5678`，前 2 段 … 后 2 段，全串挂
   title）：39 字符整串会把会话副行挤到换行。Carbon / PatternFly 对长 ID 的通行做法。
   auth web 与两个日记 App 同一口径（App 侧 `shortIp()`）。
-- **不要再走 Kotlin/Wasm 前端路线**：2026-10-23 曾用 miuix 0.9.4 + Kotlin/Wasm 全量重建
-  web 前端并上线（web/ 工程 + go:embed + /wasm 路由），实测画布渲染在本控制台场景**卡顿**，
-  2026-10-28 整体回滚（git revert 309db55..fe3a9bb）。原生效果的复刻走模板前端的 CSS/JS
-  级增强（窄屏玻璃胶囊底栏 --spring 弹簧曲线等，见 style.css）。历史在 git 里，别重新发明。
+- **不要再走 Kotlin/Wasm 前端路线**：画布渲染在本控制台场景卡顿，已回滚。原生效果走模板
+  前端的 CSS/JS 级增强（见 style.css）。历史在 git 里，别重新发明。
 
 - `JWT_SECRET` < 32 bytes and `TOTP_ENC_KEY` < 32 bytes → process refuses to start (by
   design). `TOTP_ENC_KEY` in prod backs up next to `JWT_SECRET`: losing it invalidates every
