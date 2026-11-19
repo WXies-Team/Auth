@@ -190,6 +190,9 @@ func emailShell(b brand, preheader, inner string) string {
                 <td style="padding:0;vertical-align:middle;"><img src="` + b.logoURL() + `" width="48" height="48" alt="` + html.EscapeString(b.name) + `" border="0" style="display:block;width:48px;height:48px;border:0;"></td>
                 <td style="padding:0 12px;vertical-align:middle;"><span style="` + emailFont + `font-size:17px;font-weight:400;line-height:1.3;color:` + mailInk + `;">` + b.name + `</span></td>
               </tr>
+              <tr>
+                <td colspan="2" style="padding:18px 0 0;"><div style="height:3px;width:36px;border-radius:2px;background-color:` + b.primaryHex + `;"></div></td>
+              </tr>
             </table>
 ` + inner + `
             <hr style="border:0;border-top:1px solid ` + mailHair + `;margin:28px 0 16px;">
@@ -244,15 +247,16 @@ func safeTime(t time.Time) string { return t.Format("2006-01-02 15:04") }
 func codeEmail(b brand, action, code string) (subject, htmlBody, text string) {
 	subject = b.prefix + action + "验证码"
 	// 勿分享警示按 Latitude/ReportCyber 口径强化：把「平台工作人员」点名排除在
-	// 可信索码方之外，并给出「有人索要 → 举报」的下一步；品牌句仍走 b.join。
-	warn := b.join("不会向你索要验证码") + "。包括平台工作人员在内，任何人都不会向你索要此码——若有人索要，请立即举报。"
-	inner := brandEyebrow(b, "邮箱验证") + `            <h1 style="` + emailFont + `margin:0 0 8px;font-size:20px;font-weight:400;line-height:1.4;color:` + mailInk + `;">` + action + `验证码</h1>
-            <p style="` + emailFont + `margin:0 0 24px;font-size:16px;line-height:1.6;color:` + mailInk + `;">在应用里输入下面的验证码，继续` + action + `。</p>
-            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="` + mailCodeBox + `" style="width:100%;background-color:` + mailCodeBox + `;border-radius:20px;">
+	// 可信索码方之外，并把「有人要 → 诈骗 → 举报」说成一句短话；preheader 与正文
+	// 必须同源，否则收件箱预览和邮件正文会出现两种口径。品牌句仍走 b.join。
+	warn := b.join("不会向你要验证码") + "，平台工作人员也不会。有人要，就是诈骗，请立刻举报。"
+	inner := brandEyebrow(b, "邮箱验证") + `            <h1 style="` + emailFont + `margin:0 0 8px;font-size:22px;font-weight:400;line-height:1.35;color:` + mailInk + `;">` + action + `验证码</h1>
+            <p style="` + emailFont + `margin:0 0 24px;font-size:16px;line-height:1.6;color:` + mailInk + `;">在应用里填入下面 6 位验证码，继续` + action + `。</p>
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="` + mailCodeBox + `" style="width:100%;background-color:` + mailCodeBox + `;border:1px solid ` + b.primaryHex + `;border-radius:20px;">
               <tr>
-                <td align="center" style="padding:26px 12px 22px;">
-                  <div class="code" style="` + emailFont + `margin:0;font-size:32px;font-weight:400;line-height:1.2;letter-spacing:10px;text-indent:10px;text-align:center;color:` + mailInk + `;">` + code + `</div>
-                  <p style="` + emailFont + `margin:10px 0 0;font-size:13px;line-height:1.6;color:` + mailSub + `;">5 分钟内有效</p>
+                <td align="center" style="padding:28px 12px 24px;">
+                  <div class="code" style="` + emailFont + `margin:0;font-size:36px;font-weight:400;line-height:1.2;letter-spacing:12px;text-indent:12px;text-align:center;color:` + mailInk + `;">` + code + `</div>
+                  <p style="` + emailFont + `margin:12px 0 0;font-size:13px;line-height:1.6;color:` + mailSub + `;">5 分钟内有效</p>
                 </td>
               </tr>
             </table>
@@ -267,7 +271,7 @@ func codeEmail(b brand, action, code string) (subject, htmlBody, text string) {
 
 ` + action + `验证码
 
-在应用里输入下面的验证码，继续` + action + `。
+在应用里填入下面 6 位验证码，继续` + action + `。
 
 ` + code + `
 5 分钟内有效
@@ -282,7 +286,7 @@ func codeEmail(b brand, action, code string) (subject, htmlBody, text string) {
 
 ——
 ` + footText(b)
-	preheader := action + "验证码 5 分钟内有效，" + b.name + "不会向你索要验证码。"
+	preheader := action + "验证码 5 分钟内有效。" + b.join("不会向你要验证码") + "。"
 	return subject, emailShell(b, preheader, inner), text
 }
 
@@ -302,7 +306,7 @@ func changeEmailNoticeEmail(b brand, toNew bool, oldEmail, newEmail string) (sub
 		subject = b.prefix + "新邮箱已绑定"
 		lead := newE + " 已成为" + b.account + "的绑定邮箱（原绑定邮箱 " + oldE + "），自 " + safeTime(time.Now()) + " 起生效，该账号的验证码会发到这里。"
 		const guidance, warn = "下次登录请使用新邮箱。", "不是你本人知情的操作？请立即联系管理员。"
-		inner := brandEyebrow(b, "账号安全") + `            <h1 style="` + emailFont + `margin:0 0 8px;font-size:20px;font-weight:400;line-height:1.4;color:` + mailInk + `;">新邮箱已绑定</h1>
+		inner := brandEyebrow(b, "账号安全") + `            <h1 style="` + emailFont + `margin:0 0 8px;font-size:22px;font-weight:400;line-height:1.35;color:` + mailInk + `;">新邮箱已绑定</h1>
             <p style="` + emailFont + `margin:0 0 20px;font-size:16px;line-height:1.6;color:` + mailInk + `;">` + lead + `</p>
             <p style="` + emailFont + `margin:0 0 20px;font-size:16px;line-height:1.6;color:` + mailInk + `;">` + guidance + `</p>
             <p style="` + emailFont + `margin:0 0 4px;font-size:16px;line-height:1.6;color:` + mailWarn + `;">` + warn + `</p>
@@ -330,7 +334,7 @@ func changeEmailNoticeEmail(b brand, toNew bool, oldEmail, newEmail string) (sub
 	subject = b.prefix + "绑定邮箱已更换"
 	lead := "你的账号绑定邮箱已由 " + oldE + " 改为 " + newE + "。"
 	warn := "若非本人操作，请立即修改密码并联系管理员；也可用「找回密码」自助重置。"
-	inner := brandEyebrow(b, "账号安全") + `            <h1 style="` + emailFont + `margin:0 0 8px;font-size:20px;font-weight:400;line-height:1.4;color:` + mailInk + `;">绑定邮箱已更换</h1>
+	inner := brandEyebrow(b, "账号安全") + `            <h1 style="` + emailFont + `margin:0 0 8px;font-size:22px;font-weight:400;line-height:1.35;color:` + mailInk + `;">绑定邮箱已更换</h1>
             <p style="` + emailFont + `margin:0 0 20px;font-size:16px;line-height:1.6;color:` + mailInk + `;">` + lead + `</p>
             <p style="` + emailFont + `margin:0 0 4px;font-size:16px;line-height:1.6;color:` + mailWarn + `;">` + warn + `</p>
 ` + antiPhishHTML()
@@ -370,7 +374,7 @@ func stripTags(s string) string {
 func passwordResetNoticeEmail(b brand, setupURL string) (subject, htmlBody, text string) {
 	subject = b.prefix + "密码重置通知"
 	lead := "管理员已于 " + safeTime(time.Now()) + " 重置了你的密码。请用下面的链接设置新密码。"
-	inner := brandEyebrow(b, "账号安全") + `            <h1 style="` + emailFont + `margin:0 0 8px;font-size:20px;font-weight:400;line-height:1.4;color:` + mailInk + `;">你的密码已被重置</h1>
+	inner := brandEyebrow(b, "账号安全") + `            <h1 style="` + emailFont + `margin:0 0 8px;font-size:22px;font-weight:400;line-height:1.35;color:` + mailInk + `;">你的密码已被重置</h1>
             <p style="` + emailFont + `margin:0 0 8px;font-size:16px;line-height:1.6;color:` + mailInk + `;">` + lead + `</p>
             <p style="` + emailFont + `margin:0;font-size:13px;line-height:1.6;color:` + mailSub + `;">链接 1 小时内有效，只能用一次。</p>
 ` + ctaButton(b, "设置新密码", setupURL) + `            <p style="` + emailFont + `margin:16px 0 0;font-size:16px;line-height:1.6;color:` + mailWarn + `;">不是你本人操作？请联系管理员。</p>
@@ -407,7 +411,7 @@ func passwordChangedNoticeEmail(b brand, at time.Time) (subject, htmlBody, text 
 	lead := "你的账号密码已于 " + safeTime(at) + " 修改成功。"
 	const reassure, scopeLine = "如果是你本人操作，无需任何行动。", "其它设备上的登录已全部退出，当前设备保持登录。"
 	warn := `若非本人操作，请立即<a href="` + securityURL + `" style="color:` + b.primaryHex + `;text-decoration:underline;">修改密码</a>并<a href="` + sessionsURL + `" style="color:` + b.primaryHex + `;text-decoration:underline;">审查登录设备</a>。`
-	inner := brandEyebrow(b, "账号安全") + `            <h1 style="` + emailFont + `margin:0 0 8px;font-size:20px;font-weight:400;line-height:1.4;color:` + mailInk + `;">密码已修改</h1>
+	inner := brandEyebrow(b, "账号安全") + `            <h1 style="` + emailFont + `margin:0 0 8px;font-size:22px;font-weight:400;line-height:1.35;color:` + mailInk + `;">密码已修改</h1>
             <p style="` + emailFont + `margin:0 0 16px;font-size:16px;line-height:1.6;color:` + mailInk + `;">` + lead + `</p>
             <p style="` + emailFont + `margin:0 0 16px;font-size:16px;line-height:1.6;color:` + mailInk + `;">` + reassure + `</p>
             <p style="` + emailFont + `margin:0 0 20px;font-size:16px;line-height:1.6;color:` + mailInk + `;">` + scopeLine + `</p>
@@ -446,7 +450,7 @@ func deleteRequestEmail(b brand, cancelURL string, dueAt time.Time) (subject, ht
 	due := safeTime(dueAt)
 	subject = b.prefix + "注销申请已提交，将于 " + due + " 执行"
 	const scopeList = `注销后将执行：<br>· 注销你在本服务下接入的全部项目<br>· 清空所有项目的数据（不可恢复）`
-	inner := brandEyebrow(b, "账号注销") + `            <h1 style="` + emailFont + `margin:0 0 8px;font-size:20px;font-weight:400;line-height:1.4;color:` + mailInk + `;">注销申请已提交</h1>
+	inner := brandEyebrow(b, "账号注销") + `            <h1 style="` + emailFont + `margin:0 0 8px;font-size:22px;font-weight:400;line-height:1.35;color:` + mailInk + `;">注销申请已提交</h1>
             <p style="` + emailFont + `margin:0 0 16px;font-size:16px;line-height:1.6;color:` + mailInk + `;">我们已收到你注销账号的申请，将于 ` + due + ` 执行。</p>
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="` + mailTipBox + `" style="width:100%;background-color:` + mailTipBox + `;border-radius:16px;margin:0 0 4px;">
               <tr>
@@ -483,7 +487,7 @@ func deleteCancelledEmail(b brand) (subject, htmlBody, text string) {
 	subject = b.prefix + "注销已撤销"
 	const reassure = "你的账号和数据是安全的，一切照常。"
 	const warn = "不是你本人操作？请立刻修改密码并检查登录设备。"
-	inner := brandEyebrow(b, "账号注销") + `            <h1 style="` + emailFont + `margin:0 0 8px;font-size:20px;font-weight:400;line-height:1.4;color:` + mailInk + `;">注销已撤销</h1>
+	inner := brandEyebrow(b, "账号注销") + `            <h1 style="` + emailFont + `margin:0 0 8px;font-size:22px;font-weight:400;line-height:1.35;color:` + mailInk + `;">注销已撤销</h1>
             <p style="` + emailFont + `margin:0 0 16px;font-size:16px;line-height:1.6;color:` + mailInk + `;">你的账号注销申请已撤销。</p>
             <p style="` + emailFont + `margin:0 0 20px;font-size:16px;line-height:1.6;color:` + mailInk + `;">` + reassure + `</p>
             <p style="` + emailFont + `margin:0 0 4px;font-size:16px;line-height:1.6;color:` + mailWarn + `;">` + warn + `</p>
@@ -515,7 +519,7 @@ func deleteCancelledEmail(b brand) (subject, htmlBody, text string) {
 func deleteDoneEmail(b brand) (subject, htmlBody, text string) {
 	subject = b.prefix + "注销已完成"
 	const fact = "你的账号与全部项目数据已被永久删除，无法恢复。"
-	inner := brandEyebrow(b, "账号注销") + `            <h1 style="` + emailFont + `margin:0 0 8px;font-size:20px;font-weight:400;line-height:1.4;color:` + mailInk + `;">账号已注销</h1>
+	inner := brandEyebrow(b, "账号注销") + `            <h1 style="` + emailFont + `margin:0 0 8px;font-size:22px;font-weight:400;line-height:1.35;color:` + mailInk + `;">账号已注销</h1>
             <p style="` + emailFont + `margin:0 0 4px;font-size:16px;line-height:1.6;color:` + mailInk + `;">` + fact + `</p>
 ` + antiPhishHTML()
 	text = brandEyebrowText(b, "账号注销") + `
@@ -547,7 +551,7 @@ func adminChangeEmailNoticeEmail(b brand, toNew bool, oldEmail, newEmail string)
 		title := "新邮箱已成为登录邮箱"
 		lead := newE + " 已成为" + b.account + "的登录邮箱（由管理员设置，原登录邮箱 " + oldE + "），该账号的验证码会发到这里。"
 		const warn = "下次登录请使用新邮箱。不是你本人知情的操作？请联系管理员。"
-		inner := brandEyebrow(b, "账号安全") + `            <h1 style="` + emailFont + `margin:0 0 8px;font-size:20px;font-weight:400;line-height:1.4;color:` + mailInk + `;">` + title + `</h1>
+		inner := brandEyebrow(b, "账号安全") + `            <h1 style="` + emailFont + `margin:0 0 8px;font-size:22px;font-weight:400;line-height:1.35;color:` + mailInk + `;">` + title + `</h1>
             <p style="` + emailFont + `margin:0 0 20px;font-size:16px;line-height:1.6;color:` + mailInk + `;">` + lead + `</p>
             <p style="` + emailFont + `margin:0 0 4px;font-size:16px;line-height:1.6;color:` + mailWarn + `;">` + warn + `</p>
 ` + ctaButton(b, "管理账号", accountURL) + `
@@ -573,7 +577,7 @@ func adminChangeEmailNoticeEmail(b brand, toNew bool, oldEmail, newEmail string)
 	title := "登录邮箱已被管理员更换"
 	lead := "你的账号登录邮箱已由管理员从 " + oldE + " 更换为 " + newE + "，验证码将发往新邮箱。"
 	const warn = "若非本人操作，请立即修改密码并联系管理员。"
-	inner := brandEyebrow(b, "账号安全") + `            <h1 style="` + emailFont + `margin:0 0 8px;font-size:20px;font-weight:400;line-height:1.4;color:` + mailInk + `;">` + title + `</h1>
+	inner := brandEyebrow(b, "账号安全") + `            <h1 style="` + emailFont + `margin:0 0 8px;font-size:22px;font-weight:400;line-height:1.35;color:` + mailInk + `;">` + title + `</h1>
             <p style="` + emailFont + `margin:0 0 20px;font-size:16px;line-height:1.6;color:` + mailInk + `;">` + lead + `</p>
             <p style="` + emailFont + `margin:0 0 4px;font-size:16px;line-height:1.6;color:` + mailWarn + `;">` + warn + `</p>
 ` + antiPhishHTML()
@@ -604,7 +608,7 @@ func loginNotifyEmail(b brand, device, appLabel string, at time.Time) (subject, 
 	securityURL, sessionsURL := siteBase+"/web/console/security", siteBase+"/web/console/sessions"
 	deviceE := html.EscapeString(device) // HTML 版（含 preheader）统一用转义后的形态
 	const reassure = "如果是你本人，无需任何行动。"
-	inner := brandEyebrow(b, "账号安全") + `            <h1 style="` + emailFont + `margin:0 0 8px;font-size:20px;font-weight:400;line-height:1.4;color:` + mailInk + `;">检测到新设备登录</h1>
+	inner := brandEyebrow(b, "账号安全") + `            <h1 style="` + emailFont + `margin:0 0 8px;font-size:22px;font-weight:400;line-height:1.35;color:` + mailInk + `;">检测到新设备登录</h1>
             <p style="` + emailFont + `margin:0 0 16px;font-size:16px;line-height:1.6;color:` + mailInk + `;">你的账号刚刚在一台新设备上登录。</p>
             <p style="` + emailFont + `margin:0 0 16px;font-size:16px;line-height:1.6;color:` + mailInk + `;">` + reassure + `</p>
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="` + mailTipBox + `" style="width:100%;background-color:` + mailTipBox + `;border-radius:16px;margin:0 0 4px;">
@@ -659,7 +663,7 @@ func inviteEmail(b brand, inviteURL, inviter string, expiresAt time.Time) (subje
 	}
 	inviterE := html.EscapeString(inviter)
 	inviteLine := inviterE + " 邀请你创建账号。设置密码后即可完成创建并直接登录。"
-	inner := brandEyebrow(b, "账号邀请") + `            <h1 style="` + emailFont + `margin:0 0 8px;font-size:20px;font-weight:400;line-height:1.4;color:` + mailInk + `;">你被邀请创建账号</h1>
+	inner := brandEyebrow(b, "账号邀请") + `            <h1 style="` + emailFont + `margin:0 0 8px;font-size:22px;font-weight:400;line-height:1.35;color:` + mailInk + `;">你被邀请创建账号</h1>
             <p style="` + emailFont + `margin:0 0 16px;font-size:16px;line-height:1.6;color:` + mailInk + `;">` + inviteLine + `</p>
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="` + mailTipBox + `" style="width:100%;background-color:` + mailTipBox + `;border-radius:16px;margin:0 0 4px;">
               <tr>

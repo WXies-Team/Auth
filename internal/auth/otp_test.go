@@ -84,9 +84,9 @@ func TestSha256HexFormat(t *testing.T) {
 func TestMaskEmail(t *testing.T) {
 	cases := map[string]string{
 		"user@example.com": "u***@example.com",
-		"ab@example.com":  "a***@example.com",
-		"no-at-sign":      "***",
-		"@example.com":    "***",
+		"ab@example.com":   "a***@example.com",
+		"no-at-sign":       "***",
+		"@example.com":     "***",
 	}
 	for in, want := range cases {
 		if got := maskEmail(in); got != want {
@@ -101,7 +101,7 @@ func TestMaskEmail(t *testing.T) {
 
 // 邮件模板的硬约束：验证码与有效期在正文里、暗色模式覆盖在、
 // 不过 AA 的低对比度灰（#8a8a8e≈3.6:1 / #a1a1a6≈2.6:1）不许出现。
-// 字阶照 miuix 定案：标题 20 / 正文 16 / 验证码 32 / 页脚与元信息 13，小于 13 不许出现。
+// 字阶照 miuix 定案：标题 22 / 正文 16 / 验证码 36 / 页脚与元信息 13，小于 13 不许出现。
 func TestCodeEmailTemplateKeepsContract(t *testing.T) {
 	subject, html, _ := codeEmail(brandFor(""), "注册", "123456")
 	if subject != "【Auth】注册验证码" {
@@ -110,7 +110,8 @@ func TestCodeEmailTemplateKeepsContract(t *testing.T) {
 	// 暗色口径改版（B8）：不再追 prefers-color-scheme，只留 color-scheme: light meta
 	//（抗客户端反转），故断言从 prefers-color-scheme 收窄为 color-scheme。
 	for _, want := range []string{"123456", "5 分钟内有效", "color-scheme",
-		"role=\"presentation\"", "max-width:600px", "继续注册", "此邮件不可回复"} {
+		"role=\"presentation\"", "max-width:600px", "继续注册", "此邮件不可回复",
+		"font-size:22px", "font-size:16px", "font-size:36px", "font-size:13px"} {
 		if !strings.Contains(html, want) {
 			t.Errorf("正文缺 %q", want)
 		}
