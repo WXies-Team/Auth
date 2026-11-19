@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-// 所有页面共用 layout 骨架：<head> 必须带三件套 link 与 theme-color，
+// 所有页面共用 layout 骨架：<head> 必须带三件套 link 与按明暗区分的 theme-color，
 // 顶栏品牌区挂 favicon.svg（透明底 + #3482FF 裸蓝素盾 shield，与站点 favicon 同源）。
 func TestLayoutHeadHasIconLinks(t *testing.T) {
 	raw, err := files.ReadFile("templates/layout.html")
@@ -22,7 +22,8 @@ func TestLayoutHeadHasIconLinks(t *testing.T) {
 		`<link rel="icon" href="/favicon.svg" type="image/svg+xml">`,
 		`<link rel="icon" href="/favicon.ico" sizes="48x48">`,
 		`<link rel="apple-touch-icon" href="/apple-touch-icon.png">`,
-		`<meta name="theme-color" content="#3482FF">`,
+		`<meta name="theme-color" content="#3482FF" media="(prefers-color-scheme: light)">`,
+		`<meta name="theme-color" content="#242424" media="(prefers-color-scheme: dark)">`,
 		`<img src="/favicon.svg" alt="" width="28" height="28">`,
 		`name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"`,
 	} {
