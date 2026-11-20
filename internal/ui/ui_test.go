@@ -1502,3 +1502,105 @@ func TestSwitchPatternAndA11y(t *testing.T) {
 		}
 	}
 }
+
+// Phase 4 玻璃组件模式：卡片/工具条/对话框/抽屉/菜单/提示条都用分层玻璃令牌
+// （越高越不透明），且 @supports not 分支逐个退回实底——不能出现「有模糊才看得见」。
+func TestGlassComponentSurfaces(t *testing.T) {
+	css := stripCSSComments(mustCSS(t))
+	root, ok := cssRule(css, ":root")
+	if !ok {
+		t.Fatal("style.css 缺 :root")
+	}
+	for _, tok := range []string{
+		"--glass-card-bg:", "--glass-menu-bg:", "--glass-dialog-bg:",
+		"--glass-card-blur:", "--glass-card-saturate:",
+		"--badge-bg:", "--progress-track:", "--progress-fill:", "--empty-bg:",
+		"--toast-bg:", "--toast-bad-bg:", "--toast-bad-ink:",
+	} {
+		if !strings.Contains(root, tok) {
+			t.Errorf(":root 缺 Phase 4 玻璃/语义令牌 %q", tok)
+		}
+	}
+	for _, sel := range []string{".card", ".toolbar", ".dlg", ".select-menu", ".toast", ".detail"} {
+		rule, ok := cssRule(css, sel)
+		if !ok {
+			t.Fatalf("style.css 缺 %s 规则", sel)
+		}
+		if !strings.Contains(rule, "-webkit-backdrop-filter:") || !strings.Contains(rule, "backdrop-filter:") {
+			t.Errorf("%s 缺玻璃模糊声明（含 -webkit- 前缀）", sel)
+		}
+	}
+	sup := cssAtRuleBlock(css, "@supports not ((backdrop-filter: blur(1px))")
+	if sup == "" {
+		t.Fatal("缺 @supports not 兜底块")
+	}
+	for _, frag := range []string{".card", ".toolbar", ".detail", ".select-menu", ".dlg", ".toast"} {
+		if !strings.Contains(sup, frag) {
+			t.Errorf("@supports not 兜底缺 %s（玻璃组件都要退实底）", frag)
+		}
+	}
+	// 语义色真的被组件用上了（不是只定义不引用）
+	for _, pair := range [][2]string{
+		{".badge", "var(--badge-bg)"}, {".bar-track", "var(--progress-track)"},
+		{".bar-fill", "var(--progress-fill)"}, {".empty", "var(--empty-bg)"},
+	} {
+		rule, ok := cssRule(css, pair[0])
+		if !ok || !strings.Contains(rule, pair[1]) {
+			t.Errorf("%s 应使用语义令牌 %s", pair[0], pair[1])
+		}
+	}
+}
+
+// 玻璃顶栏的 backdrop-filter 会成为固定定位的包含块：.tabnav 若留在 <header> 内，
+// position:fixed 就相对顶栏而非视口，窄屏底栏会被钉到页面顶部。钉住「nav 在 header 之后」。
+func TestBottomNavOutsideGlassTopbar(t *testing.T) {
+	raw, err := files.ReadFile("templates/layout.html")
+	if err != nil {
+		t.Fatalf("读 layout: %v", err)
+	}
+	head := string(raw)
+	end := strings.Index(head, "</header>")
+	nav := strings.Index(head, `<nav class="tabnav"`)
+	if end < 0 || nav < 0 || nav < end {
+		t.Errorf("窄屏底栏必须在 </header> 之后（否则被玻璃顶栏的 backdrop-filter 钉到顶部），end=%d nav=%d", end, nav)
+	}
+}
+
+// 窄屏两处响应式实测回归：顶栏横滚必须 flex-start（flex-end 会把最左按钮裁到容器外），
+// toast 的抬升媒体查询必须写在基础规则**之后**（同特异性下后写的才生效）。
+func TestNarrowScreenResponsiveFixes(t *testing.T) {
+	css := stripCSSComments(mustCSS(t))
+	mobile := cssAtRuleBlock(css, "@media (max-width: 640px)")
+	if mobile == "" || !strings.Contains(mobile, "justify-content: flex-start") {
+		t.Error("窄屏 .topnav 应 justify-content:flex-start（防最左按钮被裁且滚不到）")
+	}
+	coarse := cssAtRuleBlock(css, "@media (pointer: coarse)")
+	if coarse == "" {
+		t.Fatal("缺 @media (pointer: coarse) 触控目标块")
+	}
+	for _, frag := range []string{
+		".btn.small", ".app-chip", ".brand", ".skip", ".pf-chip", ".nav-item", "var(--tap)",
+		"input[type=checkbox]::before", "input[type=radio]::before",
+	} {
+		if !strings.Contains(coarse, frag) {
+			t.Errorf("触控目标块缺 %q（触屏一律 ≥44px）", frag)
+		}
+	}
+	nav := cssAtRuleBlock(css, ".tabnav .nav-item")
+	if !strings.Contains(nav, "min-width: var(--tap)") {
+		t.Error(".tabnav .nav-item 应 min-width:var(--tap)（实测 375px 下有项只有 43px）")
+	}
+	base := strings.Index(css, "\n.toast {")
+	lift := strings.Index(css, "@media (max-width: 899.98px) {\n  .toast { z-index: 50;")
+	if base < 0 || lift < 0 || lift < base {
+		t.Errorf("toast 抬升规则必须写在 .toast 基础规则之后（否则被 z-index:30/bottom:16px 覆盖），base=%d lift=%d", base, lift)
+	}
+}
+
+// 下拉菜单项是非原生控件：必须有显式焦点环，否则键盘用户看不出选中哪一行。
+func TestSelectOptionFocusVisible(t *testing.T) {
+	css := stripCSSComments(mustCSS(t))
+	if !strings.Contains(css, ".select-opt:focus-visible") {
+		t.Error("缺 .select-opt:focus-visible（自绘下拉项的键盘焦点环）")
+	}
+}
