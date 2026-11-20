@@ -20,7 +20,7 @@ Before finishing: `go build ./...` and `go test ./...`. `JWT_SECRET` and `TOTP_E
 | Task | Read |
 | --- | --- |
 | Endpoints, web console, `app_config` config tables, local commands, deploy target | `README.md` |
-| Shared account/release/copy rules (sister repo) | `~/.config/opencode/docs/SISTER-REPOS.md`; onboarding: `~/.config/opencode/docs/AUTH-ONBOARDING.md` |
+| Shared account/release/copy rules (sister repo) | `~/.config/opencode/docs/sister-repos.md`; onboarding: `~/.config/opencode/docs/auth-onboarding.md` |
 | Web UI research | `docs/ui-research-2026-10.md` |
 | Global rules | `~/.config/opencode/AGENTS.md` |
 
@@ -29,7 +29,7 @@ Before finishing: `go build ./...` and `go test ./...`. `JWT_SECRET` and `TOTP_E
 ### Always
 - The `app` field on login/register/send-code is the JWT `aud`, whitelisted to `calorie-diary`/`expense-diary` via `allowedApps` in `internal/auth/auth.go`; add new apps there and in the downstream services.
 - `/internal/*` is loopback/trusted-network only (403 otherwise); deploy config through `app_config` (10s cache), never hardcoded secrets.
-- On account deletion, call each diary hook and honor the 7-day grace (see SISTER-REPOS); a failing hook returns 503 and aborts.
+- On account deletion, call each diary hook and honor the 7-day grace (see sister-repos); a failing hook returns 503 and aborts.
 
 ### Ask first
 - Flipping `totp_enforce_apps` (the only switch that changes old-client behavior), adding config keys, or changing MFA/session policy.
