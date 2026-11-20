@@ -4,7 +4,7 @@
 #（照抄热量日记服务的同款脚本，只改默认端口与进程名——部署形态完全一致。）
 #
 # 必需 env:  SERVER_HOST SERVER_USER SERVER_SSH_KEY BASE_DIR(Actions secret SERVER_BASE_DIR)
-# 可选 env:  SSH_PORT(22) APP_PORT(8868) SUPERVISORCTL(supervisorctl) PROGRAM(auth) KEEP_RELEASES(5)
+# 可选 env:  SSH_PORT(22) APP_PORT(8868) SUPERVISORCTL(supervisorctl) PROGRAM(Auth) KEEP_RELEASES(5)
 # 用法:      ci/deploy-server.sh <path/to/server.tar>
 set -euo pipefail
 
