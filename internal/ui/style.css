@@ -515,6 +515,33 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
 }
 input[type=checkbox]:disabled, input[type=radio]:disabled { opacity: .5; cursor: default; }
 
+/* ---- Switch（Miuix Switch / Material 3）：即时生效型开关，不是勾选框 ----
+   语义仍走原生 checkbox（Space 切换、表单值、<label> 关联全不动），role="switch"
+   由模板注入给读屏。外观上：轨道宽 = --tap(44)，与触控目标同宽；滑块位移沿用
+   弹簧 --spring（与窄屏底栏 / 侧栏项的按压回弹同属物理反馈），轨道/焦点走克制
+   --ease。开/关不只靠颜色：滑块位置本身即状态。 */
+input[type=checkbox].switch {
+  width: var(--tap); height: var(--switch-h);
+  border-radius: var(--radius-pill);
+  background: var(--control-line); box-shadow: none;
+  transition: background-color var(--dur-1) var(--ease);
+}
+input[type=checkbox].switch::after {
+  /* 覆盖通用勾选框的对勾：Switch 只要一枚投影滑块 */
+  content: ""; position: absolute; left: var(--switch-pad); top: var(--switch-pad);
+  width: var(--switch-thumb); height: var(--switch-thumb);
+  border: 0; border-radius: 50%; background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .25); transform: none;
+  transition: transform var(--dur-2) var(--spring);
+}
+input[type=checkbox].switch:checked { background: var(--primary); }
+input[type=checkbox].switch:checked::after {
+  /* 位移 = 轨道宽 - 滑块宽 - 两侧留白 */
+  transform: translateX(calc(var(--tap) - var(--switch-thumb) - 2 * var(--switch-pad)));
+}
+/* 开关整行 ≥44px：触屏点标签任意处都能切（WCAG 2.5.5 / Apple HIG 44pt） */
+.switch-row { min-height: var(--tap); cursor: pointer; }
+
 /* 披露行：<details> 语义原生保留；summary 变整行把手，箭头随开合旋转（动效走
    既有 --dur-2/--ease 令牌族，无新关键帧） */
 details.section > summary {
@@ -547,7 +574,7 @@ input:disabled { opacity: .6; }
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   min-height: var(--tap); padding: 0 19px;
   border: none; border-radius: var(--radius-ctl);
-  background: var(--sub-bg); background-clip: padding-box; color: var(--sub-ink); font: inherit; font-weight: 400;
+  background: var(--surface-container-high); background-clip: padding-box; color: var(--sub-ink); font: inherit; font-weight: 400;
   cursor: pointer; text-decoration: none; white-space: nowrap;
   transition: background-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease),
               transform var(--dur-1) var(--ease),
@@ -564,8 +591,11 @@ input:disabled { opacity: .6; }
 .btn.primary:hover { filter: brightness(1.06); }
 .btn.danger { background: var(--danger-bg); background-clip: padding-box; color: var(--danger-ink); box-shadow: inset 0 0 0 1px var(--danger); }
 .btn.danger:hover { background: rgba(233, 70, 52, .16); }
-.btn.ghost { background: transparent; color: var(--dim); }
-.btn.ghost:hover { background: var(--card); color: var(--ink); }
+/* 按钮三档层级（Miuix）：primary（主行动，一屏一个）/ secondary（默认填充面）/
+   plain（文字幽灵态，原 .ghost 的语义命名）。别名不改视觉与行为，只把层级固定下来。 */
+.btn.secondary { background: var(--surface-container-high); color: var(--sub-ink); }
+.btn.plain, .btn.ghost { background: transparent; color: var(--dim); }
+.btn.plain:hover, .btn.ghost:hover { background: var(--card); color: var(--ink); }
 .btn.small { min-height: 34px; padding: 0 13px; font-size: 13px; }
 .btn[aria-busy=true] { opacity: .75; pointer-events: none; }
 /* disabled 态必须与可用态**一眼可分**：分页在首页的「上一页」、批量弹层输「确认」
