@@ -37,6 +37,8 @@
   --glass-menu-bg: rgba(255, 255, 255, .9);
   --glass-dialog-bg: rgba(255, 255, 255, .94);
   --glass-stroke: rgba(255, 255, 255, .45);
+  --glass-bar-blur: 24px;
+  --glass-bar-saturate: 1.6;
   --glass-card-blur: 16px;
   --glass-card-saturate: 1.4;
   /* 语义面 / 反馈色：徽标容器、进度轨道、空态、Toast 全部走语义令牌，不写死色值 */
@@ -164,8 +166,8 @@ code { font-family: var(--mono); }
 .topbar {
   position: sticky; top: 0; z-index: 10;
   background: var(--glass-bg);
-  -webkit-backdrop-filter: blur(24px) saturate(1.6);
-  backdrop-filter: blur(24px) saturate(1.6);
+  -webkit-backdrop-filter: blur(var(--glass-bar-blur)) saturate(var(--glass-bar-saturate));
+  backdrop-filter: blur(var(--glass-bar-blur)) saturate(var(--glass-bar-saturate));
   border-bottom: 1px solid var(--line);
   padding-top: env(safe-area-inset-top);
 }
@@ -295,8 +297,8 @@ button.app-chip { background: transparent; border: 0; font: inherit; cursor: poi
   padding: 6px;
   border-radius: 50px;                 /* miuix CornerRadius 50dp → 药丸 */
   background: var(--glass-float-bg);
-  -webkit-backdrop-filter: blur(24px) saturate(1.6);
-  backdrop-filter: blur(24px) saturate(1.6);
+  -webkit-backdrop-filter: blur(var(--glass-bar-blur)) saturate(var(--glass-bar-saturate));
+  backdrop-filter: blur(var(--glass-bar-blur)) saturate(var(--glass-bar-saturate));
   /* 玻璃边高光（外）+ 轻投影（上浮感）；暗色换成内侧白环（走令牌） */
   box-shadow: 0 6px 22px rgba(0, 0, 0, .14), inset 0 0 0 1px var(--glass-stroke);
   transform-origin: center bottom;
@@ -311,7 +313,7 @@ button.app-chip { background: transparent; border: 0; font: inherit; cursor: poi
    质感可以丢，文字对比与组件边界一点不打折。 */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .topbar { background: var(--canvas); }
-  .tabnav { background: var(--card); }
+  .tabnav { background: var(--surface-container); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-2); }
   .card, .toolbar, .detail { background: var(--card); }
   .select-menu { background: var(--card); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-2); }
   .dlg { background: var(--card); }
@@ -511,8 +513,8 @@ input:-webkit-autofill {
   background: var(--glass-menu-bg); background-clip: padding-box;
   border: none; box-shadow: inset 0 0 0 1px var(--glass-stroke), var(--shadow-2);
   border-radius: var(--radius-lg);
-  -webkit-backdrop-filter: blur(24px) saturate(1.6);
-  backdrop-filter: blur(24px) saturate(1.6);
+  -webkit-backdrop-filter: blur(var(--glass-bar-blur)) saturate(var(--glass-bar-saturate));
+  backdrop-filter: blur(var(--glass-bar-blur)) saturate(var(--glass-bar-saturate));
 }
 .select-menu[hidden] { display: none !important; }
 .select-opt {
@@ -632,9 +634,8 @@ input:disabled { opacity: .6; }
 .btn.danger:hover { background: rgba(233, 70, 52, .16); }
 /* 按钮三档层级（Miuix）：primary（主行动，一屏一个）/ secondary（默认填充面）/
    plain（文字幽灵态，原 .ghost 的语义命名）。别名不改视觉与行为，只把层级固定下来。 */
-.btn.secondary { background: var(--surface-container-high); color: var(--sub-ink); }
-.btn.plain, .btn.ghost { background: transparent; color: var(--dim); }
-.btn.plain:hover, .btn.ghost:hover { background: var(--card); color: var(--ink); }
+.btn.ghost { background: transparent; color: var(--dim); }
+.btn.ghost:hover { background: var(--card); color: var(--ink); }
 .btn.small { min-height: 34px; padding: 0 13px; font-size: 13px; }
 .btn[aria-busy=true] { opacity: .75; pointer-events: none; }
 /* disabled 态必须与可用态**一眼可分**：分页在首页的「上一页」、批量弹层输「确认」
@@ -828,8 +829,8 @@ td.wrap-cell { white-space: normal; overflow-wrap: anywhere; word-break: normal;
   box-shadow: inset 0 0 0 1px var(--glass-stroke), var(--shadow-2);
   background: var(--glass-dialog-bg); background-clip: padding-box; color: var(--ink);
   padding: var(--sp-6);
-  -webkit-backdrop-filter: blur(24px) saturate(1.6);
-  backdrop-filter: blur(24px) saturate(1.6);
+  -webkit-backdrop-filter: blur(var(--glass-bar-blur)) saturate(var(--glass-bar-saturate));
+  backdrop-filter: blur(var(--glass-bar-blur)) saturate(var(--glass-bar-saturate));
   max-width: 420px; width: calc(100vw - var(--sp-8));
 }
 .dlg[open] { animation: dlg-in var(--dur-3) var(--ease) backwards; }

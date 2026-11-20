@@ -1413,8 +1413,8 @@ func TestGlassTopbarAndTabnavFallback(t *testing.T) {
 			t.Fatalf("style.css 缺 %s 规则", sel)
 		}
 		for _, frag := range []string{
-			"-webkit-backdrop-filter: blur(24px) saturate(1.6)",
-			"backdrop-filter: blur(24px) saturate(1.6)",
+			"-webkit-backdrop-filter: blur(var(--glass-bar-blur)) saturate(var(--glass-bar-saturate))",
+			"backdrop-filter: blur(var(--glass-bar-blur)) saturate(var(--glass-bar-saturate))",
 		} {
 			if !strings.Contains(rule, frag) {
 				t.Errorf("%s 缺玻璃声明 %q", sel, frag)
