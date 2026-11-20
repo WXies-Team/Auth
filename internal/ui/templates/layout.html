@@ -17,8 +17,8 @@
 <body{{if .IsSuper}} data-super="1"{{end}}>
 <a class="skip" href="#main">跳到主要内容</a>
 
-<!-- 导航项只在这里写一遍：窄屏底栏与宽屏侧栏复用同一片段，HTML 逐字节相同，
-     两处的尺寸/配色/选中态差异全由 CSS 的 .tabnav / .sidenav 选择器承担。 -->
+{{/* 导航项只写一遍：窄屏底栏与宽屏侧栏复用同一片段，渲染出的锚点相同；
+     两处的尺寸/配色/选中态差异全由 CSS 的 .tabnav / .sidenav 选择器承担。 */}}
 {{define "nav-items"}}{{range .}}<a class="nav-item{{if .Active}} on{{end}}" href="{{.Href}}"{{if .Active}} aria-current="page"{{end}}>{{icon .Icon}}<span>{{.Label}}</span></a>{{end}}{{end}}
 
 {{if not .Minimal}}

@@ -769,7 +769,7 @@ function initLogin() {
     try {
       await api('/auth/send-code', { method: 'POST', body: { email, purpose } });
       cooldown(btn, 60);
-      toast('验证码已发送。在垃圾箱里搜索发件人『Auth』，60 秒后可重新发送');
+      toast('验证码已发送。没收到？在垃圾箱里搜索发件人『Auth』，60 秒后可重新发送');
       return true;
     } catch (err) { showErr(errSel, err.message); return false; }
   }
@@ -1061,7 +1061,7 @@ function initSessions() {
     pending = { mode: 'others', ids: [], label: '', count: others };
     $('#kick-title').textContent = '退出其它所有会话';
     $('#kick-desc').textContent = others
-      ? `将退出除「本设备」外的 ${others} 条会话，本机保持登录。`
+      ? `将退出除「本设备」外的 ${others} 条会话，本设备保持登录。`
       : '没有其它会话需要退出。';
     $('#kick-ok').textContent = others ? '全部退出' : '知道了';
     openDialog($('#kick-dialog'), '#kick-cancel');
@@ -1532,7 +1532,7 @@ function initAccount() {
     try {
       await api('/auth/send-code', { method: 'POST', body: { email, purpose: 'delete' } });
       cooldown($('#send-delete-code'), 60);
-      toast('验证码已发送。在垃圾箱里搜索发件人『Auth』，60 秒后可重新发送');
+      toast('验证码已发送。没收到？在垃圾箱里搜索发件人『Auth』，60 秒后可重新发送');
     } catch (err) { showErr('#delete-error', err.message); }
   });
   $('#delete-cancel').addEventListener('click', () => closeDialog($('#delete-dialog')));
