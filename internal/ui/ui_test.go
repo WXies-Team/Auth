@@ -1344,3 +1344,161 @@ func TestNativeControlsMiuixAndLayoutFixes(t *testing.T) {
 		}
 	}
 }
+
+// cssAtRuleBlock 取以 marker 开头的 at-rule 规则体（含大括号），用于钉
+// @supports not 这类无法靠 cssRule 定位的兜底块。
+func cssAtRuleBlock(css, marker string) string {
+	i := strings.Index(css, marker)
+	if i < 0 {
+		return ""
+	}
+	open := strings.Index(css[i:], "{")
+	if open < 0 {
+		return ""
+	}
+	depth, k := 0, i+open
+	for ; k < len(css); k++ {
+		if css[k] == '{' {
+			depth++
+		} else if css[k] == '}' {
+			depth--
+			if depth == 0 {
+				return css[i : k+1]
+			}
+		}
+	}
+	return css[i:]
+}
+
+// 设计令牌单一来源（Miuix 0.9.5 视觉语言）：4/8pt 间距、8/12/16/20/28 圆角、
+// 五级语义表面、title1/2/4 + body2/footnote 字阶（字号与行高成对）。
+// 令牌缺失后续样式就会回填裸 px，视觉语言随之漂移——钉住整套名字与量值。
+func TestDesignTokensPresent(t *testing.T) {
+	css := stripCSSComments(mustCSS(t))
+	root, ok := cssRule(css, ":root")
+	if !ok {
+		t.Fatal("style.css 缺 :root 规则")
+	}
+	for _, group := range []struct {
+		name string
+		toks []string
+	}{
+		{"4/8pt 间距", []string{"--sp-1: 4px", "--sp-2: 8px", "--sp-3: 12px", "--sp-4: 16px", "--sp-5: 20px", "--sp-6: 24px", "--sp-8: 32px"}},
+		{"圆角梯度", []string{"--radius-xs: 8px", "--radius-sm: 12px", "--radius-card: 16px", "--radius-lg: 20px", "--radius-xl: 28px", "--radius-pill: 999px"}},
+		{"五级表面", []string{"--background:", "--surface:", "--surface-container:", "--surface-container-high:", "--surface-variant:"}},
+		{"字阶", []string{"--font-title1: 32px", "--font-title2: 24px", "--font-title4: 15px", "--font-body2: 14px", "--font-footnote: 12px", "--lh-title1:", "--lh-footnote:"}},
+	} {
+		for _, tok := range group.toks {
+			if !strings.Contains(root, tok) {
+				t.Errorf("%s 缺令牌 %q", group.name, tok)
+			}
+		}
+	}
+	// 暗色对：画布/变体/玻璃都要有暗值，否则跟随系统时材质与层级会塌掉
+	for _, frag := range []string{"--background: #000000", "--surface-variant: #2D2D2D", "--glass-bg: rgba(0, 0, 0, .6)"} {
+		if !strings.Contains(css, frag) {
+			t.Errorf("暗色缺表面/玻璃令牌 %q", frag)
+		}
+	}
+}
+
+// 玻璃材质（Miuix Console web port 的材质语言）：顶栏与窄屏底栏都上
+// backdrop-filter blur(24px) saturate(1.6)，且 @supports not 时**两处**都退实底。
+// 顶栏若漏兜底会在老浏览器变全透明，读不清——可读性优先于质感。
+func TestGlassTopbarAndTabnavFallback(t *testing.T) {
+	css := stripCSSComments(mustCSS(t))
+	for _, sel := range []string{".topbar", ".tabnav"} {
+		rule, ok := cssRule(css, sel)
+		if !ok {
+			t.Fatalf("style.css 缺 %s 规则", sel)
+		}
+		for _, frag := range []string{
+			"-webkit-backdrop-filter: blur(24px) saturate(1.6)",
+			"backdrop-filter: blur(24px) saturate(1.6)",
+		} {
+			if !strings.Contains(rule, frag) {
+				t.Errorf("%s 缺玻璃声明 %q", sel, frag)
+			}
+		}
+	}
+	sup := cssAtRuleBlock(css, "@supports not ((backdrop-filter: blur(1px))")
+	if sup == "" {
+		t.Fatal("style.css 缺 @supports not 玻璃兜底块")
+	}
+	for _, frag := range []string{".topbar", "var(--canvas)", ".tabnav", "var(--card)"} {
+		if !strings.Contains(sup, frag) {
+			t.Errorf("@supports not 兜底缺 %q（顶栏/底栏都要退实底）", frag)
+		}
+	}
+}
+
+// 弹簧曲线只给物理反馈：Switch 滑块与导航项（窄屏底栏 / 宽屏侧栏）按压。
+// 常规组件（按钮/卡片/标签/提示条/分段）一律克制 easing，否则会出现「处处回弹」。
+func TestSpringLimitedToPhysicalFeedback(t *testing.T) {
+	css := stripCSSComments(mustCSS(t))
+	root, _ := cssRule(css, ":root")
+	if !strings.Contains(root, "--spring: cubic-bezier(.34, 1.56, .64, 1)") {
+		t.Error(":root 缺弹簧令牌 --spring")
+	}
+	if got := strings.Count(css, "var(--spring)"); got != 2 {
+		t.Errorf("var(--spring) 应只出现 2 处（Switch 滑块 + 导航项按压），得到 %d", got)
+	}
+	sw, ok := cssRule(css, "input[type=checkbox].switch::after")
+	if !ok {
+		t.Fatal("style.css 缺 Switch 滑块规则")
+	}
+	if !strings.Contains(sw, "transition: transform var(--dur-2) var(--spring)") {
+		t.Error("Switch 滑块位移应走弹簧 --spring")
+	}
+	nav, ok := cssRule(css, ".nav-item")
+	if !ok {
+		t.Fatal("style.css 缺 .nav-item 规则")
+	}
+	if !strings.Contains(nav, "var(--spring)") {
+		t.Error("导航项按压应走弹簧 --spring（底栏/侧栏物理反馈）")
+	}
+	for _, sel := range []string{".btn", ".card", ".tab", ".toast", ".app-chip"} {
+		if rule, ok := cssRule(css, sel); ok && strings.Contains(rule, "var(--spring)") {
+			t.Errorf("%s 不该用弹簧曲线（只给物理反馈）", sel)
+		}
+	}
+}
+
+// Switch 与无障碍：原生 checkbox 保留语义/键盘（只加 class 与 role=switch），
+// 44px 触控行、状态不只靠颜色（滑块位置）、计数变化可播报、吸顶栏不遮焦点。
+func TestSwitchPatternAndA11y(t *testing.T) {
+	css := stripCSSComments(mustCSS(t))
+	sw, ok := cssRule(css, "input[type=checkbox].switch")
+	if !ok {
+		t.Fatal("style.css 缺 Switch 轨道规则")
+	}
+	for _, frag := range []string{"width: var(--tap)", "border-radius: var(--radius-pill)"} {
+		if !strings.Contains(sw, frag) {
+			t.Errorf("Switch 轨道缺 %q（44px 目标 + 药丸形）", frag)
+		}
+	}
+	if row, ok := cssRule(css, ".switch-row"); !ok || !strings.Contains(row, "min-height: var(--tap)") {
+		t.Error(".switch-row 应 ≥44px（整行可点，WCAG 2.5.5）")
+	}
+	if !strings.Contains(css, "html { scroll-padding-top: 72px; }") {
+		t.Error("缺 scroll-padding-top（sticky 顶栏不遮锚点/焦点，WCAG 2.4.11）")
+	}
+	acc, err := files.ReadFile("templates/account.html")
+	if err != nil {
+		t.Fatalf("读账号页: %v", err)
+	}
+	if !strings.Contains(string(acc), `<input type="checkbox" class="switch" role="switch" id="login-notify">`) {
+		t.Error("登录提醒应是原生 checkbox + .switch + role=switch（语义与键盘不替换）")
+	}
+	for name, id := range map[string]string{
+		"admin-users.html": "users-total", "admin-sessions.html": "sess-total", "admin-audit.html": "audit-total",
+	} {
+		raw, rerr := files.ReadFile("templates/" + name)
+		if rerr != nil {
+			t.Fatalf("读 %s: %v", name, rerr)
+		}
+		if !strings.Contains(string(raw), `id="`+id+`" aria-live="polite"`) {
+			t.Errorf("%s 的 #%s 应带 aria-live=polite（计数变化可被读屏感知）", name, id)
+		}
+	}
+}
