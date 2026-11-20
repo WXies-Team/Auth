@@ -1,13 +1,41 @@
 /* Auth 管理台样式 —— 零外链：无 CDN、无网络字体，字体走 MiSans 起手的系统栈。
    设计令牌照 miuix 官方默认（与本仓邮件/日记站同一套）：
-     主色 #3482FF；浅色画布 #F7F7F7、卡片 #FFFFFF（圆角 24）、主文 #000（次文 60% 灰）、
+     主色 #3482FF；浅色画布 #F7F7F7、卡片 #FFFFFF（圆角 16）、主文 #000（次文 60% 灰）、
      分割线 #E0E0E0、次按钮 #F0F0F0/#303030、提示容器 #EAF2FF/#3482FF、error #E94634；
      深色整套（prefers-color-scheme）：#000 / #242424 / #E6FFFFFF / #393939 / #434343 / #2B3B54。
-   字阶照 miuix：页面标题 20~24px **Normal 字重**（层次靠字号与颜色，不靠加粗）、
+   字阶照 miuix：页面标题 32px **Normal 字重**（层次靠字号与颜色，不靠加粗）、
    正文 16、说明 13~14；按钮圆角 16、高 ≥40（触控设备 44+）。
-   动效见文件末「动效系统」段：统一 easing cubic-bezier(.2,0,0,1)、单段 150~250ms、
+   动效见文件末「动效系统」段：常规 easing cubic-bezier(.16,1,.3,1)、弹簧
+   cubic-bezier(.34,1.56,.64,1) 只给开关/底栏/侧栏的物理反馈；单段 150~250ms、
    只动 transform/opacity（绝不碰 layout 属性）；reduced-motion 一刀切全关。 */
 :root {
+  /* ===== 设计令牌单一来源：新样式一律引用，不写裸 px ===== */
+  /* 4/8pt 间距梯度 */
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 20px; --sp-6: 24px; --sp-7: 28px; --sp-8: 32px;
+  /* 圆角梯度（8/12/16/20/28 + 药丸）；--radius-ctl 与卡片同源，兼容既有选择器 */
+  --radius-xs: 8px;  --radius-sm: 12px; --radius-card: 16px;
+  --radius-lg: 20px; --radius-xl: 28px; --radius-pill: 999px;
+  --radius-ctl: 16px;
+  /* 五级语义表面（light；dark 对应值在下方媒体查询）：复用已校验明暗令牌，不另起色值 */
+  --background: #F7F7F7;                    /* L0 应用背景 */
+  --surface: var(--canvas);                 /* L1 通用面 */
+  --surface-container: var(--card);         /* L2 卡片 / 浮层面 */
+  --surface-container-high: var(--sub-bg);  /* L3 抬升面（次按钮、行 hover） */
+  --surface-variant: #E8E8E8;               /* L4 变体面（miuix surfaceContainerHigh） */
+  /* 字阶：字号 + 行高成对定义（层次靠字号/颜色，不靠加粗；零字体文件） */
+  --font-title1: 32px;   --lh-title1: 1.2;
+  --font-title2: 24px;   --lh-title2: 1.3;
+  --font-title4: 15px;   --lh-title4: 1.4;
+  --font-body2: 14px;    --lh-body2: 1.6;
+  --font-footnote: 12px; --lh-footnote: 1.5;
+  /* 玻璃材质：顶栏 vs 悬浮底栏两套底 + 高光环；@supports not 时退实底 */
+  --glass-bg: rgba(247, 247, 247, .72);
+  --glass-float-bg: rgba(255, 255, 255, .62);
+  --glass-stroke: rgba(255, 255, 255, .45);
+  /* Switch 组件几何（弹簧滑块用） */
+  --switch-h: 26px; --switch-thumb: 20px; --switch-pad: 3px;
+
   --primary: #3482FF;
   /* 承载文字的主色按「底要深、字要浅」拆成两个 token——一个值兼两职必然顾此失彼
      （#2563EB 当深色文字压暗底只有 2.19:1）：
@@ -34,11 +62,9 @@
   --danger-bg: rgba(233, 70, 52, .08);
   --ok: #15803D;   /* 原 #1E9E5A 3.45:1，加深到 5.02:1 */
   --focus: #3482FF;
-  --radius-card: 16px;
-  --radius-ctl: 16px;
-  /* 动效令牌：全站唯一 easing 与时长梯度（见文件末「动效系统」段） */
-  --ease: cubic-bezier(.2, 0, 0, 1);
-  /* 弹簧曲线：只给「物理反馈」用（按压回弹/开关），miuix 动效法则——其余一律 --ease */
+  /* 动效令牌：常规过渡统一 easing（克制、收得住），时长梯度见文件末「动效系统」段 */
+  --ease: cubic-bezier(.16, 1, .3, 1);
+  /* 弹簧曲线：只给「物理反馈」用（Switch 滑块 / 底栏 / 侧栏按压回弹），其余一律 --ease */
   --spring: cubic-bezier(.34, 1.56, .64, 1);
   --dur-1: 150ms;   /* 微交互：按压、颜色、焦点环 */
   --dur-2: 180ms;   /* 区块切换、行退场 */
@@ -75,11 +101,20 @@
     --danger-bg: rgba(233, 70, 52, .16);
     --ok: #7EE0A6;
     --focus: #7CB0FF;
+    /* 五级表面 / 玻璃的暗色对（其余 L0~L3 由 canvas/card/sub-bg 暗值自动继承） */
+    --background: #000000;
+    --surface-variant: #2D2D2D;
+    --glass-bg: rgba(0, 0, 0, .6);
+    --glass-float-bg: rgba(38, 38, 38, .58);
+    --glass-stroke: rgba(255, 255, 255, .1);
   }
 }
 
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
+/* sticky 顶栏不遮挡锚点与焦点目标（WCAG 2.4.11）：跳到主要内容 / Tab 聚焦时
+   上方留出一栏高度，标题不会被吸顶栏压住。 */
+html { scroll-padding-top: 72px; }
 body {
   background: var(--canvas);
   color: var(--ink);
@@ -104,9 +139,14 @@ code { font-family: var(--mono); }
 }
 
 /* ---- 顶栏（常驻；登录页 Minimal 壳不渲染）---- */
+/* 玻璃材质：系统模糊 + 增饱和；半透明底只作为模糊生效时的叠加，透明度收在
+   28%（亮）/40%（暗）以内以保住顶栏文字对比。不支持 backdrop-filter 的老浏览器
+   由下方 @supports not 退回实底——可读性优先于质感。 */
 .topbar {
   position: sticky; top: 0; z-index: 10;
-  background: var(--canvas);
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  backdrop-filter: blur(24px) saturate(1.6);
   border-bottom: 1px solid var(--line);
   padding-top: env(safe-area-inset-top);
 }
@@ -193,14 +233,14 @@ button.app-chip { background: transparent; border: 0; font: inherit; cursor: poi
 
 /* ---- 壳：≥900px 左侧分区导航 + 右侧内容（容器 880 居中）；窄屏导航变横向滚动 tab 行 ---- */
 .shell {
-  display: flex; align-items: flex-start; gap: 24px;
+  display: flex; align-items: flex-start; gap: var(--sp-6);
   width: 100%; padding: 0 var(--pad-r) 0 var(--pad-x);
 }
 .sidenav { display: none; }
 .content {
   flex: 1 1 auto; min-width: 0;
   width: 100%; max-width: 880px; margin: 0 auto;
-  padding: 20px 0 32px;
+  padding: var(--sp-5) 0 var(--sp-8);
   display: grid; gap: var(--gap);
   align-content: start;
 }
@@ -232,20 +272,22 @@ button.app-chip { background: transparent; border: 0; font: inherit; cursor: poi
   display: flex; align-items: stretch; gap: 2px;
   padding: 6px;
   border-radius: 50px;                 /* miuix CornerRadius 50dp → 药丸 */
-  background: rgba(255, 255, 255, .62);
-  -webkit-backdrop-filter: blur(20px) saturate(1.6);
-  backdrop-filter: blur(20px) saturate(1.6);
-  /* 玻璃边高光（外）+ 轻投影（上浮感）；暗色换成内侧白环 */
-  box-shadow: 0 6px 22px rgba(0, 0, 0, .14), inset 0 0 0 1px rgba(255, 255, 255, .45);
+  background: var(--glass-float-bg);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  backdrop-filter: blur(24px) saturate(1.6);
+  /* 玻璃边高光（外）+ 轻投影（上浮感）；暗色换成内侧白环（走令牌） */
+  box-shadow: 0 6px 22px rgba(0, 0, 0, .14), inset 0 0 0 1px var(--glass-stroke);
   transform-origin: center bottom;
 }
 @media (prefers-color-scheme: dark) {
   .tabnav {
-    background: rgba(38, 38, 38, .58);
-    box-shadow: 0 6px 22px rgba(0, 0, 0, .4), inset 0 0 0 1px rgba(255, 255, 255, .1);
+    background: var(--glass-float-bg);
+    box-shadow: 0 6px 22px rgba(0, 0, 0, .4), inset 0 0 0 1px var(--glass-stroke);
   }
 }
+/* 无玻璃能力时顶栏与底栏都退实底：顶栏用画布色、底栏用卡片色，文字对比不打折。 */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .topbar { background: var(--canvas); }
   .tabnav { background: var(--card); }
 }
 .tabnav::-webkit-scrollbar { display: none; }
@@ -294,8 +336,8 @@ button.app-chip { background: transparent; border: 0; font: inherit; cursor: poi
    不靠加粗），副标 body2 14 走 onSurfaceVariantSummary 60% 墨。折叠到 20（title3）
    是滚动时的形态，网页无折叠行为，固定用大标题。 */
 .page-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.page-head h1 { font-size: 32px; font-weight: 400; margin: 0; letter-spacing: .2px; line-height: 1.2; }
-.page-head .sub { flex-basis: 100%; margin: 4px 0 0; font-size: 14px; color: var(--dim); }
+.page-head h1 { font-size: var(--font-title1); font-weight: 400; margin: 0; letter-spacing: .2px; line-height: var(--lh-title1); }
+.page-head .sub { flex-basis: 100%; margin: var(--sp-1) 0 0; font-size: var(--font-body2); line-height: var(--lh-body2); color: var(--dim); }
 
 /* 折叠区（后台用户页的邀请记录）：卡片同款白面 + 内环，summary 即折叠把手。
    不给 .card 加 details——.card 带 hover 抬升与自身 padding，语义混在一起。 */
@@ -304,7 +346,7 @@ details.section {
   border-radius: var(--radius-card); padding: 14px 16px; margin-top: 16px;
 }
 details.section > summary { cursor: pointer; font-weight: 500; }
-/* ---- 卡片（miuix：白卡 + 24 圆角，落在 #F7F7F7 画布上）---- */
+/* ---- 卡片（miuix：白卡 + 16 圆角，落在 #F7F7F7 画布上）---- */
 .card {
   /* miuix Card（CardDefaults）：surfaceContainer 纯填充 + 16 圆角，**没有描边**。
      卡片与画布靠 color 差分离（#FFF 卡 / #F7F7F7 画布）——此前用 box-shadow:inset
@@ -313,11 +355,11 @@ details.section > summary { cursor: pointer; font-weight: 500; }
      盖掉，圆角那条线随之断裂。改成纯填充后没有环可被盖，圆角恒完整。 */
   background: var(--card);
   border-radius: var(--radius-card);
-  padding: 20px;
+  padding: var(--sp-5);
 }
-.card h2 { font-size: 17px; font-weight: 500; margin: 0 0 4px; }
-.card h3 { font-size: 15px; font-weight: 500; margin: 16px 0 6px; }
-.card p { margin: 6px 0; }
+.card h2 { font-size: 17px; font-weight: 500; margin: 0 0 var(--sp-1); }
+.card h3 { font-size: var(--font-title4); font-weight: 500; margin: var(--sp-4) 0 var(--sp-2); }
+.card p { margin: var(--sp-2) 0; }
 .card .hint, .hint { color: var(--dim); font-size: 13px; }
 p.hint { margin: 6px 0; }
 
@@ -325,12 +367,12 @@ p.hint { margin: 6px 0; }
 .hint-box {
   background: var(--primary-soft); color: var(--primary-text);
   border-radius: var(--radius-card); padding: 14px 16px;
-  font-size: 14px; margin: 0;
+  font-size: var(--font-body2); margin: 0;
 }
 .hint-box a { color: inherit; }
 /* 授权同意页的权限清单：逐条列出，不用逗号串成一行（可被逐项核对） */
 .scope-list { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 4px; }
-.scope-list li { font-size: 14px; }
+.scope-list li { font-size: var(--font-body2); }
 /* 授权页「谁在请求」：请求方品牌与 Auth 身份外壳分开，避免把授权误认成登录 */
 .req-app { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
 .req-app img { border-radius: 8px; }
@@ -350,15 +392,15 @@ p.hint { margin: 6px 0; }
 .danger-zone h2 { font-size: 17px; font-weight: 500; margin: 0 0 4px; color: var(--danger-ink); }
 .danger-zone .hint { color: var(--ink); opacity: .72; }
 
-.row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.row { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }
 .row.end { justify-content: flex-end; }
 .row.between { justify-content: space-between; }
 /* .grow 在 .item 之外也要成立（W8①）：搜索行的 label.field.grow 过去没有规则，
    输入框按内容宽缩成一小截、和右侧按钮挤在一起——这里给它统一的 flex 伸展
   （.item 的同名规则特异性更高，220px 基准不受影响）。 */
 .grow { flex: 1 1 auto; min-width: 0; }
-.stack { display: grid; gap: 12px; }
-.grid2 { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.stack { display: grid; gap: var(--sp-3); }
+.grid2 { display: grid; gap: var(--sp-3); grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 
 /* ---- 表单 ---- */
 /* .field 兼作**定位锚**（W6）：密码管理器/OTP 的徽章与下拉是浏览器（或扩展）层
@@ -616,7 +658,7 @@ input:disabled { opacity: .6; }
 .sep { border: 0; border-top: 1px solid var(--line); margin: 0 16px; }
 /* SmallTitle：14 Bold + onBackgroundVariant 蓝灰，上下 8 左右 28（照源码 28,8） */
 .section-title {
-  font-size: 14px; font-weight: 700; color: var(--section-title);
+  font-size: var(--font-body2); font-weight: 700; color: var(--section-title);
   margin: 20px 0 8px; padding: 0 12px; letter-spacing: .2px;
 }
 .section-title:first-child { margin-top: 0; }
@@ -647,7 +689,7 @@ input:disabled { opacity: .6; }
 
 .badge {
   display: inline-flex; align-items: center; gap: 4px;
-  font-size: 12px; padding: 3px 11px; border-radius: 999px;
+  font-size: var(--font-footnote); line-height: var(--lh-footnote); padding: 3px 11px; border-radius: var(--radius-pill);
   background: var(--sub-bg); background-clip: padding-box; border: none; color: var(--dim);
   vertical-align: middle;
 }
@@ -674,7 +716,7 @@ input:disabled { opacity: .6; }
   background: var(--card);
   border-radius: var(--radius-card);
 }
-table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: 14px; }
+table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: var(--font-body2); }
 th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); white-space: nowrap; }
 th { color: var(--dim); font-weight: 500; font-size: 13px; background: var(--card); position: sticky; top: 0; }
 tbody tr:last-child td { border-bottom: 0; }
@@ -721,7 +763,7 @@ td.wrap-cell { white-space: normal; overflow-wrap: anywhere; word-break: normal;
   bottom: max(16px, env(safe-area-inset-bottom));
   background: var(--ink); color: var(--canvas);
   padding: 10px 16px; border-radius: 999px; z-index: 30;
-  font-size: 14px; opacity: 0;
+  font-size: var(--font-body2); opacity: 0;
   transition: opacity var(--dur-2) var(--ease), transform var(--dur-2) var(--ease);
   max-width: calc(100vw - 32px);
 }
@@ -754,8 +796,8 @@ td.wrap-cell { white-space: normal; overflow-wrap: anywhere; word-break: normal;
 /* ---- AI 用量：KPI 卡与 7 天 sparkline ---- */
 .kpi-row { display: grid; gap: var(--gap); grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
 .card.kpi { display: grid; gap: 2px; align-content: start; padding: 16px 18px; }
-.card.kpi strong { font-size: 24px; font-weight: 500; line-height: 1.3; }
-.card.kpi .hint { font-size: 12px; }
+.card.kpi strong { font-size: var(--font-title2); font-weight: 500; line-height: var(--lh-title2); }
+.card.kpi .hint { font-size: var(--font-footnote); }
 .spark { display: flex; align-items: flex-end; gap: 3px; height: 36px; margin-top: 6px; }
 .spark i {
   flex: 1; min-width: 4px; border-radius: 3px 3px 0 0;
@@ -782,7 +824,7 @@ td.wrap-cell { white-space: normal; overflow-wrap: anywhere; word-break: normal;
   display: block; max-width: 26ch;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.cell-stack .s { font-size: 12px; color: var(--dim); }
+.cell-stack .s { font-size: var(--font-footnote); color: var(--dim); }
 
 /* 表格里的邮箱：**截断不折行**。列多的表（用户页 9 列）按 overflow-wrap 折会把
    e2e-super@example.com 劈成 `e2e- / super@exa / mple.com` 三行——既读不出也占行高。
@@ -839,7 +881,7 @@ td .user-cell .truncate { max-width: 24ch; }
 .empty { text-align: center; color: var(--dim); padding: 28px 12px; }
 /* 空态标题+说明+主行动（Polaris：解释为什么空 + 给一个下一步）。
    此前只有一句灰字，用户看不出「是没数据还是坏了」。 */
-.empty-title { display: block; color: var(--ink); font-size: 15px; font-weight: 500; margin-bottom: 4px; }
+.empty-title { display: block; color: var(--ink); font-size: var(--font-title4); font-weight: 500; margin-bottom: var(--sp-1); }
 .empty-hint { display: block; font-size: 13px; color: var(--dim); }
 .hidden { display: none !important; }
 
@@ -897,7 +939,7 @@ td .user-cell .truncate { max-width: 24ch; }
 /* =====================================================================
    动效系统（miuix「丝滑统一」口径）
    ---------------------------------------------------------------------
-   ① 全站唯一 easing = --ease（cubic-bezier(.2,0,0,1)），时长梯度见 :root；
+   ① 常规 easing = --ease（cubic-bezier(.16,1,.3,1)），弹簧 --spring 只给开关/底栏/侧栏；时长梯度见 :root；
    ② 只动 transform / opacity —— 绝不碰 width/height/margin/top 等 layout
       属性（会触发重排 = 抖动），hover 抬升、按压缩进、退场下沉全是位移；
    ③ 入场交错（顶栏 → 分区导航 → 内容卡片，stagger 70ms），表格行只给

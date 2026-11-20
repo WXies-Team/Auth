@@ -600,8 +600,8 @@ func TestNoExternalResources(t *testing.T) {
 	}
 }
 
-// 动效系统（miuix「丝滑统一」）：全站唯一 easing + 时长梯度令牌、入场/弹入/转圈关键帧、
-// reduced-motion 一刀切（动画与过渡都关，且清零 animation-delay）。
+// 动效系统（miuix「丝滑统一」）：常规 easing + 时长梯度令牌、弹簧只给物理反馈、
+// 入场/弹入/转圈关键帧、reduced-motion 一刀切（动画与过渡都关，且清零 animation-delay）。
 func TestMotionSystem(t *testing.T) {
 	cssBytes, err := files.ReadFile("style.css")
 	if err != nil {
@@ -614,7 +614,7 @@ func TestMotionSystem(t *testing.T) {
 	if !ok {
 		t.Fatal("style.css 缺 :root 规则")
 	}
-	for _, frag := range []string{"--ease: cubic-bezier(.2, 0, 0, 1)", "--dur-1", "--dur-2", "--dur-3"} {
+	for _, frag := range []string{"--ease: cubic-bezier(.16, 1, .3, 1)", "--dur-1", "--dur-2", "--dur-3"} {
 		if !strings.Contains(rule, frag) {
 			t.Errorf(":root 缺动效令牌 %q（全站唯一 easing/时长梯度）", frag)
 		}
@@ -680,7 +680,7 @@ func TestMotionSystem(t *testing.T) {
 	}
 	js := string(jsBytes)
 	for _, want := range []string{
-		"cubic-bezier(.2, 0, 0, 1)",
+		"cubic-bezier(.16, 1, .3, 1)",
 		"(prefers-reduced-motion: reduce)",
 		"function swapIn(el)",
 		"function popIn(el)",

@@ -30,7 +30,7 @@ function node(html) {
    - 只用 transform / opacity（WAAPI 也不许碰 width/height/top 这类 layout 属性）；
    - 用户开了「减弱动态效果」就全部不播——交互反馈只留颜色/透明度；
    - 动画绝不拦截交互：不 await 播完再响应点击/焦点，纯装饰。 */
-const MOTION_EASE = 'cubic-bezier(.2, 0, 0, 1)';
+const MOTION_EASE = 'cubic-bezier(.16, 1, .3, 1)';
 const reducedMotion = () =>
   !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
@@ -1851,7 +1851,7 @@ function crossFade(el) {
   if (!el || reducedMotion() || typeof el.animate !== 'function') return;
   try {
     el.animate([{ opacity: 1 }, { opacity: 0.2 }, { opacity: 1 }],
-      { duration: 200, easing: 'cubic-bezier(.2, 0, 0, 1)' });
+      { duration: 200, easing: MOTION_EASE });
   } catch (_) { /* 浏览器不支持就静默 */ }
 }
 
