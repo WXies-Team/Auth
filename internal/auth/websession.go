@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/WXies-Team/auth/internal/db"
+	"github.com/WXies-Team/Auth/internal/db"
 )
 
 // Web 会话的两个 cookie 名。__Host- 前缀把 Secure/Path=/ 绑进浏览器（子域伪造与

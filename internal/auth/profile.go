@@ -11,8 +11,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/WXies-Team/auth/internal/db"
-	"github.com/WXies-Team/auth/internal/protocol"
+	"github.com/WXies-Team/Auth/internal/db"
+	"github.com/WXies-Team/Auth/internal/protocol"
 )
 
 // 档案三件套（昵称 / 头像色 / 头像图）收归本服务统一存取——OIDC UserInfo 同款思路：
@@ -28,8 +28,8 @@ const (
 	// maxAvatarImageBytes 是头像**解码后**的字节上限（700KB）。
 	//
 	// 依据（2026-10-19 在生产日记两库实测 avatar_image 规模）：
-	//   - calorie-diary 现存最大 30,956 个 base64 字符（JPEG，解码约 23.2KB），
-	//     expense-diary 最大 10,780 字符（解码约 8KB）；
+	//   - CalorieDiary 现存最大 30,956 个 base64 字符（JPEG，解码约 23.2KB），
+	//     ExpenseDiary 最大 10,780 字符（解码约 8KB）；
 	//   - 日记客户端与服务端的现行自我上限是 avatarImage.take(200_000) / maxAvatarBytes
 	//     = 200,000 个 base64 字符（解码 150,000 字节 ≈ 146KB），见两仓 sync.go；
 	//   - 700KB 解码 ≈ 955,736 个 base64 字符：约为实测最大值的 31 倍、日记侧现行

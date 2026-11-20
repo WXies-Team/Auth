@@ -160,7 +160,7 @@ func TestAdminSetRoleRootSuperOnly(t *testing.T) {
 	root := seedAdminUser(t, svc, mailer, RootSuperEmail, adminRoleSuper)
 	other := seedAdminUser(t, svc, mailer, "setrole-super@example.com", adminRoleSuper)
 	target := newPasskeyUser(t, svc, mailer, "setrole-target@example.com")
-	if err := svc.AdminSetScope(root, target.UID, "calorie-diary", true); err != nil {
+	if err := svc.AdminSetScope(root, target.UID, "CalorieDiary", true); err != nil {
 		t.Fatalf("造 app-admin: %v", err)
 	}
 
@@ -222,7 +222,7 @@ func TestAdminSessionsAndRevocation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("建 web 会话: %v", err)
 	}
-	jwtResp, err := svc.Login("admin-sess@example.com", "secret123", "calorie-diary",
+	jwtResp, err := svc.Login("admin-sess@example.com", "secret123", "CalorieDiary",
 		SessionMeta{IP: "198.51.100.7", UserAgent: "Mozilla/5.0 (Linux; Android 14; Pixel 8) Chrome/120 Mobile"})
 	if err != nil {
 		t.Fatalf("JWT 登录: %v", err)
@@ -336,15 +336,15 @@ func TestAdminListSessionsQuery(t *testing.T) {
 			allTotal, allUsers, len(all), err)
 	}
 	// 与 apps 过滤叠加：query + scope 同时生效（app-admin 的数据边界不被搜索绕开）
-	if _, err := svc.Login("sessq-alpha@example.com", "secret123", "calorie-diary", testMeta); err != nil {
+	if _, err := svc.Login("sessq-alpha@example.com", "secret123", "CalorieDiary", testMeta); err != nil {
 		t.Fatalf("calorie 登录: %v", err)
 	}
-	cal, calTotal, _, err := svc.AdminListSessions(0, []string{"calorie-diary"}, "sessq-alpha", "", 100, 0)
+	cal, calTotal, _, err := svc.AdminListSessions(0, []string{"CalorieDiary"}, "sessq-alpha", "", 100, 0)
 	if err != nil || calTotal == 0 {
 		t.Fatalf("query + app 过滤叠加应有行，得到 total=%d err=%v", calTotal, err)
 	}
 	for _, it := range cal {
-		if it.App != "calorie-diary" || it.UID != a.UID {
+		if it.App != "CalorieDiary" || it.UID != a.UID {
 			t.Errorf("叠加过滤后混进越权行: %+v", it)
 		}
 	}

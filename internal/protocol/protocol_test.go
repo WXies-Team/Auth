@@ -7,12 +7,12 @@ import (
 
 // diaryAuthDTOSnapshot 是日记仓 AuthDtos.kt 的**字段快照**（快照式对拍）。
 //
-// 来源：HoratioShaw/calorie-diary
+// 来源：HoratioShaw/CalorieDiary
 // shared/src/commonMain/kotlin/cn/horatio/caloriediary/shared/dto/AuthDtos.kt，
 // 2026-10-19 快照；**B1 合并批次（2026-10-21）按跨仓契约扩展**：AuthResponse 追加
 // mustChangePassword / deletePendingCancelled（无 omitempty），DeleteAccountRequest
 // 改 {email, code}——日记侧同批同步快照，漂移会被本测试当场抓住。
-// 日记仓是**私有仓**（gh api repos/HoratioShaw/calorie-diary
+// 日记仓是**私有仓**（gh api repos/HoratioShaw/CalorieDiary
 // 确认 private=true），本仓 CI 的凭据跨仓读不到真文件，checkout 对拍走不通——
 // 只能钉快照：日记侧改字段需来这里同步更新。
 // 2026-11-17 服务器审计补钉 ChangePasswordResponse：日记侧 AuthDtos.kt 早有该类

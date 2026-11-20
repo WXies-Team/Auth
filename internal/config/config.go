@@ -17,7 +17,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/WXies-Team/auth/internal/db"
+	"github.com/WXies-Team/Auth/internal/db"
 )
 
 // ErrNotFound 表示键不存在或值为空（空值当「没配」，与热量日记服务一致）。

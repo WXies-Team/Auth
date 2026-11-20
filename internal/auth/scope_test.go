@@ -32,8 +32,8 @@ func TestAdminSetScopeGrantRevoke(t *testing.T) {
 		t.Fatalf("初始 role 应为 user，得到 %q", got)
 	}
 
-	// ① 授予 calorie-diary：role 提 admin、行落库、granted_by/granted_at 有值
-	if err := svc.AdminSetScope(super, target.UID, "calorie-diary", true); err != nil {
+	// ① 授予 CalorieDiary：role 提 admin、行落库、granted_by/granted_at 有值
+	if err := svc.AdminSetScope(super, target.UID, "CalorieDiary", true); err != nil {
 		t.Fatalf("授予应用: %v", err)
 	}
 	if got, _ := svc.SessionRole(target.UID); got != adminRoleAdmin {
@@ -42,7 +42,7 @@ func TestAdminSetScopeGrantRevoke(t *testing.T) {
 	var by int64
 	var at int64
 	if err := svc.pool.QueryRow("SELECT granted_by, granted_at FROM admin_scopes WHERE uid = ? AND app = ?",
-		target.UID, "calorie-diary").Scan(&by, &at); err != nil {
+		target.UID, "CalorieDiary").Scan(&by, &at); err != nil {
 		t.Fatalf("授权行应落库: %v", err)
 	}
 	if by != super.UID || at == 0 {
@@ -50,7 +50,7 @@ func TestAdminSetScopeGrantRevoke(t *testing.T) {
 	}
 
 	// ② 重复授予幂等（INSERT IGNORE，不报错不重复行）
-	if err := svc.AdminSetScope(super, target.UID, "calorie-diary", true); err != nil {
+	if err := svc.AdminSetScope(super, target.UID, "CalorieDiary", true); err != nil {
 		t.Errorf("重复授予应幂等: %v", err)
 	}
 	var rows int
@@ -60,16 +60,16 @@ func TestAdminSetScopeGrantRevoke(t *testing.T) {
 	}
 
 	// ③ 第二个 app 叠加（一人管多个项目）
-	if err := svc.AdminSetScope(super, target.UID, "expense-diary", true); err != nil {
+	if err := svc.AdminSetScope(super, target.UID, "ExpenseDiary", true); err != nil {
 		t.Fatalf("授予第二个应用: %v", err)
 	}
 	apps, err := svc.AdminScopes(target.UID)
-	if err != nil || len(apps) != 2 || apps[0] != "calorie-diary" || apps[1] != "expense-diary" {
+	if err != nil || len(apps) != 2 || apps[0] != "CalorieDiary" || apps[1] != "ExpenseDiary" {
 		t.Errorf("应持两 app 授权且定序，得到 %v err=%v", apps, err)
 	}
 
 	// ④ 收一个：仍是 admin（还剩一行）
-	if err := svc.AdminSetScope(super, target.UID, "calorie-diary", false); err != nil {
+	if err := svc.AdminSetScope(super, target.UID, "CalorieDiary", false); err != nil {
 		t.Fatalf("回收应用: %v", err)
 	}
 	if got, _ := svc.SessionRole(target.UID); got != adminRoleAdmin {
@@ -77,7 +77,7 @@ func TestAdminSetScopeGrantRevoke(t *testing.T) {
 	}
 
 	// ⑤ 收光最后一个：role 降回 user（定案：零 scope 的 admin 是无权限空壳）
-	if err := svc.AdminSetScope(super, target.UID, "expense-diary", false); err != nil {
+	if err := svc.AdminSetScope(super, target.UID, "ExpenseDiary", false); err != nil {
 		t.Fatalf("回收最后应用: %v", err)
 	}
 	if got, _ := svc.SessionRole(target.UID); got != adminRoleUser {
@@ -88,21 +88,21 @@ func TestAdminSetScopeGrantRevoke(t *testing.T) {
 	if code, msg := httpMsg(svc.AdminSetScope(super, target.UID, "evil-app", true)); code != 400 || !strings.Contains(msg, "未知项目") {
 		t.Errorf("名单外 app 应 400「未知项目」，得到 %d %q", code, msg)
 	}
-	if code, _ := httpMsg(svc.AdminSetScope(super, 999999999999999999, "calorie-diary", true)); code != 404 {
+	if code, _ := httpMsg(svc.AdminSetScope(super, 999999999999999999, "CalorieDiary", true)); code != 404 {
 		t.Errorf("查无 uid 应 404，得到 %d", code)
 	}
-	if code, msg := httpMsg(svc.AdminSetScope(super, super.UID, "calorie-diary", true)); code != 400 || !strings.Contains(msg, "平台管理员") {
+	if code, msg := httpMsg(svc.AdminSetScope(super, super.UID, "CalorieDiary", true)); code != 400 || !strings.Contains(msg, "平台管理员") {
 		t.Errorf("给 super 授应用应 400，得到 %d %q", code, msg)
 	}
 
 	// ⑦ 审计两条都落行且 detail 只带 app（grant 有多条，按 detail 里的 app 精确找）
 	var grantDetail string
 	if err := svc.pool.QueryRow(
-		`SELECT detail FROM audit_logs WHERE action = ? AND result = 'ok' AND detail LIKE '%"app":"calorie-diary"%'
+		`SELECT detail FROM audit_logs WHERE action = ? AND result = 'ok' AND detail LIKE '%"app":"CalorieDiary"%'
 		 ORDER BY id DESC LIMIT 1`, AuditRoleGrant).Scan(&grantDetail); err != nil {
 		t.Fatalf("查 grant 审计: %v", err)
 	}
-	if !strings.Contains(grantDetail, `"app":"calorie-diary"`) {
+	if !strings.Contains(grantDetail, `"app":"CalorieDiary"`) {
 		t.Errorf("grant 审计应带 app，得到 %s", grantDetail)
 	}
 	var revokeDetail string
@@ -111,7 +111,7 @@ func TestAdminSetScopeGrantRevoke(t *testing.T) {
 		AuditRoleRevoke).Scan(&revokeDetail); err != nil {
 		t.Fatalf("查 revoke 审计: %v", err)
 	}
-	if !strings.Contains(revokeDetail, `"app":"expense-diary"`) {
+	if !strings.Contains(revokeDetail, `"app":"ExpenseDiary"`) {
 		t.Errorf("revoke 审计应带 app，得到 %s", revokeDetail)
 	}
 }
@@ -123,10 +123,10 @@ func TestAdminSetScopeGrantRevoke(t *testing.T) {
 func TestAdminListSessionsAppsFilter(t *testing.T) {
 	svc, mailer := newTestService(t)
 	newPasskeyUser(t, svc, mailer, "sessfilter@example.com")
-	if _, err := svc.Login("sessfilter@example.com", "secret123", "calorie-diary", testMeta); err != nil {
+	if _, err := svc.Login("sessfilter@example.com", "secret123", "CalorieDiary", testMeta); err != nil {
 		t.Fatalf("calorie 登录: %v", err)
 	}
-	if _, err := svc.Login("sessfilter@example.com", "secret123", "expense-diary", testMeta); err != nil {
+	if _, err := svc.Login("sessfilter@example.com", "secret123", "ExpenseDiary", testMeta); err != nil {
 		t.Fatalf("expense 登录: %v", err)
 	}
 
@@ -134,16 +134,16 @@ func TestAdminListSessionsAppsFilter(t *testing.T) {
 	if err != nil || len(all) < 3 {
 		t.Fatalf("全量应至少 3 行（注册 + 两 app），得到 %d err=%v", len(all), err)
 	}
-	cal, _, _, err := svc.AdminListSessions(0, []string{"calorie-diary"}, "", "", 50, 0)
+	cal, _, _, err := svc.AdminListSessions(0, []string{"CalorieDiary"}, "", "", 50, 0)
 	if err != nil || len(cal) == 0 {
 		t.Fatalf("按 app 过滤应有行，得到 %d err=%v", len(cal), err)
 	}
 	for _, it := range cal {
-		if it.App != "calorie-diary" {
+		if it.App != "CalorieDiary" {
 			t.Errorf("过滤后不该出现 %s 的行: %+v", it.App, it)
 		}
 	}
-	both, _, _, err := svc.AdminListSessions(0, []string{"calorie-diary", "expense-diary"}, "", "", 50, 0)
+	both, _, _, err := svc.AdminListSessions(0, []string{"CalorieDiary", "ExpenseDiary"}, "", "", 50, 0)
 	if err != nil || len(both) < 2 {
 		t.Errorf("双 app 过滤应含两 app 的行，得到 %d err=%v", len(both), err)
 	}
@@ -155,14 +155,14 @@ func TestAdminRevokeSessionScopeBoundary(t *testing.T) {
 	svc, mailer := newTestService(t)
 	adminA := seedAdminUser(t, svc, mailer, "kick-a@example.com", adminRoleAdmin)
 	if _, err := svc.pool.Exec("INSERT INTO admin_scopes (uid, app, granted_by, granted_at) VALUES (?,?,?,?)",
-		adminA.UID, "calorie-diary", adminA.UID, time.Now().UnixMilli()); err != nil {
+		adminA.UID, "CalorieDiary", adminA.UID, time.Now().UnixMilli()); err != nil {
 		t.Fatalf("落授权行: %v", err)
 	}
 	user := newPasskeyUser(t, svc, mailer, "kick-victim@example.com")
-	if _, err := svc.Login("kick-victim@example.com", "secret123", "calorie-diary", testMeta); err != nil {
+	if _, err := svc.Login("kick-victim@example.com", "secret123", "CalorieDiary", testMeta); err != nil {
 		t.Fatalf("calorie 登录: %v", err)
 	}
-	if _, err := svc.Login("kick-victim@example.com", "secret123", "expense-diary", testMeta); err != nil {
+	if _, err := svc.Login("kick-victim@example.com", "secret123", "ExpenseDiary", testMeta); err != nil {
 		t.Fatalf("expense 登录: %v", err)
 	}
 	// 两台的 sid 直接从会话表按 app 反查（业务层测试不必绕 JWT claims）
@@ -174,10 +174,10 @@ func TestAdminRevokeSessionScopeBoundary(t *testing.T) {
 		}
 		return sid
 	}
-	calSID, expSID := sidOf("calorie-diary"), sidOf("expense-diary")
+	calSID, expSID := sidOf("CalorieDiary"), sidOf("ExpenseDiary")
 
 	// 越界：踢 expense 会话 → 403，会话仍活着
-	if code, msg := httpMsg(svc.AdminRevokeSession(adminA, expSID, []string{"calorie-diary"})); code != 403 || !strings.Contains(msg, "没有该项目") {
+	if code, msg := httpMsg(svc.AdminRevokeSession(adminA, expSID, []string{"CalorieDiary"})); code != 403 || !strings.Contains(msg, "没有该项目") {
 		t.Errorf("越界踢会话应 403，得到 %d %q", code, msg)
 	}
 	var revoked sql.NullInt64
@@ -185,7 +185,7 @@ func TestAdminRevokeSessionScopeBoundary(t *testing.T) {
 		t.Errorf("被拒的吊销不该生效（revoked_at 应为 NULL），得到 valid=%v err=%v", revoked.Valid, err)
 	}
 	// 边界内：踢 calorie 会话 → 成功
-	if err := svc.AdminRevokeSession(adminA, calSID, []string{"calorie-diary"}); err != nil {
+	if err := svc.AdminRevokeSession(adminA, calSID, []string{"CalorieDiary"}); err != nil {
 		t.Errorf("授权 app 内踢会话应成功: %v", err)
 	}
 	// super（apps=nil）不限
@@ -193,7 +193,7 @@ func TestAdminRevokeSessionScopeBoundary(t *testing.T) {
 		t.Errorf("apps=nil 应不限: %v", err)
 	}
 	// 不存在的 id 幂等成功
-	if err := svc.AdminRevokeSession(adminA, 1234567890123456789, []string{"calorie-diary"}); err != nil {
+	if err := svc.AdminRevokeSession(adminA, 1234567890123456789, []string{"CalorieDiary"}); err != nil {
 		t.Errorf("不存在的 id 应幂等成功: %v", err)
 	}
 	// 越界尝试落 fail 审计
@@ -209,16 +209,16 @@ func TestAdminRevokeSessionScopeBoundary(t *testing.T) {
 func TestQueryAuditAppsFilter(t *testing.T) {
 	svc, mailer := newTestService(t)
 	newPasskeyUser(t, svc, mailer, "auditfilter@example.com")
-	if _, err := svc.Login("auditfilter@example.com", "secret123", "calorie-diary", testMeta); err != nil {
+	if _, err := svc.Login("auditfilter@example.com", "secret123", "CalorieDiary", testMeta); err != nil {
 		t.Fatalf("登录: %v", err)
 	}
 
-	// 登录事件的 detail 带 {"app":"calorie-diary"}
+	// 登录事件的 detail 带 {"app":"CalorieDiary"}
 	_, allTotal, err := svc.QueryAudit(AuditQuery{Limit: 50})
 	if err != nil || allTotal == 0 {
 		t.Fatalf("全量审计应有行，total=%d err=%v", allTotal, err)
 	}
-	cal, calTotal, err := svc.QueryAudit(AuditQuery{Limit: 50, Apps: []string{"calorie-diary"}})
+	cal, calTotal, err := svc.QueryAudit(AuditQuery{Limit: 50, Apps: []string{"CalorieDiary"}})
 	if err != nil || calTotal == 0 {
 		t.Fatalf("按 app 过滤审计应有行，total=%d err=%v", calTotal, err)
 	}
@@ -226,12 +226,12 @@ func TestQueryAuditAppsFilter(t *testing.T) {
 		t.Errorf("过滤后不该多于全量: %d > %d", calTotal, allTotal)
 	}
 	for _, it := range cal {
-		if it.Detail["app"] != "calorie-diary" {
+		if it.Detail["app"] != "CalorieDiary" {
 			t.Errorf("过滤结果混入非本 app 条目: %+v", it)
 		}
 	}
 	// 名单外 app 过滤出空（route 层已挡名单外，这里验证口径本身）
-	exp, expTotal, err := svc.QueryAudit(AuditQuery{Limit: 50, Apps: []string{"expense-diary"}})
+	exp, expTotal, err := svc.QueryAudit(AuditQuery{Limit: 50, Apps: []string{"ExpenseDiary"}})
 	if err != nil {
 		t.Fatalf("expense 过滤: %v", err)
 	}
@@ -258,7 +258,7 @@ func TestAdminAIUsageAppsFilter(t *testing.T) {
 		id    int64
 		email string
 		app   string
-	}{{u1, "ai-u1@example.com", "calorie-diary"}, {u2, "ai-u2@example.com", "expense-diary"}} {
+	}{{u1, "ai-u1@example.com", "CalorieDiary"}, {u2, "ai-u2@example.com", "ExpenseDiary"}} {
 		if _, err := svc.pool.Exec(
 			"INSERT INTO users (id, email, created_at, token_version) VALUES (?,?,?,1)", u.id, u.email, now); err != nil {
 			t.Fatalf("落用户: %v", err)
@@ -298,7 +298,7 @@ func TestAdminAIUsageAppsFilter(t *testing.T) {
 	}
 
 	// calorie 视角：只见 u1（5）；u2 与 global 行都在视野外
-	cal, err := svc.AdminAIUsage(7, []string{"calorie-diary"})
+	cal, err := svc.AdminAIUsage(7, []string{"CalorieDiary"})
 	if err != nil || len(cal.Days) == 0 {
 		t.Fatalf("calorie 看板: %v", err)
 	}
@@ -315,7 +315,7 @@ func TestAdminAIUsageAppsFilter(t *testing.T) {
 	}
 
 	// expense 视角：只见 u2（7）
-	exp, err := svc.AdminAIUsage(7, []string{"expense-diary"})
+	exp, err := svc.AdminAIUsage(7, []string{"ExpenseDiary"})
 	if err != nil || len(exp.Days) == 0 {
 		t.Fatalf("expense 看板: %v", err)
 	}
@@ -327,11 +327,11 @@ func TestAdminAIUsageAppsFilter(t *testing.T) {
 	}
 
 	// 钻取的收权口径与总览同源：calorie 视角钻 u2（expense 用户）→ 404（不泄露存在性）
-	_, derr := svc.AdminAIUsageUser(7, []string{"calorie-diary"}, u2)
+	_, derr := svc.AdminAIUsageUser(7, []string{"CalorieDiary"}, u2)
 	if code, _ := httpMsg(derr); code != 404 {
 		t.Errorf("越界钻取应 404，得到 %d", code)
 	}
-	if _, err := svc.AdminAIUsageUser(7, []string{"calorie-diary"}, u1); err != nil {
+	if _, err := svc.AdminAIUsageUser(7, []string{"CalorieDiary"}, u1); err != nil {
 		t.Errorf("授权项目内钻取应成功: %v", err)
 	}
 }
@@ -344,7 +344,7 @@ func TestDeleteAccountClearsScopes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("解析 victim: %v", err)
 	}
-	if err := svc.AdminSetScope(super, c.UID, "calorie-diary", true); err != nil {
+	if err := svc.AdminSetScope(super, c.UID, "CalorieDiary", true); err != nil {
 		t.Fatalf("授予: %v", err)
 	}
 	var before int

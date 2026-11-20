@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/WXies-Team/auth/internal/auth"
-	"github.com/WXies-Team/auth/internal/protocol"
+	"github.com/WXies-Team/Auth/internal/auth"
+	"github.com/WXies-Team/Auth/internal/protocol"
 )
 
 // Web 管理台的 HTTP 层：cookie 签发/清除、CSRF 与 Origin 两道守卫、

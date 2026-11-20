@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/WXies-Team/auth/internal/db"
+	"github.com/WXies-Team/Auth/internal/db"
 )
 
 // 登录与 /internal/verify 共用的账号态闸（W2 封禁 / W5 项目登录白名单）。

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/WXies-Team/auth/internal/protocol"
+	"github.com/WXies-Team/Auth/internal/protocol"
 )
 
 // base64Of 造一段指定**解码后**字节数的合法 base64（内容是 'a'，不是真图片，

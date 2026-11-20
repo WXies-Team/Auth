@@ -112,7 +112,7 @@ CREATE TABLE IF NOT EXISTS user_profile (
 -- 「谁在什么时候授的」，判定不读它们。授予只能由 super 做（只能授予低于自己）。
 CREATE TABLE IF NOT EXISTS admin_scopes (
     uid        BIGINT      NOT NULL,
-    app        VARCHAR(32) NOT NULL,          -- calorie-diary / expense-diary（与 allowedApps 同源校验）
+    app        VARCHAR(32) NOT NULL,          -- CalorieDiary / ExpenseDiary（与 allowedApps 同源校验）
     granted_by BIGINT      NOT NULL,
     granted_at BIGINT      NOT NULL,
     PRIMARY KEY (uid, app)

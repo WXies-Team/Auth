@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/WXies-Team/auth/internal/db"
+	"github.com/WXies-Team/Auth/internal/db"
 )
 
 // 新设备登录提醒（W1）：登录成功建会话后，若本次 UA 的规范化指纹与该用户**其它**

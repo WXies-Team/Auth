@@ -16,7 +16,7 @@ func TestUAFingerprintFamilyLevel(t *testing.T) {
 	const win120 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 	const win131 = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 	const macSafari = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"
-	const pixel = "calorie-diary/1.2.3 (Android; Pixel 8)"
+	const pixel = "CalorieDiary/1.2.3 (Android; Pixel 8)"
 
 	if uaFingerprint(win120) != uaFingerprint(win131) {
 		t.Errorf("同机同浏览器跨版本应同指纹：%q vs %q", uaFingerprint(win120), uaFingerprint(win131))
@@ -37,7 +37,7 @@ func TestUAFingerprintFamilyLevel(t *testing.T) {
 func TestIsNewDeviceDecision(t *testing.T) {
 	const winUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 	const phoneBrowser = "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
-	const phoneApp = "calorie-diary/1.2.3 (Android; Pixel 8)"
+	const phoneApp = "CalorieDiary/1.2.3 (Android; Pixel 8)"
 
 	// 没有任何活跃会话：首台设备即新设备
 	if !isNewDevice(map[string]bool{}, winUA) {
@@ -65,8 +65,8 @@ func TestIsNewDeviceDecision(t *testing.T) {
 func TestLoginNotifyAppLabel(t *testing.T) {
 	cases := map[string]string{
 		"":              "Auth 控制台",
-		"calorie-diary": "热量日记",
-		"expense-diary": "开支日记",
+		"CalorieDiary": "热量日记",
+		"ExpenseDiary": "开支日记",
 		"evil-app":      "Auth", // 未知 app 兜底中性品牌（上游已挡，这里只验不 panic）
 	}
 	for app, want := range cases {
@@ -80,7 +80,7 @@ func TestLoginNotifyAppLabel(t *testing.T) {
 // 含管理入口）+ HTML/纯文本双形态并存 + 设备名过转义。
 func TestLoginNotifyEmailTemplate(t *testing.T) {
 	at := time.Date(2026, 10, 21, 9, 30, 0, 0, time.Local)
-	for _, app := range []string{"calorie-diary", "expense-diary", ""} {
+	for _, app := range []string{"CalorieDiary", "ExpenseDiary", ""} {
 		b := brandFor(app)
 		device := "Pixel 8"
 		project := loginNotifyAppLabel(app)
@@ -153,7 +153,7 @@ func TestLoginNotifyTriggerEndToEnd(t *testing.T) {
 
 	const winUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 	// ① 同 UA（注册会话的 UA）重复登录：不是新设备，不发
-	if _, err := svc.WebLoginPassword("login-notify@example.com", "secret123", testMeta, "calorie-diary"); err != nil {
+	if _, err := svc.WebLoginPassword("login-notify@example.com", "secret123", testMeta, "CalorieDiary"); err != nil {
 		t.Fatalf("同 UA 登录失败: %v", err)
 	}
 	if got := countNotify(); got != 0 {
@@ -161,7 +161,7 @@ func TestLoginNotifyTriggerEndToEnd(t *testing.T) {
 	}
 	// ② 换 UA：新设备，发一封（App 登录 → 热量日记品牌）
 	res, err := svc.WebLoginPassword("login-notify@example.com", "secret123",
-		SessionMeta{IP: "203.0.113.9", UserAgent: winUA}, "calorie-diary")
+		SessionMeta{IP: "203.0.113.9", UserAgent: winUA}, "CalorieDiary")
 	if err != nil {
 		t.Fatalf("新 UA 登录失败: %v", err)
 	}
@@ -188,7 +188,7 @@ func TestLoginNotifyTriggerEndToEnd(t *testing.T) {
 	}
 	const iosUA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
 	if _, err := svc.WebLoginPassword("login-notify@example.com", "secret123",
-		SessionMeta{IP: "198.51.100.7", UserAgent: iosUA}, "calorie-diary"); err != nil {
+		SessionMeta{IP: "198.51.100.7", UserAgent: iosUA}, "CalorieDiary"); err != nil {
 		t.Fatalf("第三台设备登录失败: %v", err)
 	}
 	if got := countNotify(); got != 1 {

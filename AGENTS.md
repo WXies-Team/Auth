@@ -27,7 +27,7 @@ Before finishing: `go build ./...` and `go test ./...`. `JWT_SECRET` and `TOTP_E
 ## Boundaries
 
 ### Always
-- The `app` field on login/register/send-code is the JWT `aud`, whitelisted to `calorie-diary`/`expense-diary` via `allowedApps` in `internal/auth/auth.go`; add new apps there and in the downstream services.
+- The `app` field on login/register/send-code is the JWT `aud`, whitelisted to `CalorieDiary`/`ExpenseDiary` via `allowedApps` in `internal/auth/auth.go`; add new apps there and in the downstream services.
 - `/internal/*` is loopback/trusted-network only (403 otherwise); deploy config through `app_config` (10s cache), never hardcoded secrets.
 - On account deletion, call each diary hook and honor the 7-day grace (see sister-repos); a failing hook returns 503 and aborts.
 

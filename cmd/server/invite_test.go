@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/WXies-Team/auth/internal/auth"
-	"github.com/WXies-Team/auth/internal/config"
+	"github.com/WXies-Team/Auth/internal/auth"
+	"github.com/WXies-Team/Auth/internal/config"
 )
 
 // B9 的路由级用例：四道闸 + scope 收权过完之后的请求/回执形状，以及接受页
@@ -62,12 +62,12 @@ func TestAdminInviteRoutes(t *testing.T) {
 	t.Cleanup(drainInviteBucket)
 	e := newRouteEnv(t)
 	super := makeActor(t, e, "inv-super", "super", nil)
-	appAdmin := makeActor(t, e, "inv-one", "admin", []string{"calorie-diary"})
+	appAdmin := makeActor(t, e, "inv-one", "admin", []string{"CalorieDiary"})
 	plain := makeActor(t, e, "inv-plain", "user", nil)
 
 	// 创建 → {ok,expiresAt}
 	rec := e.do(t, "POST", "/admin/users/invite",
-		`{"email":"route-invitee@example.com","app":"calorie-diary"}`, super.withCSRF)
+		`{"email":"route-invitee@example.com","app":"CalorieDiary"}`, super.withCSRF)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("super 创建邀请应 200，得到 %d %s", rec.Code, rec.Body.String())
 	}
@@ -115,7 +115,7 @@ func TestAdminInviteRoutes(t *testing.T) {
 		t.Fatalf("应恰 1 条邀请: %v (%s)", err, rec.Body.String())
 	}
 	it := list.Invites[0]
-	if it.State != "pending" || it.Email != "route-invitee@example.com" || it.App != "calorie-diary" {
+	if it.State != "pending" || it.Email != "route-invitee@example.com" || it.App != "CalorieDiary" {
 		t.Errorf("邀请行不对: %+v", it)
 	}
 	if it.ID == "" || it.CreatedAt == 0 || it.ExpiresAt == 0 {
@@ -143,12 +143,12 @@ func TestAdminInviteRoutes(t *testing.T) {
 
 	// 权限：app-admin 带授权 app → 200；越权 app → 403；空 app → 403；普通用户 → 403
 	rec = e.do(t, "POST", "/admin/users/invite",
-		`{"email":"route-scope@example.com","app":"calorie-diary"}`, appAdmin.withCSRF)
+		`{"email":"route-scope@example.com","app":"CalorieDiary"}`, appAdmin.withCSRF)
 	if rec.Code != http.StatusOK {
 		t.Errorf("app-admin 邀请授权项目应 200，得到 %d %s", rec.Code, rec.Body.String())
 	}
 	rec = e.do(t, "POST", "/admin/users/invite",
-		`{"email":"route-out@example.com","app":"expense-diary"}`, appAdmin.withCSRF)
+		`{"email":"route-out@example.com","app":"ExpenseDiary"}`, appAdmin.withCSRF)
 	if rec.Code != http.StatusForbidden {
 		t.Errorf("越权项目应 403，得到 %d %s", rec.Code, rec.Body.String())
 	}
@@ -172,7 +172,7 @@ func TestAdminInviteRoutes(t *testing.T) {
 		t.Fatalf("解析列表: %v", err)
 	}
 	for _, inv := range list.Invites {
-		if inv.App != "calorie-diary" {
+		if inv.App != "CalorieDiary" {
 			t.Errorf("app-admin 不该见到 %q 的邀请: %+v", inv.App, inv)
 		}
 	}
@@ -198,7 +198,7 @@ func TestAdminBulkRoute(t *testing.T) {
 
 	// 封禁两人的形状：batchId + kind + total/succeeded/failed + items（逐项 ok/message）
 	rec = e.do(t, "POST", "/admin/users/bulk",
-		fmt.Sprintf(`{"kind":"ban","uids":[%d,%d],"app":"calorie-diary","reason":"路由测试"}`, v1, v2),
+		fmt.Sprintf(`{"kind":"ban","uids":[%d,%d],"app":"CalorieDiary","reason":"路由测试"}`, v1, v2),
 		super.withCSRF)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("super 批量封禁应 200，得到 %d %s", rec.Code, rec.Body.String())
@@ -235,12 +235,12 @@ func TestAdminBulkRoute(t *testing.T) {
 	}
 	// 封禁行确实落库
 	var bans int
-	if err := e.pool.QueryRow("SELECT COUNT(*) FROM user_bans WHERE app = 'calorie-diary'").Scan(&bans); err != nil || bans != 2 {
+	if err := e.pool.QueryRow("SELECT COUNT(*) FROM user_bans WHERE app = 'CalorieDiary'").Scan(&bans); err != nil || bans != 2 {
 		t.Errorf("应落 2 条封禁行，得到 %d（%v）", bans, err)
 	}
 	// 解封同端点（kind=unban）→ 2/2
 	rec = e.do(t, "POST", "/admin/users/bulk",
-		fmt.Sprintf(`{"kind":"unban","uids":[%d,%d],"app":"calorie-diary"}`, v1, v2), super.withCSRF)
+		fmt.Sprintf(`{"kind":"unban","uids":[%d,%d],"app":"CalorieDiary"}`, v1, v2), super.withCSRF)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("批量解封应 200，得到 %d %s", rec.Code, rec.Body.String())
 	}
@@ -280,7 +280,7 @@ func TestInviteAcceptPageRoutes(t *testing.T) {
 
 	// 有效 token → 表单变体（邮箱只读 + 两个 autocomplete + 隐藏 token）
 	token := "route-accept-" + fmt.Sprint(time.Now().UnixNano())
-	seedInviteRow(t, e, "route-accept@example.com", "calorie-diary", token,
+	seedInviteRow(t, e, "route-accept@example.com", "CalorieDiary", token,
 		time.Now().Add(time.Hour).UnixMilli())
 	rec = e.do(t, "GET", "/web/invite?token="+url.QueryEscape(token), "", nil)
 	if rec.Code != http.StatusOK {

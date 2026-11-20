@@ -111,7 +111,7 @@ func TestKnownAppOrderMatchesWhitelist(t *testing.T) {
 
 // 项目拒绝文案带项目名（品牌注册表取名）。
 func TestRestrictedMessageNamesProject(t *testing.T) {
-	msg := restrictedMessage("calorie-diary")
+	msg := restrictedMessage("CalorieDiary")
 	if !strings.Contains(msg, "热量日记") || !strings.Contains(msg, "仅限受邀用户登录") {
 		t.Errorf("项目拒绝文案应带项目名与固定语义，得到 %q", msg)
 	}
@@ -126,7 +126,7 @@ func TestAdminResetPasswordForcedChangeFlow(t *testing.T) {
 	actor := seedAdminUser(t, svc, mailer, "w1-super@example.com", adminRoleSuper)
 	target := newPasskeyUser(t, svc, mailer, "w1-target@example.com")
 	// 目标在场一台 App 会话（重置后必须被杀）
-	if _, err := svc.Login(target.Email, "secret123", "calorie-diary", testMeta); err != nil {
+	if _, err := svc.Login(target.Email, "secret123", "CalorieDiary", testMeta); err != nil {
 		t.Fatalf("造目标会话: %v", err)
 	}
 
@@ -165,7 +165,7 @@ func TestAdminResetPasswordForcedChangeFlow(t *testing.T) {
 		t.Errorf("重置后目标应无活跃会话，得到 %d err=%v", alive, err)
 	}
 	// 临时密码可登录，回执必须带 mustChangePassword=true（契约 4）
-	resp, err := svc.Login(target.Email, tmp, "calorie-diary", testMeta)
+	resp, err := svc.Login(target.Email, tmp, "CalorieDiary", testMeta)
 	if err != nil {
 		t.Fatalf("临时密码应可登录: %v", err)
 	}
@@ -205,7 +205,7 @@ func TestAdminResetPasswordPermissions(t *testing.T) {
 	root := seedAdminUser(t, svc, mailer, RootSuperEmail, adminRoleSuper)
 	other := seedAdminUser(t, svc, mailer, "w1-other-super@example.com", adminRoleSuper)
 	appAdmin := seedAdminUser(t, svc, mailer, "w1-appadmin@example.com", adminRoleAdmin)
-	if err := svc.AdminSetScope(root, appAdmin.UID, "calorie-diary", true); err != nil {
+	if err := svc.AdminSetScope(root, appAdmin.UID, "CalorieDiary", true); err != nil {
 		t.Fatalf("授 app-admin scope: %v", err)
 	}
 	target := newPasskeyUser(t, svc, mailer, "w1-perm-target@example.com")
@@ -216,7 +216,7 @@ func TestAdminResetPasswordPermissions(t *testing.T) {
 		time.Now().UnixMilli(), target.UID); err != nil {
 		t.Fatalf("清目标会话: %v", err)
 	}
-	scope := AdminScope{Apps: []string{"calorie-diary"}}
+	scope := AdminScope{Apps: []string{"CalorieDiary"}}
 
 	// 目标无任何会话 → 403 你没有该用户的管理权限
 	_, err := svc.AdminResetPassword(appAdmin, scope, target.UID, AdminPasswordReset{Mode: "generate"})
@@ -224,7 +224,7 @@ func TestAdminResetPasswordPermissions(t *testing.T) {
 		t.Fatalf("无会话目标应 403，得到 %d %q", code, msg)
 	}
 	// 目标在 calorie 有会话 → 放行
-	if _, err := svc.Login(target.Email, "secret123", "calorie-diary", testMeta); err != nil {
+	if _, err := svc.Login(target.Email, "secret123", "CalorieDiary", testMeta); err != nil {
 		t.Fatalf("造目标会话: %v", err)
 	}
 	if _, err := svc.AdminResetPassword(appAdmin, scope, target.UID, AdminPasswordReset{Mode: "generate"}); err != nil {
@@ -249,19 +249,19 @@ func TestAdminBanBlocksLoginAndVerify(t *testing.T) {
 	svc, mailer := newTestService(t)
 	admin := seedAdminUser(t, svc, mailer, "w2-super@example.com", adminRoleSuper)
 	user := newPasskeyUser(t, svc, mailer, "w2-user@example.com")
-	resp, err := svc.Login(user.Email, "secret123", "calorie-diary", testMeta)
+	resp, err := svc.Login(user.Email, "secret123", "CalorieDiary", testMeta)
 	if err != nil {
 		t.Fatalf("造会话: %v", err)
 	}
 
 	// 参数闸（都不该落库）：admin 传 '*'、until 已过去、未知 slug
-	starErr := svc.AdminBan(admin, AdminScope{Apps: []string{"calorie-diary"}}, user.UID,
+	starErr := svc.AdminBan(admin, AdminScope{Apps: []string{"CalorieDiary"}}, user.UID,
 		AdminBanInput{App: "*"})
 	if code, _ := httpMsg(starErr); code != 400 {
 		t.Errorf("app-admin 传 '*' 应 400，得到 %d %v", code, starErr)
 	}
 	pastErr := svc.AdminBan(admin, AdminScope{Super: true}, user.UID,
-		AdminBanInput{App: "calorie-diary", Until: time.Now().Add(-time.Minute).UnixMilli()})
+		AdminBanInput{App: "CalorieDiary", Until: time.Now().Add(-time.Minute).UnixMilli()})
 	if code, _ := httpMsg(pastErr); code != 400 {
 		t.Errorf("until 已过去应 400，得到 %d %v", code, pastErr)
 	}
@@ -275,27 +275,27 @@ func TestAdminBanBlocksLoginAndVerify(t *testing.T) {
 	// 它接住的正是吊销竞态与旁路写入的活会话
 	if _, err := svc.pool.Exec(
 		"INSERT INTO user_bans (uid, app, until_ms, reason, banned_by, created_at) VALUES (?,?,0,'旁路写入',?,?)",
-		user.UID, "calorie-diary", admin.UID, time.Now().UnixMilli()); err != nil {
+		user.UID, "CalorieDiary", admin.UID, time.Now().UnixMilli()); err != nil {
 		t.Fatalf("种封禁行: %v", err)
 	}
-	_, verr := svc.Verify("Bearer "+resp.Token, "calorie-diary")
+	_, verr := svc.Verify("Bearer "+resp.Token, "CalorieDiary")
 	if code, msg := httpMsg(verr); code != 403 || !strings.Contains(msg, "账号已被封禁") {
 		t.Errorf("被封项目的 verify 应 403 报封禁，得到 %d %q", code, msg)
 	}
 	// 正式封禁（upsert 覆盖旁路行）：会话当场吊销 + 文案元素齐
 	if err := svc.AdminBan(admin, AdminScope{Super: true}, user.UID, AdminBanInput{
-		App: "calorie-diary", Until: 0, Reason: "违规操作",
+		App: "CalorieDiary", Until: 0, Reason: "违规操作",
 	}); err != nil {
 		t.Fatalf("封禁应成功: %v", err)
 	}
-	_, banLogin := svc.Login(user.Email, "secret123", "calorie-diary", testMeta)
+	_, banLogin := svc.Login(user.Email, "secret123", "CalorieDiary", testMeta)
 	if code, msg := httpMsg(banLogin); code != 403 ||
 		!strings.Contains(msg, "账号已被封禁") || !strings.Contains(msg, "：违规操作") ||
 		!strings.Contains(msg, "为永久封禁") || !strings.Contains(msg, "如有疑问请联系管理员") {
 		t.Errorf("封禁后 calorie 登录应 403 且文案元素齐，得到 %d %q", code, msg)
 	}
 	// 范围隔离：expense 项目不受牵连
-	if _, err := svc.Login(user.Email, "secret123", "expense-diary", testMeta); err != nil {
+	if _, err := svc.Login(user.Email, "secret123", "ExpenseDiary", testMeta); err != nil {
 		t.Errorf("app 范围封禁不该牵连其它项目登录: %v", err)
 	}
 	// 详情页 bans 回执（契约 6）
@@ -303,17 +303,17 @@ func TestAdminBanBlocksLoginAndVerify(t *testing.T) {
 	if err != nil {
 		t.Fatalf("取详情: %v", err)
 	}
-	if len(detail.Bans) != 1 || detail.Bans[0].App != "calorie-diary" || detail.Bans[0].Until != 0 || detail.Bans[0].Reason != "违规操作" {
+	if len(detail.Bans) != 1 || detail.Bans[0].App != "CalorieDiary" || detail.Bans[0].Until != 0 || detail.Bans[0].Reason != "违规操作" {
 		t.Errorf("详情 bans 不对: %+v", detail.Bans)
 	}
 	// 解封 → 恢复登录；重复解封幂等
-	if err := svc.AdminUnban(admin, AdminScope{Super: true}, user.UID, "calorie-diary", ""); err != nil {
+	if err := svc.AdminUnban(admin, AdminScope{Super: true}, user.UID, "CalorieDiary", ""); err != nil {
 		t.Fatalf("解封: %v", err)
 	}
-	if err := svc.AdminUnban(admin, AdminScope{Super: true}, user.UID, "calorie-diary", ""); err != nil {
+	if err := svc.AdminUnban(admin, AdminScope{Super: true}, user.UID, "CalorieDiary", ""); err != nil {
 		t.Errorf("重复解封应幂等: %v", err)
 	}
-	if _, err := svc.Login(user.Email, "secret123", "calorie-diary", testMeta); err != nil {
+	if _, err := svc.Login(user.Email, "secret123", "CalorieDiary", testMeta); err != nil {
 		t.Errorf("解封后应恢复登录: %v", err)
 	}
 
@@ -321,14 +321,14 @@ func TestAdminBanBlocksLoginAndVerify(t *testing.T) {
 	past := time.Now().Add(-time.Minute).UnixMilli()
 	if _, err := svc.pool.Exec(
 		"INSERT INTO user_bans (uid, app, until_ms, reason, banned_by, created_at) VALUES (?,?,?, '', ?, ?)",
-		user.UID, "calorie-diary", past, admin.UID, time.Now().UnixMilli()); err != nil {
+		user.UID, "CalorieDiary", past, admin.UID, time.Now().UnixMilli()); err != nil {
 		t.Fatalf("种过期封禁: %v", err)
 	}
-	if _, err := svc.Login(user.Email, "secret123", "calorie-diary", testMeta); err != nil {
+	if _, err := svc.Login(user.Email, "secret123", "CalorieDiary", testMeta); err != nil {
 		t.Errorf("过期封禁不该拦登录: %v", err)
 	}
 	var left int
-	_ = svc.pool.QueryRow("SELECT COUNT(*) FROM user_bans WHERE uid = ? AND app = ?", user.UID, "calorie-diary").Scan(&left)
+	_ = svc.pool.QueryRow("SELECT COUNT(*) FROM user_bans WHERE uid = ? AND app = ?", user.UID, "CalorieDiary").Scan(&left)
 	if left != 0 {
 		t.Errorf("过期封禁行应被惰性删光，剩 %d 行", left)
 	}
@@ -350,53 +350,53 @@ func TestProjectRestrictionAndAccess(t *testing.T) {
 	stranger := newPasskeyUser(t, svc, mailer, "w5-stranger@example.com")
 	member := newPasskeyUser(t, svc, mailer, "w5-member@example.com")
 	appAdmin := seedAdminUser(t, svc, mailer, "w5-appadmin@example.com", adminRoleAdmin)
-	if err := svc.AdminSetScope(super, appAdmin.UID, "expense-diary", true); err != nil {
+	if err := svc.AdminSetScope(super, appAdmin.UID, "ExpenseDiary", true); err != nil {
 		t.Fatalf("授 app-admin scope: %v", err)
 	}
 	superScope := AdminScope{Super: true}
-	appScope := AdminScope{Apps: []string{"expense-diary"}}
+	appScope := AdminScope{Apps: []string{"ExpenseDiary"}}
 
 	// stranger 在限制前先登录 calorie（活跃会话，开限制时应被清场）
-	if _, err := svc.Login(stranger.Email, "secret123", "calorie-diary", testMeta); err != nil {
+	if _, err := svc.Login(stranger.Email, "secret123", "CalorieDiary", testMeta); err != nil {
 		t.Fatalf("造 stranger 会话: %v", err)
 	}
 	// 开限制：不合规用户的该项目会话当场吊销
-	if err := svc.AdminSetRestricted(super, superScope, "calorie-diary", true); err != nil {
+	if err := svc.AdminSetRestricted(super, superScope, "CalorieDiary", true); err != nil {
 		t.Fatalf("开限制: %v", err)
 	}
 	var strangerAlive int
 	if err := svc.pool.QueryRow(
-		"SELECT COUNT(*) FROM sessions WHERE user_id = ? AND app = 'calorie-diary' AND revoked_at IS NULL",
+		"SELECT COUNT(*) FROM sessions WHERE user_id = ? AND app = 'CalorieDiary' AND revoked_at IS NULL",
 		stranger.UID).Scan(&strangerAlive); err != nil || strangerAlive != 0 {
 		t.Errorf("开限制应吊销不合规用户的该项目会话，剩 %d err=%v", strangerAlive, err)
 	}
 	// 名单外用户被拒：文案带项目名与固定语义
-	_, denyMsg := svc.Login(stranger.Email, "secret123", "calorie-diary", testMeta)
+	_, denyMsg := svc.Login(stranger.Email, "secret123", "CalorieDiary", testMeta)
 	if code, msg := httpMsg(denyMsg); code != 403 ||
 		!strings.Contains(msg, "热量日记") || !strings.Contains(msg, "仅限受邀用户登录") {
 		t.Errorf("名单外登录应 403 且带项目名，得到 %d %q", code, msg)
 	}
 	// 其它项目不受牵连
-	if _, err := svc.Login(stranger.Email, "secret123", "expense-diary", testMeta); err != nil {
+	if _, err := svc.Login(stranger.Email, "secret123", "ExpenseDiary", testMeta); err != nil {
 		t.Errorf("限制只该作用于本项目: %v", err)
 	}
 	// su 无限制
-	if _, err := svc.Login(super.Email, "secret123", "calorie-diary", testMeta); err != nil {
+	if _, err := svc.Login(super.Email, "secret123", "CalorieDiary", testMeta); err != nil {
 		t.Errorf("super 不受项目限制: %v", err)
 	}
 
 	// 加名单：登录放行；重复加幂等；未知邮箱 404
-	if err := svc.AdminGrantAccess(super, superScope, "calorie-diary", member.Email); err != nil {
+	if err := svc.AdminGrantAccess(super, superScope, "CalorieDiary", member.Email); err != nil {
 		t.Fatalf("加名单: %v", err)
 	}
-	if err := svc.AdminGrantAccess(super, superScope, "calorie-diary", member.Email); err != nil {
+	if err := svc.AdminGrantAccess(super, superScope, "CalorieDiary", member.Email); err != nil {
 		t.Errorf("重复加名单应幂等: %v", err)
 	}
-	ghostGrant := svc.AdminGrantAccess(super, superScope, "calorie-diary", "ghost@example.com")
+	ghostGrant := svc.AdminGrantAccess(super, superScope, "CalorieDiary", "ghost@example.com")
 	if code, _ := httpMsg(ghostGrant); code != 404 {
 		t.Errorf("未知邮箱加名单应 404，得到 %d %v", code, ghostGrant)
 	}
-	if _, err := svc.Login(member.Email, "secret123", "calorie-diary", testMeta); err != nil {
+	if _, err := svc.Login(member.Email, "secret123", "CalorieDiary", testMeta); err != nil {
 		t.Errorf("在册用户应可登录: %v", err)
 	}
 
@@ -405,7 +405,7 @@ func TestProjectRestrictionAndAccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("列项目: %v", err)
 	}
-	if len(projects) != 2 || projects[0].App != "calorie-diary" || projects[0].Name != "热量日记" || !projects[0].Restricted {
+	if len(projects) != 2 || projects[0].App != "CalorieDiary" || projects[0].Name != "热量日记" || !projects[0].Restricted {
 		t.Errorf("super 项目列表不对: %+v", projects)
 	}
 	foundMember := false
@@ -418,16 +418,16 @@ func TestProjectRestrictionAndAccess(t *testing.T) {
 		t.Errorf("calorie 名单应含 member: %+v", projects[0].Members)
 	}
 	appProjects, err := svc.AdminListProjects(appScope)
-	if err != nil || len(appProjects) != 1 || appProjects[0].App != "expense-diary" {
+	if err != nil || len(appProjects) != 1 || appProjects[0].App != "ExpenseDiary" {
 		t.Errorf("app-admin 只该见授权项目: %+v err=%v", appProjects, err)
 	}
 
 	// app-admin 越权：管 calorie 的限制与名单一律 403；未知 slug 400
-	restrictErr := svc.AdminSetRestricted(appAdmin, appScope, "calorie-diary", false)
+	restrictErr := svc.AdminSetRestricted(appAdmin, appScope, "CalorieDiary", false)
 	if code, _ := httpMsg(restrictErr); code != 403 {
 		t.Errorf("app-admin 越权改限制应 403，得到 %d %v", code, restrictErr)
 	}
-	grantErr := svc.AdminGrantAccess(appAdmin, appScope, "calorie-diary", member.Email)
+	grantErr := svc.AdminGrantAccess(appAdmin, appScope, "CalorieDiary", member.Email)
 	if code, _ := httpMsg(grantErr); code != 403 {
 		t.Errorf("app-admin 越权加名单应 403，得到 %d %v", code, grantErr)
 	}
@@ -437,29 +437,29 @@ func TestProjectRestrictionAndAccess(t *testing.T) {
 	}
 
 	// 移除成员：删行 + 该项目会话吊销 + 再登录拒；未知邮箱幂等 ok
-	if err := svc.AdminRevokeAccess(super, superScope, "calorie-diary", member.Email); err != nil {
+	if err := svc.AdminRevokeAccess(super, superScope, "CalorieDiary", member.Email); err != nil {
 		t.Fatalf("移出名单: %v", err)
 	}
 	var memberAlive int
 	_ = svc.pool.QueryRow(
-		"SELECT COUNT(*) FROM sessions WHERE user_id = ? AND app = 'calorie-diary' AND revoked_at IS NULL",
+		"SELECT COUNT(*) FROM sessions WHERE user_id = ? AND app = 'CalorieDiary' AND revoked_at IS NULL",
 		member.UID).Scan(&memberAlive)
 	if memberAlive != 0 {
 		t.Errorf("移出名单应吊销该项目会话，剩 %d", memberAlive)
 	}
-	_, memberDeny := svc.Login(member.Email, "secret123", "calorie-diary", testMeta)
+	_, memberDeny := svc.Login(member.Email, "secret123", "CalorieDiary", testMeta)
 	if code, _ := httpMsg(memberDeny); code != 403 {
 		t.Errorf("移出名单后登录应 403，得到 %d %v", code, memberDeny)
 	}
-	if err := svc.AdminRevokeAccess(super, superScope, "calorie-diary", "ghost@example.com"); err != nil {
+	if err := svc.AdminRevokeAccess(super, superScope, "CalorieDiary", "ghost@example.com"); err != nil {
 		t.Errorf("移除未知邮箱应幂等 ok: %v", err)
 	}
 
 	// 关限制：恢复登录
-	if err := svc.AdminSetRestricted(super, superScope, "calorie-diary", false); err != nil {
+	if err := svc.AdminSetRestricted(super, superScope, "CalorieDiary", false); err != nil {
 		t.Fatalf("关限制: %v", err)
 	}
-	if _, err := svc.Login(stranger.Email, "secret123", "calorie-diary", testMeta); err != nil {
+	if _, err := svc.Login(stranger.Email, "secret123", "CalorieDiary", testMeta); err != nil {
 		t.Errorf("关限制后应恢复登录: %v", err)
 	}
 
@@ -484,7 +484,7 @@ func TestAdminChangeEmailFlow(t *testing.T) {
 	admin := seedAdminUser(t, svc, mailer, "b5-super@example.com", adminRoleSuper)
 	target := newPasskeyUser(t, svc, mailer, "b5-old@example.com")
 	registerViaCode(t, svc, mailer, "b5-taken@example.com", "secret123")
-	resp, err := svc.Login(target.Email, "secret123", "calorie-diary", testMeta)
+	resp, err := svc.Login(target.Email, "secret123", "CalorieDiary", testMeta)
 	if err != nil {
 		t.Fatalf("造目标会话: %v", err)
 	}
@@ -528,7 +528,7 @@ func TestAdminChangeEmailFlow(t *testing.T) {
 		t.Errorf("users.email 应为新值，得到 %q", gotEmail)
 	}
 	// 不 bump token_version：老 token 仍活（会话全保留），且 verify 立即回新邮箱
-	vr, verr := svc.Verify("Bearer "+resp.Token, "calorie-diary")
+	vr, verr := svc.Verify("Bearer "+resp.Token, "CalorieDiary")
 	if verr != nil {
 		t.Errorf("换邮不该吊销会话（不 bump token_version）: %v", verr)
 	} else if vr.Email != "b5-new@example.com" {
@@ -579,7 +579,7 @@ func TestAdminChangeEmailPermissions(t *testing.T) {
 	root := seedAdminUser(t, svc, mailer, RootSuperEmail, adminRoleSuper)
 	other := seedAdminUser(t, svc, mailer, "b5p-other-super@example.com", adminRoleSuper)
 	appAdmin := seedAdminUser(t, svc, mailer, "b5p-appadmin@example.com", adminRoleAdmin)
-	if err := svc.AdminSetScope(root, appAdmin.UID, "calorie-diary", true); err != nil {
+	if err := svc.AdminSetScope(root, appAdmin.UID, "CalorieDiary", true); err != nil {
 		t.Fatalf("授 app-admin scope: %v", err)
 	}
 	target := newPasskeyUser(t, svc, mailer, "b5p-target@example.com")
@@ -590,13 +590,13 @@ func TestAdminChangeEmailPermissions(t *testing.T) {
 		time.Now().UnixMilli(), target.UID); err != nil {
 		t.Fatalf("清目标会话: %v", err)
 	}
-	scope := AdminScope{Apps: []string{"calorie-diary"}}
+	scope := AdminScope{Apps: []string{"CalorieDiary"}}
 
 	denied := svc.AdminChangeEmail(appAdmin, scope, target.UID, AdminEmailChange{Email: "x1@example.com"})
 	if code, msg := httpMsg(denied); code != 403 || !strings.Contains(msg, "你没有该用户的管理权限") {
 		t.Errorf("无会话目标应 403，得到 %d %q", code, msg)
 	}
-	if _, err := svc.Login(target.Email, "secret123", "calorie-diary", testMeta); err != nil {
+	if _, err := svc.Login(target.Email, "secret123", "CalorieDiary", testMeta); err != nil {
 		t.Fatalf("造目标会话: %v", err)
 	}
 	if err := svc.AdminChangeEmail(appAdmin, scope, target.UID, AdminEmailChange{Email: "x1@example.com"}); err != nil {

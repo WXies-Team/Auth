@@ -119,7 +119,7 @@ func TestInviteEndToEnd(t *testing.T) {
 
 	// ---- 创建：邮箱归一化、24h 有效期、信发到目标邮箱、库里只落哈希 ----
 	before := time.Now().UnixMilli()
-	expiresAt, err := svc.AdminCreateInvite(super, scope, "  Invitee@Example.COM ", "calorie-diary")
+	expiresAt, err := svc.AdminCreateInvite(super, scope, "  Invitee@Example.COM ", "CalorieDiary")
 	if err != nil {
 		t.Fatalf("创建邀请: %v", err)
 	}
@@ -146,7 +146,7 @@ func TestInviteEndToEnd(t *testing.T) {
 	}
 
 	// ---- 查重：同邮箱待接受 400；已注册邮箱 400 ----
-	_, err = svc.AdminCreateInvite(super, scope, "invitee@example.com", "calorie-diary")
+	_, err = svc.AdminCreateInvite(super, scope, "invitee@example.com", "CalorieDiary")
 	if code, msg := httpMsg(err); code != 400 || !strings.Contains(msg, "待接受") {
 		t.Errorf("同邮箱待接受邀请应 400，得到 code=%d msg=%q", code, msg)
 	}
@@ -165,7 +165,7 @@ func TestInviteEndToEnd(t *testing.T) {
 		t.Fatalf("应恰有 1 条邀请，得到 %d", len(list))
 	}
 	it := list[0]
-	if it.Email != "invitee@example.com" || it.App != "calorie-diary" || it.State != "pending" {
+	if it.Email != "invitee@example.com" || it.App != "CalorieDiary" || it.State != "pending" {
 		t.Errorf("邀请行不对: %+v", it)
 	}
 	if it.ID == "" || it.ExpiresAt != expiresAt {
@@ -242,10 +242,10 @@ func TestInviteEndToEnd(t *testing.T) {
 	}
 
 	// ---- 接受：受限项目 → 建号 + project_access + 自动登录 + 单次消费 ----
-	if err := svc.AdminSetRestricted(super, scope, "calorie-diary", true); err != nil {
+	if err := svc.AdminSetRestricted(super, scope, "CalorieDiary", true); err != nil {
 		t.Fatalf("开项目限制: %v", err)
 	}
-	if _, err := svc.AdminCreateInvite(super, scope, "acceptee@example.com", "calorie-diary"); err != nil {
+	if _, err := svc.AdminCreateInvite(super, scope, "acceptee@example.com", "CalorieDiary"); err != nil {
 		t.Fatalf("创建接受用邀请: %v", err)
 	}
 	acceptToken := inviteTokenIn(t, mailer)
@@ -266,7 +266,7 @@ func TestInviteEndToEnd(t *testing.T) {
 	}
 	// 受限项目：project_access 落行（放行名单要的正是这行）
 	var acc int
-	if err := svc.pool.QueryRow("SELECT COUNT(*) FROM project_access WHERE app = 'calorie-diary' AND uid = ?",
+	if err := svc.pool.QueryRow("SELECT COUNT(*) FROM project_access WHERE app = 'CalorieDiary' AND uid = ?",
 		uid).Scan(&acc); err != nil || acc != 1 {
 		t.Errorf("受限项目接受应自动加入 project_access，得到 acc=%d err=%v", acc, err)
 	}
@@ -317,17 +317,17 @@ func TestInvitePermissionMatrix(t *testing.T) {
 	svc, mailer := newTestService(t)
 	super := seedAdminUser(t, svc, mailer, "invp-super@example.com", adminRoleSuper)
 	appAdmin := seedAdminUser(t, svc, mailer, "invp-one@example.com", adminRoleAdmin)
-	if err := svc.AdminSetScope(super, appAdmin.UID, "calorie-diary", true); err != nil {
+	if err := svc.AdminSetScope(super, appAdmin.UID, "CalorieDiary", true); err != nil {
 		t.Fatalf("授 scope: %v", err)
 	}
-	appScope := AdminScope{Apps: []string{"calorie-diary"}}
+	appScope := AdminScope{Apps: []string{"CalorieDiary"}}
 
 	// app-admin 带授权 app：允许（空 app = 账号级邀请，只属平台管理员）
-	if _, err := svc.AdminCreateInvite(appAdmin, appScope, "p-ok@example.com", "calorie-diary"); err != nil {
+	if _, err := svc.AdminCreateInvite(appAdmin, appScope, "p-ok@example.com", "CalorieDiary"); err != nil {
 		t.Errorf("app-admin 邀请授权项目应成功: %v", err)
 	}
 	// 越权项目 → 403
-	_, err := svc.AdminCreateInvite(appAdmin, appScope, "p-out@example.com", "expense-diary")
+	_, err := svc.AdminCreateInvite(appAdmin, appScope, "p-out@example.com", "ExpenseDiary")
 	if code, msg := httpMsg(err); code != 403 || !strings.Contains(msg, "管理权限") {
 		t.Errorf("越权项目应 403，得到 code=%d msg=%q", code, msg)
 	}
@@ -348,11 +348,11 @@ func TestInvitePermissionMatrix(t *testing.T) {
 	}
 
 	// 列表收权：app-admin 只见自己 app；零 scope admin 回空；super 全量
-	if _, err := svc.AdminCreateInvite(super, AdminScope{Super: true}, "p-exp@example.com", "expense-diary"); err != nil {
+	if _, err := svc.AdminCreateInvite(super, AdminScope{Super: true}, "p-exp@example.com", "ExpenseDiary"); err != nil {
 		t.Fatalf("super 邀请 expense: %v", err)
 	}
 	one, err := svc.AdminListInvites(appScope, "")
-	if err != nil || len(one) != 1 || one[0].App != "calorie-diary" {
+	if err != nil || len(one) != 1 || one[0].App != "CalorieDiary" {
 		t.Errorf("app-admin 应只见 calorie 的邀请，得到 %+v（%v）", one, err)
 	}
 	all, err := svc.AdminListInvites(AdminScope{Super: true}, "")

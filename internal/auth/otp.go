@@ -10,7 +10,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/WXies-Team/auth/internal/db"
+	"github.com/WXies-Team/Auth/internal/db"
 )
 
 // 验证码口径（对齐行业惯例与客户端 60 秒倒计时，与热量日记服务逐条一致）：

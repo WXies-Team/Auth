@@ -46,7 +46,7 @@ func TestInternalConfigRouteGate(t *testing.T) {
 	e := newRouteEnv(t)
 
 	// 带头且对得上 → 放行（库里一个配置键都没种，回执是空对象但状态码 200）
-	rec := doConfig(t, e, `{"app":"calorie-diary"}`, nil)
+	rec := doConfig(t, e, `{"app":"CalorieDiary"}`, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("带头对得上应 200，得到 %d（%s）", rec.Code, rec.Body.String())
 	}
@@ -55,7 +55,7 @@ func TestInternalConfigRouteGate(t *testing.T) {
 	}
 
 	// 错头 → 401
-	rec = doConfig(t, e, `{"app":"calorie-diary"}`, func(r *http.Request) {
+	rec = doConfig(t, e, `{"app":"CalorieDiary"}`, func(r *http.Request) {
 		r.Header.Set("X-Internal-Token", "not-the-hook-token")
 	})
 	if rec.Code != http.StatusUnauthorized {
@@ -63,7 +63,7 @@ func TestInternalConfigRouteGate(t *testing.T) {
 	}
 
 	// 缺头 → 401
-	rec = doConfig(t, e, `{"app":"calorie-diary"}`, func(r *http.Request) {
+	rec = doConfig(t, e, `{"app":"CalorieDiary"}`, func(r *http.Request) {
 		r.Header.Del("X-Internal-Token")
 	})
 	if rec.Code != http.StatusUnauthorized {
@@ -71,7 +71,7 @@ func TestInternalConfigRouteGate(t *testing.T) {
 	}
 
 	// 环回守卫在最外层：公网来源带着对的 token 也 403
-	rec = doConfig(t, e, `{"app":"calorie-diary"}`, func(r *http.Request) {
+	rec = doConfig(t, e, `{"app":"CalorieDiary"}`, func(r *http.Request) {
 		r.RemoteAddr = "203.0.113.9:41234"
 	})
 	if rec.Code != http.StatusForbidden {
@@ -83,7 +83,7 @@ func TestInternalConfigRouteGate(t *testing.T) {
 	if _, err := e2.pool.Exec("DELETE FROM app_config WHERE `key` = 'hook_token'"); err != nil {
 		t.Fatalf("删内部令牌键: %v", err)
 	}
-	rec = doConfig(t, e2, `{"app":"calorie-diary"}`, nil)
+	rec = doConfig(t, e2, `{"app":"CalorieDiary"}`, nil)
 	if rec.Code != http.StatusUnauthorized {
 		t.Errorf("空配置应恒 401，得到 %d（%s）", rec.Code, rec.Body.String())
 	}
@@ -117,7 +117,7 @@ func TestInternalConfigOmitsMissingKeys(t *testing.T) {
 		"push_admin_token": "push-tok-1",
 		// llm_api_key / llm_base_url 故意不种
 	})
-	rec := doConfig(t, e, `{"app":"expense-diary"}`, nil)
+	rec := doConfig(t, e, `{"app":"ExpenseDiary"}`, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("应 200，得到 %d（%s）", rec.Code, rec.Body.String())
 	}
@@ -146,7 +146,7 @@ func TestInternalConfigValuesMatchDB(t *testing.T) {
 	}
 	seedConfigKeys(t, e, want)
 
-	rec := doConfig(t, e, `{"app":"calorie-diary"}`, nil)
+	rec := doConfig(t, e, `{"app":"CalorieDiary"}`, nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("应 200，得到 %d（%s）", rec.Code, rec.Body.String())
 	}

@@ -70,7 +70,7 @@ Web 端点（**全部新增路径，老端点形状不变**；写操作需 `X-CS
 `/admin/*` 只收 cookie、逐请求现查角色、要求已绑 MFA 且 2 小时内强认证过。
 Bearer（日记 App）照旧走 `/auth/*`，三条凭据路互不串用。
 
-登录 / 注册 / 验证码登录的请求体带 `app`（`calorie-diary` / `expense-diary` 白名单），
+登录 / 注册 / 验证码登录的请求体带 `app`（`CalorieDiary` / `ExpenseDiary` 白名单），
 作为 JWT 的 aud——下游服务只接受为自己应用签发的 token。`send-code` 的 `app` 可选、
 只决定这封验证码邮件的品牌（不进 token）：不传即中性品牌 Auth，传了必须在白名单。
 

@@ -26,8 +26,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/WXies-Team/auth/internal/auth"
-	"github.com/WXies-Team/auth/internal/config"
+	"github.com/WXies-Team/Auth/internal/auth"
+	"github.com/WXies-Team/Auth/internal/config"
 )
 
 // internalConfigResponse 是端点回执。字段名是**对外契约**（日记服务按这些键取值），
@@ -51,7 +51,7 @@ func internalConfig(cfg *config.Store) http.Handler {
 		if !decodeOr400(w, r, &req) {
 			return
 		}
-		// 白名单 = JWT aud 白名单（{calorie-diary, expense-diary}）：与登录、AI 三端点
+		// 白名单 = JWT aud 白名单（{CalorieDiary, ExpenseDiary}）：与登录、AI 三端点
 		// 同一份 allowedApps，两处一起加应用。空 app 同样 400。
 		if !auth.AppAllowed(req.App) {
 			writeError(w, http.StatusBadRequest, "参数不正确，请检查 app 字段后重试")

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/WXies-Team/auth/internal/protocol"
+	"github.com/WXies-Team/Auth/internal/protocol"
 )
 
 // doAI 打一个 /internal/ai/* 端点（环回来源 + 内部凭据头，与日记服务同款调用形态）。
@@ -46,7 +46,7 @@ func TestAIRouteCheckConsumeRelease(t *testing.T) {
 	e := newRouteEnv(t)
 	uid := int64(7654321)
 
-	rec := aiCheck(t, e, "calorie-diary", uid)
+	rec := aiCheck(t, e, "CalorieDiary", uid)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("check 应 200，得到 %d（%s）", rec.Code, rec.Body.String())
 	}
@@ -55,7 +55,7 @@ func TestAIRouteCheckConsumeRelease(t *testing.T) {
 	}
 
 	// consume：入账 1（文字）→ 回执 dailyUser/dailyGlobal 即库内计数
-	rec = e.doAI(t, "/internal/ai/consume", `{"app":"calorie-diary","uid":`+strconv.FormatInt(uid, 10)+`,"weight":1}`)
+	rec = e.doAI(t, "/internal/ai/consume", `{"app":"CalorieDiary","uid":`+strconv.FormatInt(uid, 10)+`,"weight":1}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("consume 应 200，得到 %d（%s）", rec.Code, rec.Body.String())
 	}
@@ -67,7 +67,7 @@ func TestAIRouteCheckConsumeRelease(t *testing.T) {
 		t.Errorf("首账回执应 1/1，得到 %d/%d", out.DailyUser, out.DailyGlobal)
 	}
 	// 跨 App 相加：同一 uid 在另一个 App 再记 2（图片折算）
-	rec = e.doAI(t, "/internal/ai/consume", `{"app":"expense-diary","uid":`+strconv.FormatInt(uid, 10)+`,"weight":2}`)
+	rec = e.doAI(t, "/internal/ai/consume", `{"app":"ExpenseDiary","uid":`+strconv.FormatInt(uid, 10)+`,"weight":2}`)
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
 		t.Fatalf("consume 回执解析: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestAIRouteCheckConsumeRelease(t *testing.T) {
 
 	// release：幂等（再 release 一次也算成功）
 	for i := 0; i < 2; i++ {
-		rec = e.doAI(t, "/internal/ai/release", `{"app":"calorie-diary","uid":`+strconv.FormatInt(uid, 10)+`}`)
+		rec = e.doAI(t, "/internal/ai/release", `{"app":"CalorieDiary","uid":`+strconv.FormatInt(uid, 10)+`}`)
 		if rec.Code != http.StatusOK {
 			t.Fatalf("release 应 200 幂等，得到 %d（%s）", rec.Code, rec.Body.String())
 		}
@@ -117,11 +117,11 @@ func TestAIRouteConcurrencySharedAcrossApps(t *testing.T) {
 	seedAIConfig(t, e, map[string]string{"ai_concurrency": "1"})
 	uid := int64(7654001)
 
-	if rec := aiCheck(t, e, "calorie-diary", uid); rec.Code != http.StatusOK {
+	if rec := aiCheck(t, e, "CalorieDiary", uid); rec.Code != http.StatusOK {
 		t.Fatalf("首槽应 200，得到 %d（%s）", rec.Code, rec.Body.String())
 	}
 	// 同 uid 换 App 也占同一个池（统一口径：跨 App 合一）
-	rec := aiCheck(t, e, "expense-diary", uid)
+	rec := aiCheck(t, e, "ExpenseDiary", uid)
 	if rec.Code != http.StatusTooManyRequests {
 		t.Fatalf("占满应 429，得到 %d（%s）", rec.Code, rec.Body.String())
 	}
@@ -136,14 +136,14 @@ func TestAIRouteConcurrencySharedAcrossApps(t *testing.T) {
 		t.Errorf("并发拒文案应逐字沿用日记侧，得到 %q", apiErr.Message)
 	}
 	// release 后放行
-	if rec := e.doAI(t, "/internal/ai/release", `{"app":"expense-diary","uid":`+strconv.FormatInt(uid, 10)+`}`); rec.Code != http.StatusOK {
+	if rec := e.doAI(t, "/internal/ai/release", `{"app":"ExpenseDiary","uid":`+strconv.FormatInt(uid, 10)+`}`); rec.Code != http.StatusOK {
 		t.Fatalf("release 应 200，得到 %d", rec.Code)
 	}
-	if rec := aiCheck(t, e, "calorie-diary", uid); rec.Code != http.StatusOK {
+	if rec := aiCheck(t, e, "CalorieDiary", uid); rec.Code != http.StatusOK {
 		t.Errorf("释放后应放行，得到 %d（%s）", rec.Code, rec.Body.String())
 	}
 	// 另一个 uid 不受影响
-	if rec := aiCheck(t, e, "calorie-diary", 7654002); rec.Code != http.StatusOK {
+	if rec := aiCheck(t, e, "CalorieDiary", 7654002); rec.Code != http.StatusOK {
 		t.Errorf("并发按 uid，他人不该被挤兑，得到 %d", rec.Code)
 	}
 }
@@ -154,13 +154,13 @@ func TestAIRouteRateSharedAcrossApps(t *testing.T) {
 	seedAIConfig(t, e, map[string]string{"ai_rate_per_minute": "2"})
 	uid := int64(7654003)
 
-	if rec := aiCheck(t, e, "calorie-diary", uid); rec.Code != http.StatusOK {
+	if rec := aiCheck(t, e, "CalorieDiary", uid); rec.Code != http.StatusOK {
 		t.Fatalf("第 1 次应 200，得到 %d", rec.Code)
 	}
-	if rec := aiCheck(t, e, "expense-diary", uid); rec.Code != http.StatusOK {
+	if rec := aiCheck(t, e, "ExpenseDiary", uid); rec.Code != http.StatusOK {
 		t.Fatalf("第 2 次应 200（跨 App 共用同一桶），得到 %d", rec.Code)
 	}
-	rec := aiCheck(t, e, "calorie-diary", uid)
+	rec := aiCheck(t, e, "CalorieDiary", uid)
 	if rec.Code != http.StatusTooManyRequests {
 		t.Fatalf("第 3 次应 429，得到 %d（%s）", rec.Code, rec.Body.String())
 	}
@@ -184,7 +184,7 @@ func TestAIRouteDailyQuotaMessages(t *testing.T) {
 		"INSERT INTO ai_usage (scope, subject, day, `count`) VALUES ('user','7654004',?,500)", day); err != nil {
 		t.Fatalf("造满额行: %v", err)
 	}
-	rec := aiCheck(t, e, "calorie-diary", 7654004)
+	rec := aiCheck(t, e, "CalorieDiary", 7654004)
 	if rec.Code != http.StatusTooManyRequests {
 		t.Fatalf("user 达标应 429，得到 %d（%s）", rec.Code, rec.Body.String())
 	}
@@ -202,7 +202,7 @@ func TestAIRouteDailyQuotaMessages(t *testing.T) {
 		"INSERT INTO ai_usage (scope, subject, day, `count`) VALUES ('global','',?,5000)", day); err != nil {
 		t.Fatalf("造满额 global 行: %v", err)
 	}
-	rec = aiCheck(t, e, "expense-diary", 7654005)
+	rec = aiCheck(t, e, "ExpenseDiary", 7654005)
 	if rec.Code != http.StatusTooManyRequests {
 		t.Fatalf("global 达标应 429，得到 %d（%s）", rec.Code, rec.Body.String())
 	}
@@ -223,9 +223,9 @@ func TestAIRouteValidation(t *testing.T) {
 		name, path, body string
 	}{
 		{"未知 app", "/internal/ai/check", `{"app":"other-app","uid":7654321}`},
-		{"uid 出号段", "/internal/ai/check", `{"app":"calorie-diary","uid":42}`},
+		{"uid 出号段", "/internal/ai/check", `{"app":"CalorieDiary","uid":42}`},
 		{"坏 JSON", "/internal/ai/check", `{"app":`},
-		{"consume weight 0", "/internal/ai/consume", `{"app":"calorie-diary","uid":7654321,"weight":0}`},
+		{"consume weight 0", "/internal/ai/consume", `{"app":"CalorieDiary","uid":7654321,"weight":0}`},
 		{"consume 未知 app", "/internal/ai/consume", `{"app":"x","uid":7654321,"weight":1}`},
 		{"release 未知 app", "/internal/ai/release", `{"app":"x","uid":7654321}`},
 	} {
@@ -234,7 +234,7 @@ func TestAIRouteValidation(t *testing.T) {
 		}
 	}
 	// 非环回来源 403（loopbackOnly，与既有 /internal/* 同款）
-	if rec := e.do(t, "POST", "/internal/ai/check", `{"app":"calorie-diary","uid":7654321}`, nil); rec.Code != http.StatusForbidden {
+	if rec := e.do(t, "POST", "/internal/ai/check", `{"app":"CalorieDiary","uid":7654321}`, nil); rec.Code != http.StatusForbidden {
 		t.Errorf("公网来源应 403，得到 %d", rec.Code)
 	}
 }
@@ -242,7 +242,7 @@ func TestAIRouteValidation(t *testing.T) {
 // M3：三端点强制 X-Internal-Token（hook_token）——带头对得上放行、错头 401、
 // 缺头 401、键没配（空配置）恒 401 且不碰业务。
 func TestAIRouteInternalTokenGate(t *testing.T) {
-	const body = `{"app":"calorie-diary","uid":7654901}`
+	const body = `{"app":"CalorieDiary","uid":7654901}`
 	e := newRouteEnv(t)
 
 	// 带头且对得上 → 放行（真闸门路径，不是一路 401 的假绿）

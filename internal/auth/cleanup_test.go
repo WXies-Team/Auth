@@ -71,7 +71,7 @@ func TestCleanDeadSessionsDropsZombies(t *testing.T) {
 		if _, err := svc.pool.Exec(
 			"INSERT INTO sessions (id, user_id, app, device, ip, user_agent, created_at, last_seen_at, revoked_at)"+
 				" VALUES (?,?,?,?,?,?,?,?,?)",
-			sid, uid, "calorie-diary", "Test", "127.0.0.1", "ua", created, created, r.revoked_at); err != nil {
+			sid, uid, "CalorieDiary", "Test", "127.0.0.1", "ua", created, created, r.revoked_at); err != nil {
 			t.Fatalf("落会话行 %s: %v", r.name, err)
 		}
 	}

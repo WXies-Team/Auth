@@ -25,12 +25,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/WXies-Team/auth/internal/auth"
-	"github.com/WXies-Team/auth/internal/config"
-	"github.com/WXies-Team/auth/internal/db"
+	"github.com/WXies-Team/Auth/internal/auth"
+	"github.com/WXies-Team/Auth/internal/config"
+	"github.com/WXies-Team/Auth/internal/db"
 	// 别名 mailsvc：包名 mail 与标准库 net/mail 同名，直引易混
-	mailsvc "github.com/WXies-Team/auth/internal/mail"
-	"github.com/WXies-Team/auth/internal/protocol"
+	mailsvc "github.com/WXies-Team/Auth/internal/mail"
+	"github.com/WXies-Team/Auth/internal/protocol"
 )
 
 // 请求体上限：认证请求都是小 JSON，64KB 足够挡住异常大包

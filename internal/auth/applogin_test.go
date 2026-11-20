@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/WXies-Team/auth/internal/webauthntest"
+	"github.com/WXies-Team/Auth/internal/webauthntest"
 )
 
 // C 批：三条登录编排（密码两步 / passkey）按请求里的 app 分流——空 = web 流程
@@ -31,11 +31,11 @@ func TestAppPasswordLoginIssuesJWT(t *testing.T) {
 		t.Fatalf("查会话: %v", err)
 	}
 
-	res, err := svc.WebLoginPassword("app-login@example.com", "secret123", meta, "calorie-diary")
+	res, err := svc.WebLoginPassword("app-login@example.com", "secret123", meta, "CalorieDiary")
 	if err != nil {
 		t.Fatalf("App 密码登录: %v", err)
 	}
-	if res.Session != nil || res.JWT == "" || res.App != "calorie-diary" {
+	if res.Session != nil || res.JWT == "" || res.App != "CalorieDiary" {
 		t.Fatalf("App 支应回 JWT 且不建 cookie 会话，得到 %+v", res)
 	}
 	if n := strings.Count(res.JWT, "."); n != 2 {
@@ -51,14 +51,14 @@ func TestAppPasswordLoginIssuesJWT(t *testing.T) {
 	}
 
 	// /internal/verify 的实现就是这道校验：签名、aud 精确匹配、ver 与会话都活着
-	vr, err := svc.Verify("Bearer "+res.JWT, "calorie-diary")
+	vr, err := svc.Verify("Bearer "+res.JWT, "CalorieDiary")
 	if err != nil {
 		t.Fatalf("JWT 应过 /internal/verify: %v", err)
 	}
-	if vr.UID != uid || vr.App != "calorie-diary" || vr.Email != "app-login@example.com" {
+	if vr.UID != uid || vr.App != "CalorieDiary" || vr.Email != "app-login@example.com" {
 		t.Errorf("verify 回执不对: %+v", vr)
 	}
-	if _, err := svc.Verify("Bearer "+res.JWT, "expense-diary"); err == nil {
+	if _, err := svc.Verify("Bearer "+res.JWT, "ExpenseDiary"); err == nil {
 		t.Error("aud 不匹配的下游不该认这枚 token")
 	}
 	// 会话行：app=<app>、不写 web cookie 的两列、reauth_at 已打（passkey 注册的
@@ -75,21 +75,21 @@ func TestAppPasswordLoginIssuesJWT(t *testing.T) {
 	if err != nil {
 		t.Fatalf("查会话行: %v", err)
 	}
-	if rowApp != "calorie-diary" || webToken.Valid || webCSRF.Valid {
-		t.Errorf("App 会话应 app=calorie-diary 且无 web cookie 列: app=%q token=%v csrf=%v",
+	if rowApp != "CalorieDiary" || webToken.Valid || webCSRF.Valid {
+		t.Errorf("App 会话应 app=CalorieDiary 且无 web cookie 列: app=%q token=%v csrf=%v",
 			rowApp, webToken.Valid, webCSRF.Valid)
 	}
 	if !reauth.Valid {
 		t.Error("登录即强认证：App 会话必须打 reauth_at")
 	}
 	// 设备列表能看到这台（App 会话与网页会话同一张表）；App bearer 视角只看本 app
-	list, err := svc.ListSessions(uid, res.SID, []string{"calorie-diary"})
+	list, err := svc.ListSessions(uid, res.SID, []string{"CalorieDiary"})
 	if err != nil {
 		t.Fatalf("查设备列表: %v", err)
 	}
 	found := false
 	for _, it := range list {
-		if it.ID == sidStr(res.SID) && it.App == "calorie-diary" {
+		if it.ID == sidStr(res.SID) && it.App == "CalorieDiary" {
 			found = true
 		}
 	}
@@ -103,7 +103,7 @@ func TestAppPasswordLoginIssuesJWT(t *testing.T) {
 		uid).Scan(&detail); err != nil {
 		t.Fatalf("查登录审计: %v", err)
 	}
-	if !strings.Contains(detail, `"app":"calorie-diary"`) || !strings.Contains(detail, `"method":"password"`) {
+	if !strings.Contains(detail, `"app":"CalorieDiary"`) || !strings.Contains(detail, `"method":"password"`) {
 		t.Errorf("审计 detail 应带 method 与 app，得到 %s", detail)
 	}
 }
@@ -137,20 +137,20 @@ func TestAppTwoStepCarriesAppThroughLoginState(t *testing.T) {
 		return label
 	}
 
-	// 第一步（App 支）：中间态带着 expense-diary，回执本身不含 token
-	step1, err := svc.WebLoginPassword("app-2fa@example.com", "secret123", meta, "expense-diary")
+	// 第一步（App 支）：中间态带着 ExpenseDiary，回执本身不含 token
+	step1, err := svc.WebLoginPassword("app-2fa@example.com", "secret123", meta, "ExpenseDiary")
 	if err != nil || step1.Status != "2fa_required" || step1.JWT != "" {
 		t.Fatalf("应进两步且不发 JWT: %+v err=%v", step1, err)
 	}
-	if got := stateApp(step1.LoginToken); got != "expense-diary" {
-		t.Errorf("login_states.app 应带住 expense-diary，得到 %q", got)
+	if got := stateApp(step1.LoginToken); got != "ExpenseDiary" {
+		t.Errorf("login_states.app 应带住 ExpenseDiary，得到 %q", got)
 	}
 	// 第二步（TOTP 码）→ JWT，aud 是第一步声明的那个应用
 	res, err := svc.WebLoginTOTP(step1.LoginToken, codeAt(t, setup.Secret, 30*time.Second), "", "", meta)
 	if err != nil || res.JWT == "" || res.Session != nil {
 		t.Fatalf("第二步应回 JWT: %+v err=%v", res, err)
 	}
-	if vr, err := svc.Verify("Bearer "+res.JWT, "expense-diary"); err != nil || vr.UID != c.UID {
+	if vr, err := svc.Verify("Bearer "+res.JWT, "ExpenseDiary"); err != nil || vr.UID != c.UID {
 		t.Errorf("两步登录的 JWT 应过 verify: %+v err=%v", vr, err)
 	}
 	// 会话行带 app 与 reauth
@@ -160,8 +160,8 @@ func TestAppTwoStepCarriesAppThroughLoginState(t *testing.T) {
 		Scan(&rowApp, &reauth); err != nil {
 		t.Fatalf("查会话行: %v", err)
 	}
-	if rowApp != "expense-diary" || !reauth.Valid {
-		t.Errorf("App 会话应 app=expense-diary 且带 reauth_at，得到 %q / %v", rowApp, reauth.Valid)
+	if rowApp != "ExpenseDiary" || !reauth.Valid {
+		t.Errorf("App 会话应 app=ExpenseDiary 且带 reauth_at，得到 %q / %v", rowApp, reauth.Valid)
 	}
 	// 用后即焚：中间态不能再换一次
 	if _, err := svc.WebLoginTOTP(step1.LoginToken, currentCode(t, setup.Secret), "", "", meta); err == nil {
@@ -169,18 +169,18 @@ func TestAppTwoStepCarriesAppThroughLoginState(t *testing.T) {
 	}
 
 	// 恢复码路：换一个应用声明，照样带得下去
-	step2, err := svc.WebLoginPassword("app-2fa@example.com", "secret123", meta, "calorie-diary")
+	step2, err := svc.WebLoginPassword("app-2fa@example.com", "secret123", meta, "CalorieDiary")
 	if err != nil || step2.Status != "2fa_required" {
 		t.Fatalf("应再进两步: %+v err=%v", step2, err)
 	}
-	if got := stateApp(step2.LoginToken); got != "calorie-diary" {
-		t.Errorf("恢复码路的 login_states.app 应是 calorie-diary，得到 %q", got)
+	if got := stateApp(step2.LoginToken); got != "CalorieDiary" {
+		t.Errorf("恢复码路的 login_states.app 应是 CalorieDiary，得到 %q", got)
 	}
 	res2, err := svc.WebLoginTOTP(step2.LoginToken, "", codes[len(codes)-1], "", meta)
 	if err != nil || res2.JWT == "" {
 		t.Fatalf("恢复码应换出 JWT: %+v err=%v", res2, err)
 	}
-	if vr, err := svc.Verify("Bearer "+res2.JWT, "calorie-diary"); err != nil || vr.UID != c.UID {
+	if vr, err := svc.Verify("Bearer "+res2.JWT, "CalorieDiary"); err != nil || vr.UID != c.UID {
 		t.Errorf("恢复码换出的 JWT 应过 verify: %+v err=%v", vr, err)
 	}
 	// 审计记到用掉的是恢复码（method 沿用既有取值）
@@ -190,7 +190,7 @@ func TestAppTwoStepCarriesAppThroughLoginState(t *testing.T) {
 		c.UID).Scan(&methodDetail); err != nil {
 		t.Fatalf("查登录审计: %v", err)
 	}
-	if !strings.Contains(methodDetail, `"method":"recovery"`) || !strings.Contains(methodDetail, `"app":"calorie-diary"`) {
+	if !strings.Contains(methodDetail, `"method":"recovery"`) || !strings.Contains(methodDetail, `"app":"CalorieDiary"`) {
 		t.Errorf("恢复码登录的审计 detail 不对: %s", methodDetail)
 	}
 
@@ -247,14 +247,14 @@ func TestPasskeyLoginAppAndWebFlow(t *testing.T) {
 
 	// App 支
 	id, challenge := begin()
-	res, err := svc.WebPasskeyLogin(id, assertionFor(challenge), "calorie-diary", testMeta)
+	res, err := svc.WebPasskeyLogin(id, assertionFor(challenge), "CalorieDiary", testMeta)
 	if err != nil {
 		t.Fatalf("App passkey 登录: %v", err)
 	}
-	if res.Session != nil || res.JWT == "" || res.App != "calorie-diary" {
+	if res.Session != nil || res.JWT == "" || res.App != "CalorieDiary" {
 		t.Fatalf("App 支应回 JWT: %+v", res)
 	}
-	vr, err := svc.Verify("Bearer "+res.JWT, "calorie-diary")
+	vr, err := svc.Verify("Bearer "+res.JWT, "CalorieDiary")
 	if err != nil || vr.UID != c.UID {
 		t.Fatalf("passkey 签的 JWT 应过 verify: %+v err=%v", vr, err)
 	}
@@ -264,8 +264,8 @@ func TestPasskeyLoginAppAndWebFlow(t *testing.T) {
 		Scan(&rowApp, &reauth); err != nil {
 		t.Fatalf("查会话行: %v", err)
 	}
-	if rowApp != "calorie-diary" || !reauth.Valid {
-		t.Errorf("App 会话应 app=calorie-diary 且带 reauth_at，得到 %q / %v", rowApp, reauth.Valid)
+	if rowApp != "CalorieDiary" || !reauth.Valid {
+		t.Errorf("App 会话应 app=CalorieDiary 且带 reauth_at，得到 %q / %v", rowApp, reauth.Valid)
 	}
 	// 本会话用哪把 passkey 登录（列表页 current 标记）在 App 支同样记下
 	list, err := svc.ListPasskeys(c.UID, res.SID)
@@ -278,7 +278,7 @@ func TestPasskeyLoginAppAndWebFlow(t *testing.T) {
 		c.UID).Scan(&detail); err != nil {
 		t.Fatalf("查登录审计: %v", err)
 	}
-	if !strings.Contains(detail, `"method":"passkey"`) || !strings.Contains(detail, `"app":"calorie-diary"`) {
+	if !strings.Contains(detail, `"method":"passkey"`) || !strings.Contains(detail, `"app":"CalorieDiary"`) {
 		t.Errorf("passkey 登录审计 detail 不对: %s", detail)
 	}
 
@@ -294,7 +294,7 @@ func TestPasskeyLoginAppAndWebFlow(t *testing.T) {
 	if _, err := svc.ValidWebSession(res2.Session.Token); err != nil {
 		t.Errorf("web 会话应可校验: %v", err)
 	}
-	if _, err := svc.Verify("Bearer "+res2.Session.Token, "calorie-diary"); err == nil {
+	if _, err := svc.Verify("Bearer "+res2.Session.Token, "CalorieDiary"); err == nil {
 		t.Error("web 会话 token 不是 JWT，/internal/verify 必须拒（语义不许混入）")
 	}
 
@@ -304,11 +304,11 @@ func TestPasskeyLoginAppAndWebFlow(t *testing.T) {
 	if code, _ := httpMsg(err); code != 400 {
 		t.Fatalf("白名单外的 app 应 400，得到 %d %v", code, err)
 	}
-	res3, err := svc.WebPasskeyLogin(id3, assertionFor(challenge3), "expense-diary", testMeta)
+	res3, err := svc.WebPasskeyLogin(id3, assertionFor(challenge3), "ExpenseDiary", testMeta)
 	if err != nil || res3.JWT == "" {
 		t.Fatalf("被拒的请求不该烧掉仪式，换对 app 应照常登录: %+v err=%v", res3, err)
 	}
-	if vr, err := svc.Verify("Bearer "+res3.JWT, "expense-diary"); err != nil || vr.UID != c.UID {
+	if vr, err := svc.Verify("Bearer "+res3.JWT, "ExpenseDiary"); err != nil || vr.UID != c.UID {
 		t.Errorf("白名单内换 app 后的 JWT 应过 verify: %+v err=%v", vr, err)
 	}
 }

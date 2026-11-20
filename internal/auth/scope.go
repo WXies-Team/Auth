@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/WXies-Team/auth/internal/db"
+	"github.com/WXies-Team/Auth/internal/db"
 )
 
 // W2 分级授权的口径（作者定稿 + 业界 scoped-RBAC 精简版）：

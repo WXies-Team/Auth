@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/WXies-Team/auth/internal/auth"
+	"github.com/WXies-Team/Auth/internal/auth"
 )
 
 // 管理后台的 HTTP 层（规格 A2.5 + W2 分级授权）。授权闸全部在这里，每请求都过：

@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/WXies-Team/auth/internal/db"
-	"github.com/WXies-Team/auth/internal/geoip"
-	"github.com/WXies-Team/auth/internal/protocol"
+	"github.com/WXies-Team/Auth/internal/db"
+	"github.com/WXies-Team/Auth/internal/geoip"
+	"github.com/WXies-Team/Auth/internal/protocol"
 )
 
 // 管理后台的口径（规格 A2.5）：

@@ -19,7 +19,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/WXies-Team/auth/internal/db"
+	"github.com/WXies-Team/Auth/internal/db"
 	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
 )

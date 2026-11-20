@@ -33,7 +33,7 @@ func TestDeleteCancelTokenRoundTrip(t *testing.T) {
 	}
 	// 登录形态 JWT 冒充（有 aud/uid、无 purpose）→ 拒
 	forged, _ := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"aud": "calorie-diary", "iss": issuer, "uid": 1234567,
+		"aud": "CalorieDiary", "iss": issuer, "uid": 1234567,
 		"exp": time.Now().Add(time.Hour).Unix(),
 	}).SignedString([]byte(testSecret))
 	_, forgedErr := s.parseDeleteCancelToken(forged)
@@ -68,7 +68,7 @@ func TestDeleteRequestThenLoginCancels(t *testing.T) {
 	svc, mailer := newTestService(t)
 	c := newPasskeyUser(t, svc, mailer, "w3-flow@example.com")
 	// 第二台设备
-	if _, err := svc.Login(c.Email, "secret123", "expense-diary", testMeta); err != nil {
+	if _, err := svc.Login(c.Email, "secret123", "ExpenseDiary", testMeta); err != nil {
 		t.Fatalf("造第二会话: %v", err)
 	}
 
@@ -116,7 +116,7 @@ func TestDeleteRequestThenLoginCancels(t *testing.T) {
 	}
 
 	// 宽限期内登录 = 撤销
-	resp, err := svc.Login(c.Email, "secret123", "calorie-diary", testMeta)
+	resp, err := svc.Login(c.Email, "secret123", "CalorieDiary", testMeta)
 	if err != nil {
 		t.Fatalf("宽限期内登录应成功: %v", err)
 	}
@@ -185,7 +185,7 @@ func TestSweepExecutesDueDeletes(t *testing.T) {
 	svc, mailer := newTestService(t)
 	c := newPasskeyUser(t, svc, mailer, "w3-sweep@example.com")
 	if _, err := svc.pool.Exec(
-		"INSERT INTO admin_scopes (uid, app, granted_by, granted_at) VALUES (?, 'calorie-diary', 0, ?)",
+		"INSERT INTO admin_scopes (uid, app, granted_by, granted_at) VALUES (?, 'CalorieDiary', 0, ?)",
 		c.UID, time.Now().UnixMilli()); err != nil {
 		t.Fatalf("种授权行: %v", err)
 	}
@@ -219,7 +219,7 @@ func TestLoginPastDeadlinePurgesAndDenies(t *testing.T) {
 	if _, err := svc.pool.Exec("UPDATE users SET pending_delete_at = ? WHERE id = ?", past, c.UID); err != nil {
 		t.Fatalf("拨到期: %v", err)
 	}
-	_, err := svc.Login(c.Email, "secret123", "calorie-diary", testMeta)
+	_, err := svc.Login(c.Email, "secret123", "CalorieDiary", testMeta)
 	if code, msg := httpMsg(err); code != 401 || !strings.Contains(msg, "该账号已注销") {
 		t.Errorf("过期注销的登录应 401「该账号已注销」，得到 %d %q", code, msg)
 	}
@@ -255,7 +255,7 @@ func TestChangePasswordForcedWithoutOldPassword(t *testing.T) {
 	}
 
 	// 真登录（W4：登录成功即 MarkReauth → 窗内）
-	resp, err := svc.Login(c.Email, "secret123", "calorie-diary", testMeta)
+	resp, err := svc.Login(c.Email, "secret123", "CalorieDiary", testMeta)
 	if err != nil {
 		t.Fatalf("登录: %v", err)
 	}

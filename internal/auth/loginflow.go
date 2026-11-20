@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/WXies-Team/auth/internal/db"
+	"github.com/WXies-Team/Auth/internal/db"
 )
 
 // Web 登录编排的两段式（规格 A1.2 / A2.3）：

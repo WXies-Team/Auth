@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/WXies-Team/auth/internal/db"
+	"github.com/WXies-Team/Auth/internal/db"
 )
 
 // newTestQuota 连真库（无 TEST_MYSQL_DSN 跳过，与仓内其它真库测试同策略），

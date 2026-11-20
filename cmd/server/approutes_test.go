@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/WXies-Team/auth/internal/auth"
-	"github.com/WXies-Team/auth/internal/webauthntest"
+	"github.com/WXies-Team/Auth/internal/auth"
+	"github.com/WXies-Team/Auth/internal/webauthntest"
 	"github.com/pquerna/otp/totp"
 )
 
@@ -63,7 +63,7 @@ func TestAppPasswordLoginRouteReturnsJWT(t *testing.T) {
 	seedUser(t, e, "app-route@example.com", "secret123", "user")
 
 	rec := e.do(t, "POST", "/web/login/password",
-		`{"email":"app-route@example.com","password":"secret123","app":"calorie-diary"}`,
+		`{"email":"app-route@example.com","password":"secret123","app":"CalorieDiary"}`,
 		fromIP("198.51.100.21"))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("App 密码登录应 200，得到 %d（%s）", rec.Code, rec.Body.String())
@@ -78,7 +78,7 @@ func TestAppPasswordLoginRouteReturnsJWT(t *testing.T) {
 	if strings.Count(jwt, ".") != 2 {
 		t.Fatalf("App 支的 token 应是三段式 JWT，得到 %q", jwt)
 	}
-	res := verifyByApp(t, e, jwt, "calorie-diary")
+	res := verifyByApp(t, e, jwt, "CalorieDiary")
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("JWT 应过 /internal/verify，得到 %d", res.StatusCode)
 	}
@@ -114,7 +114,7 @@ func TestAppPasswordLoginRouteReturnsJWT(t *testing.T) {
 	}
 	appRow := false
 	for _, it := range sessBody.Sessions {
-		if it.App == "calorie-diary" {
+		if it.App == "CalorieDiary" {
 			appRow = true
 		}
 	}
@@ -150,7 +150,7 @@ func TestAppPasswordLoginRouteReturnsJWT(t *testing.T) {
 	if webResp.Email != "app-route@example.com" {
 		t.Errorf("web 回体 email 应照回，得到 %q", webResp.Email)
 	}
-	if res := verifyByApp(t, e, "", "calorie-diary"); res.StatusCode != http.StatusUnauthorized {
+	if res := verifyByApp(t, e, "", "CalorieDiary"); res.StatusCode != http.StatusUnauthorized {
 		t.Errorf("空 token 不该过 /internal/verify，得到 %d", res.StatusCode)
 	}
 }
@@ -161,7 +161,7 @@ func TestTwoStepLoginRouteCarriesApp(t *testing.T) {
 	e := newRouteEnv(t)
 	seedUser(t, e, "app-2fa-route@example.com", "secret123", "user")
 	// 绑定 TOTP 走业务层（绑定链路另有 totp_test 覆盖；这里只测编排两端）
-	jwt, err := e.svc.Login("app-2fa-route@example.com", "secret123", "calorie-diary", auth.SessionMeta{})
+	jwt, err := e.svc.Login("app-2fa-route@example.com", "secret123", "CalorieDiary", auth.SessionMeta{})
 	if err != nil {
 		t.Fatalf("取 JWT: %v", err)
 	}
@@ -178,7 +178,7 @@ func TestTwoStepLoginRouteCarriesApp(t *testing.T) {
 	}
 
 	step1 := e.do(t, "POST", "/web/login/password",
-		`{"email":"app-2fa-route@example.com","password":"secret123","app":"expense-diary"}`,
+		`{"email":"app-2fa-route@example.com","password":"secret123","app":"ExpenseDiary"}`,
 		fromIP("198.51.100.31"))
 	if step1.Code != http.StatusOK {
 		t.Fatalf("第一步应 200，得到 %d（%s）", step1.Code, step1.Body.String())
@@ -207,8 +207,8 @@ func TestTwoStepLoginRouteCarriesApp(t *testing.T) {
 		"app-2fa-route@example.com").Scan(&label); err != nil {
 		t.Fatalf("查中间态 app: %v", err)
 	}
-	if label != "expense-diary" {
-		t.Errorf("login_states.app 应带住 expense-diary，得到 %q", label)
+	if label != "ExpenseDiary" {
+		t.Errorf("login_states.app 应带住 ExpenseDiary，得到 %q", label)
 	}
 
 	step2 := e.do(t, "POST", "/web/login/totp",
@@ -224,10 +224,10 @@ func TestTwoStepLoginRouteCarriesApp(t *testing.T) {
 		t.Errorf("App 支第二步不该下发 cookie，得到 %v", cookies)
 	}
 	token := tokenOf(t, step2.Body.Bytes())
-	if res := verifyByApp(t, e, token, "expense-diary"); res.StatusCode != http.StatusOK {
+	if res := verifyByApp(t, e, token, "ExpenseDiary"); res.StatusCode != http.StatusOK {
 		t.Errorf("两步登录换出的 JWT 应过 verify，得到 %d", res.StatusCode)
 	}
-	if res := verifyByApp(t, e, token, "calorie-diary"); res.StatusCode != http.StatusUnauthorized {
+	if res := verifyByApp(t, e, token, "CalorieDiary"); res.StatusCode != http.StatusUnauthorized {
 		t.Errorf("aud 不匹配的下游不该认，得到 %d", res.StatusCode)
 	}
 }
@@ -251,7 +251,7 @@ func TestPasskeyLoginFinishRouteAppAndWeb(t *testing.T) {
 		t.Fatalf("造字符串形态断言: %v", err)
 	}
 	rec := e.do(t, "POST", "/webauthn/login/finish",
-		`{"ceremonyId":`+strconv.FormatInt(id1, 10)+`,"response":`+string(assertion)+`,"app":"calorie-diary"}`,
+		`{"ceremonyId":`+strconv.FormatInt(id1, 10)+`,"response":`+string(assertion)+`,"app":"CalorieDiary"}`,
 		fromIP("198.51.100.41"))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("App passkey 登录应 200，得到 %d（%s）", rec.Code, rec.Body.String())
@@ -266,7 +266,7 @@ func TestPasskeyLoginFinishRouteAppAndWeb(t *testing.T) {
 	if strings.Count(jwt, ".") != 2 {
 		t.Fatalf("App 支的 token 应是三段式 JWT，得到 %q", jwt)
 	}
-	if res := verifyByApp(t, e, jwt, "calorie-diary"); res.StatusCode != http.StatusOK {
+	if res := verifyByApp(t, e, jwt, "CalorieDiary"); res.StatusCode != http.StatusOK {
 		t.Errorf("passkey 签的 JWT 应过 verify，得到 %d", res.StatusCode)
 	}
 
@@ -297,7 +297,7 @@ func TestPasskeyLoginFinishRouteAppAndWeb(t *testing.T) {
 	if webResp.Token != "" {
 		t.Errorf("web 回体 token 必须恒空（凭据只在 cookie），得到 %q", webResp.Token)
 	}
-	if res := verifyByApp(t, e, "", "calorie-diary"); res.StatusCode != http.StatusUnauthorized {
+	if res := verifyByApp(t, e, "", "CalorieDiary"); res.StatusCode != http.StatusUnauthorized {
 		t.Errorf("空 token 不该过 verify，得到 %d", res.StatusCode)
 	}
 

@@ -16,9 +16,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/WXies-Team/auth/internal/auth"
-	"github.com/WXies-Team/auth/internal/config"
-	"github.com/WXies-Team/auth/internal/db"
+	"github.com/WXies-Team/Auth/internal/auth"
+	"github.com/WXies-Team/Auth/internal/config"
+	"github.com/WXies-Team/Auth/internal/db"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -164,7 +164,7 @@ func TestLegacyLoginResponseShape(t *testing.T) {
 	seedUser(t, e, "legacy-login@example.com", "secret123", "user")
 
 	rec := e.do(t, "POST", "/auth/login",
-		`{"email":"legacy-login@example.com","password":"secret123","app":"calorie-diary","futureField":"ignored"}`,
+		`{"email":"legacy-login@example.com","password":"secret123","app":"CalorieDiary","futureField":"ignored"}`,
 		nil)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("登录应 200，得到 %d（%s）", rec.Code, rec.Body.String())
@@ -174,7 +174,7 @@ func TestLegacyLoginResponseShape(t *testing.T) {
 	}
 
 	rec = e.do(t, "POST", "/auth/login",
-		`{"email":"legacy-login@example.com","password":"wrong","app":"calorie-diary"}`, nil)
+		`{"email":"legacy-login@example.com","password":"wrong","app":"CalorieDiary"}`, nil)
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("错密码应 401，得到 %d", rec.Code)
 	}
@@ -187,7 +187,7 @@ func TestLegacyLoginResponseShape(t *testing.T) {
 func TestLegacySessionsResponseShape(t *testing.T) {
 	e := newRouteEnv(t)
 	seedUser(t, e, "legacy-sess@example.com", "secret123", "user")
-	resp, err := e.svc.Login("legacy-sess@example.com", "secret123", "calorie-diary",
+	resp, err := e.svc.Login("legacy-sess@example.com", "secret123", "CalorieDiary",
 		auth.SessionMeta{IP: "10.1.2.3", UserAgent: "GoTest/1.0"})
 	if err != nil {
 		t.Fatalf("登录: %v", err)
@@ -255,11 +255,11 @@ func TestLegacyHealthShape(t *testing.T) {
 func TestLegacyInternalVerifyShape(t *testing.T) {
 	e := newRouteEnv(t)
 	seedUser(t, e, "legacy-verify@example.com", "secret123", "user")
-	resp, err := e.svc.Login("legacy-verify@example.com", "secret123", "calorie-diary", auth.SessionMeta{})
+	resp, err := e.svc.Login("legacy-verify@example.com", "secret123", "CalorieDiary", auth.SessionMeta{})
 	if err != nil {
 		t.Fatalf("登录: %v", err)
 	}
-	rec := e.do(t, "POST", "/internal/verify", `{"app":"calorie-diary"}`, func(r *http.Request) {
+	rec := e.do(t, "POST", "/internal/verify", `{"app":"CalorieDiary"}`, func(r *http.Request) {
 		r.RemoteAddr = "127.0.0.1:51234"
 		r.Header.Set("Authorization", "Bearer "+resp.Token)
 	})
@@ -394,7 +394,7 @@ func TestWebCSRFEnforcedOnCookieRequests(t *testing.T) {
 		t.Errorf("cookie 调老端点缺 CSRF 头应 403，得到 %d", rec4.Code)
 	}
 	// 同一个老端点走 Bearer 完全不受影响（老客户端口径）
-	resp, err := e.svc.Login("web-csrf@example.com", "secret123", "calorie-diary", auth.SessionMeta{})
+	resp, err := e.svc.Login("web-csrf@example.com", "secret123", "CalorieDiary", auth.SessionMeta{})
 	if err != nil {
 		t.Fatalf("取 JWT: %v", err)
 	}
@@ -418,7 +418,7 @@ func TestAdminGateKeepsNonAdminsOut(t *testing.T) {
 		t.Errorf("未登录访问后台应 401，得到 %d", rec.Code)
 	}
 	// Bearer 不给后台钥匙
-	resp, err := e.svc.Login("plain-user@example.com", "secret123", "calorie-diary", auth.SessionMeta{})
+	resp, err := e.svc.Login("plain-user@example.com", "secret123", "CalorieDiary", auth.SessionMeta{})
 	if err != nil {
 		t.Fatalf("取 JWT: %v", err)
 	}
@@ -484,7 +484,7 @@ func TestWebChangePasswordRotatesCurrentSession(t *testing.T) {
 		r.Header.Set("X-CSRF-Token", csrf.Value)
 	}
 	// 另一台设备：App 侧 JWT 登录（改密后应被吊销）
-	appResp, err := e.svc.Login("web-chpw@example.com", "secret123", "calorie-diary", auth.SessionMeta{})
+	appResp, err := e.svc.Login("web-chpw@example.com", "secret123", "CalorieDiary", auth.SessionMeta{})
 	if err != nil {
 		t.Fatalf("App 登录: %v", err)
 	}
@@ -530,7 +530,7 @@ func TestWebChangePasswordRotatesCurrentSession(t *testing.T) {
 	}
 
 	// 其它会话被踢：App 侧 JWT 当场失效
-	if _, err := e.svc.Verify("Bearer "+appResp.Token, "calorie-diary"); err == nil {
+	if _, err := e.svc.Verify("Bearer "+appResp.Token, "CalorieDiary"); err == nil {
 		t.Error("改密后其它会话应被吊销")
 	}
 
@@ -555,7 +555,7 @@ func TestWebChangePasswordRotatesCurrentSession(t *testing.T) {
 func TestResolveCallerStaleCookieFallsBackToBearer(t *testing.T) {
 	e := newRouteEnv(t)
 	seedUser(t, e, "stale-cookie@example.com", "secret123", "user")
-	resp, err := e.svc.Login("stale-cookie@example.com", "secret123", "calorie-diary", auth.SessionMeta{})
+	resp, err := e.svc.Login("stale-cookie@example.com", "secret123", "CalorieDiary", auth.SessionMeta{})
 	if err != nil {
 		t.Fatalf("取 JWT: %v", err)
 	}
@@ -609,7 +609,7 @@ func TestJSONResponsesCarryNoStore(t *testing.T) {
 		mutate                   func(*http.Request)
 	}{
 		{"登录成功", "POST", "/web/login/password", `{"email":"nostore@example.com","password":"secret123"}`, ip1},
-		{"业务错误", "POST", "/auth/login", `{"email":"nostore@example.com","password":"wrong","app":"calorie-diary"}`, ip2},
+		{"业务错误", "POST", "/auth/login", `{"email":"nostore@example.com","password":"wrong","app":"CalorieDiary"}`, ip2},
 		{"参数错误", "POST", "/auth/login", `{"email":`, nil},
 		{"鉴权回执", "GET", "/api/sessions", "", func(r *http.Request) {
 			r.Header.Set("Authorization", "Bearer bogus.token.here")
@@ -780,7 +780,7 @@ func TestAdminConfigNeverLeaksSecret(t *testing.T) {
 func TestProfileRoutesShapeAndSessionKinds(t *testing.T) {
 	e := newRouteEnv(t)
 	uid := seedUser(t, e, "profile-route@example.com", "secret123", "user")
-	resp, err := e.svc.Login("profile-route@example.com", "secret123", "calorie-diary", auth.SessionMeta{})
+	resp, err := e.svc.Login("profile-route@example.com", "secret123", "CalorieDiary", auth.SessionMeta{})
 	if err != nil {
 		t.Fatalf("取 JWT: %v", err)
 	}
@@ -874,7 +874,7 @@ func TestProfileRoutesShapeAndSessionKinds(t *testing.T) {
 func TestProfileRouteRejectsOversizedAvatar(t *testing.T) {
 	e := newRouteEnv(t)
 	seedUser(t, e, "profile-big@example.com", "secret123", "user")
-	resp, err := e.svc.Login("profile-big@example.com", "secret123", "calorie-diary", auth.SessionMeta{})
+	resp, err := e.svc.Login("profile-big@example.com", "secret123", "CalorieDiary", auth.SessionMeta{})
 	if err != nil {
 		t.Fatalf("取 JWT: %v", err)
 	}
@@ -965,7 +965,7 @@ func TestWebRegistryRoute(t *testing.T) {
 		t.Fatalf("注册表应 200，得到 %d", rec.Code)
 	}
 	got := rec.Body.String()
-	for _, want := range []string{`"key":"calorie-diary"`, `"key":"expense-diary"`, `"label":`} {
+	for _, want := range []string{`"key":"CalorieDiary"`, `"key":"ExpenseDiary"`, `"label":`} {
 		if !strings.Contains(got, want) {
 			t.Errorf("注册表缺 %s，得到 %s", want, got)
 		}
@@ -1028,7 +1028,7 @@ func TestRevokeOthersForcesReauthAndAudits(t *testing.T) {
 		r.Header.Set("X-CSRF-Token", csrf.Value)
 	}
 	// 再造一台「别的设备」：同账号第二次登录（业务层建行，不打 HTTP）
-	if _, err := e.svc.Login("kick-others@example.com", "secret123", "calorie-diary",
+	if _, err := e.svc.Login("kick-others@example.com", "secret123", "CalorieDiary",
 		auth.SessionMeta{IP: "10.9.9.9", UserAgent: "OtherPhone/1.0"}); err != nil {
 		t.Fatalf("造第二台设备: %v", err)
 	}
@@ -1073,7 +1073,7 @@ func TestRevokeOthersForcesReauthAndAudits(t *testing.T) {
 	}
 
 	// ④ Bearer 老客户端不受 reauth 闸影响（回执 200，不是 401）
-	resp, err := e.svc.Login("kick-others@example.com", "secret123", "calorie-diary", auth.SessionMeta{})
+	resp, err := e.svc.Login("kick-others@example.com", "secret123", "CalorieDiary", auth.SessionMeta{})
 	if err != nil {
 		t.Fatalf("取 JWT: %v", err)
 	}
@@ -1213,7 +1213,7 @@ func TestWebLoginStoresClientHintSuffix(t *testing.T) {
 	// App 流程：/auth/login 走 sessMeta，同款头也不采集（App UA 一字节不变）
 	appUID := seedUser(t, e, "ch-app@example.com", "secret123", "user")
 	appRec := e.do(t, "POST", "/auth/login",
-		`{"email":"ch-app@example.com","password":"secret123","app":"calorie-diary"}`, func(r *http.Request) {
+		`{"email":"ch-app@example.com","password":"secret123","app":"CalorieDiary"}`, func(r *http.Request) {
 			fromIP("198.51.100.41")(r)
 			r.Header.Set("User-Agent", chUA)
 			r.Header.Set("Sec-CH-UA-Platform", `"Android"`)

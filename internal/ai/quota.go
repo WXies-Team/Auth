@@ -25,7 +25,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/WXies-Team/auth/internal/db"
+	"github.com/WXies-Team/Auth/internal/db"
 )
 
 // Quota 与日记侧枚举一一对应，路由据此给出不同的状态码、文案与 Retry-After。

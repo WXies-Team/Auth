@@ -8,7 +8,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/WXies-Team/auth/internal/db"
+	"github.com/WXies-Team/Auth/internal/db"
 	"github.com/golang-jwt/jwt/v5"
 )
 

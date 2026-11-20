@@ -9,8 +9,8 @@ import (
 // 品牌注册表的取值：两个 App 各回各的串；缺省与未知一律中性品牌 Auth。
 func TestBrandForSelection(t *testing.T) {
 	cases := []struct{ app, name, prefix, footer string }{
-		{"calorie-diary", "热量日记", "【热量日记】", "热量日记 CalorieDiary"},
-		{"expense-diary", "开支日记", "【开支日记】", "开支日记 ExpenseDiary"},
+		{"CalorieDiary", "热量日记", "【热量日记】", "热量日记 CalorieDiary"},
+		{"ExpenseDiary", "开支日记", "【开支日记】", "开支日记 ExpenseDiary"},
 		{"", "Auth", "【Auth】", "Auth auth.horatio.cn"},
 		{"evil-app", "Auth", "【Auth】", "Auth auth.horatio.cn"},
 	}
@@ -45,11 +45,11 @@ func TestBrandEmailStrings(t *testing.T) {
 	cases := []struct {
 		app, subject, header, warning, footer, genitive string
 	}{
-		{"calorie-diary",
+		{"CalorieDiary",
 			"【热量日记】注册验证码", "热量日记 &middot; 邮箱验证",
 			"热量日记不会向你要验证码，平台工作人员也不会。有人要，就是诈骗，请立刻举报。",
 			"热量日记 CalorieDiary", "已成为热量日记账号的绑定邮箱"},
-		{"expense-diary",
+		{"ExpenseDiary",
 			"【开支日记】注册验证码", "开支日记 &middot; 邮箱验证",
 			"开支日记不会向你要验证码，平台工作人员也不会。有人要，就是诈骗，请立刻举报。",
 			"开支日记 ExpenseDiary", "已成为开支日记账号的绑定邮箱"},
@@ -100,7 +100,7 @@ func TestBrandEmailStrings(t *testing.T) {
 // 引用它——对不上就会发出**裂图**，logoPath 与静态路由/生成器三方同口径。
 func TestBrandEmailLogoURL(t *testing.T) {
 	seen := map[string]string{} // logoPath → app，抓「三品牌共用一张图」的偷懒
-	for _, app := range []string{"calorie-diary", "expense-diary", ""} {
+	for _, app := range []string{"CalorieDiary", "ExpenseDiary", ""} {
 		b := brandFor(app)
 		if b.logoPath == "" || !strings.HasPrefix(b.logoPath, "/brand/") {
 			t.Fatalf("app=%q 的品牌缺 /brand/ logo 路径（得到 %q）", app, b.logoPath)
@@ -142,7 +142,7 @@ func TestBrandEmailLogoURL(t *testing.T) {
 // 按钮 bulletproof（VML 兜底、指标在 td、HTML 不挂裸 URL——降级 URL 归 text 部件）、不出现纯白底/纯黑字、
 // 没有模板渲染错误标记。
 func TestEmailShellStructure(t *testing.T) {
-	for _, app := range []string{"calorie-diary", "expense-diary", ""} {
+	for _, app := range []string{"CalorieDiary", "ExpenseDiary", ""} {
 		b := brandFor(app)
 		rendered := map[string][2]string{
 			"验证码信": func() [2]string {
@@ -193,7 +193,7 @@ func TestEmailShellStructure(t *testing.T) {
 func TestAllEmailTemplatesRenderBothParts(t *testing.T) {
 	at := time.Unix(1761000000, 0)
 	const cancelURL = "https://auth.horatio.cn/web/delete-cancel?token=abc123"
-	for _, app := range []string{"calorie-diary", "expense-diary", ""} {
+	for _, app := range []string{"CalorieDiary", "ExpenseDiary", ""} {
 		b := brandFor(app)
 		mails := map[string]func() (string, string, string){
 			"验证码": func() (string, string, string) { return codeEmail(b, "注册", "123456") },

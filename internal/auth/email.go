@@ -71,15 +71,15 @@ func (b brand) logoURL() string { return siteBase + b.logoPath }
 
 // brands 品牌注册表：键与 JWT aud 白名单（allowedApps）同集，两处一起加。
 var brands = map[string]brand{
-	"calorie-diary": {
+	"CalorieDiary": {
 		name: "热量日记", latin: "CalorieDiary", footer: "热量日记 CalorieDiary",
 		prefix: "【热量日记】", account: "热量日记账号",
-		primaryHex: "#1363D6", logoPath: "/brand/calorie-diary-v1.png",
+		primaryHex: "#1363D6", logoPath: "/brand/CalorieDiary-v1.png",
 	},
-	"expense-diary": {
+	"ExpenseDiary": {
 		name: "开支日记", latin: "ExpenseDiary", footer: "开支日记 ExpenseDiary",
 		prefix: "【开支日记】", account: "开支日记账号",
-		primaryHex: "#1363D6", logoPath: "/brand/expense-diary-v1.png",
+		primaryHex: "#1363D6", logoPath: "/brand/ExpenseDiary-v1.png",
 	},
 }
 

@@ -315,12 +315,12 @@ func TestAppSwitchAndRolesPage(t *testing.T) {
 	if len(super) != 3 || super[0].Key != "" || super[0].Label != "全部" || !super[0].Active {
 		t.Errorf("super 切换器应三项且「全部」默认高亮，得到 %+v", super)
 	}
-	superCal := SwitchApps(true, nil, "calorie-diary")
+	superCal := SwitchApps(true, nil, "CalorieDiary")
 	if superCal[0].Active || !superCal[1].Active {
 		t.Errorf("?app=calorie 时应高亮该项，得到 %+v", superCal)
 	}
-	one := SwitchApps(false, []string{"calorie-diary"}, "")
-	if len(one) != 1 || one[0].Key != "calorie-diary" {
+	one := SwitchApps(false, []string{"CalorieDiary"}, "")
+	if len(one) != 1 || one[0].Key != "CalorieDiary" {
 		t.Errorf("app-admin 切换器只该有授权项，得到 %+v", one)
 	}
 	for _, c := range one {
@@ -431,7 +431,7 @@ func TestDeniedPageRedressAndTimestamp(t *testing.T) {
 	}
 	// 渲染后仍带两条出路
 	rec := httptest.NewRecorder()
-	if err := Render(rec, "denied", Data{Title: "无权访问", Minimal: true, DeniedApp: "expense-diary"}); err != nil {
+	if err := Render(rec, "denied", Data{Title: "无权访问", Minimal: true, DeniedApp: "ExpenseDiary"}); err != nil {
 		t.Fatalf("渲染 403 页: %v", err)
 	}
 	body := rec.Body.String()
@@ -467,7 +467,7 @@ func TestAuthorizeTemplateRendersBothVariants(t *testing.T) {
 	// 确认态渲染：项目名、回跳域名、账号邮箱都出现在 HTML 里
 	rec := httptest.NewRecorder()
 	data := Data{Title: "授权登录", Minimal: true, OAuth: &OAuthView{
-		Tx: "tx-1", App: "calorie-diary", AppName: "热量日记",
+		Tx: "tx-1", App: "CalorieDiary", AppName: "热量日记",
 		RedirectHost: "app.example.com", Email: "u@example.com",
 		Scopes: []string{"你的账号标识（uid）", "你的邮箱地址"},
 	}}
@@ -530,7 +530,7 @@ func TestInviteTemplateRendersBothVariants(t *testing.T) {
 	if err := Render(rec, "invite", Data{
 		Title: "接受邀请", Minimal: true,
 		Invite: &InviteView{Token: "tok-123", Email: "invitee@example.com",
-			App: "calorie-diary", AppName: AppLabel("calorie-diary")},
+			App: "CalorieDiary", AppName: AppLabel("CalorieDiary")},
 	}); err != nil {
 		t.Fatalf("渲染表单变体: %v", err)
 	}
@@ -579,8 +579,8 @@ func TestInviteTemplateRendersBothVariants(t *testing.T) {
 	}
 
 	// AppLabel：注册表内回展示名，未知 slug 回原串，空串回空
-	if AppLabel("calorie-diary") != "热量日记" || AppLabel("expense-diary") != "开支日记" {
-		t.Errorf("AppLabel 应回注册表展示名，得到 %q / %q", AppLabel("calorie-diary"), AppLabel("expense-diary"))
+	if AppLabel("CalorieDiary") != "热量日记" || AppLabel("ExpenseDiary") != "开支日记" {
+		t.Errorf("AppLabel 应回注册表展示名，得到 %q / %q", AppLabel("CalorieDiary"), AppLabel("ExpenseDiary"))
 	}
 	if AppLabel("nope") != "nope" || AppLabel("") != "" {
 		t.Errorf("未知/空 slug 应回原样，得到 %q / %q", AppLabel("nope"), AppLabel(""))
@@ -1009,14 +1009,14 @@ func TestMinimalPagesRenderNoFooter(t *testing.T) {
 	}{
 		{"login", Data{Title: "登录", Minimal: true}},
 		{"authorize", Data{Title: "授权登录", Minimal: true, OAuth: &OAuthView{
-			Tx: "t", App: "calorie-diary", AppName: "热量日记", RedirectHost: "a.example", Email: "u@example.com"}}},
+			Tx: "t", App: "CalorieDiary", AppName: "热量日记", RedirectHost: "a.example", Email: "u@example.com"}}},
 		{"authorize", Data{Title: "无法发起授权", Minimal: true, Status: http.StatusBadRequest,
 			OAuth: &OAuthView{ErrorTitle: "无法发起授权", ErrorMessage: "应用未登记"}}},
 		{"invite", Data{Title: "接受邀请", Minimal: true, Invite: &InviteView{
-			Token: "t", Email: "a@example.com", App: "calorie-diary", AppName: "热量日记"}}},
+			Token: "t", Email: "a@example.com", App: "CalorieDiary", AppName: "热量日记"}}},
 		{"invite", Data{Title: "无法接受邀请", Minimal: true, Status: http.StatusBadRequest,
 			Invite: &InviteView{ErrorTitle: "无法接受邀请", ErrorMessage: "邀请链接已过期"}}},
-		{"denied", Data{Title: "无权访问", Minimal: true, DeniedApp: "calorie-diary"}},
+		{"denied", Data{Title: "无权访问", Minimal: true, DeniedApp: "CalorieDiary"}},
 	}
 	for _, c := range cases {
 		rec := httptest.NewRecorder()

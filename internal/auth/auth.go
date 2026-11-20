@@ -5,7 +5,7 @@
 //     见 newUserID）：不暴露注册顺序、可口播可手输。雪花（bwmarrin/snowflake，
 //     node id=1）退居**内部 id**——sessions/audit_logs/passkeys/webauthn_challenges
 //     的行 id 仍用它，`s.ids` 不动；
-//   - **JWT aud = 登录请求声明的应用**（白名单 calorie-diary / expense-diary）：
+//   - **JWT aud = 登录请求声明的应用**（白名单 CalorieDiary / ExpenseDiary）：
 //     本服务是所有应用的统一签发方，aud 是下游服务划界的依据；
 //   - **验证码落库**（原实现存进程内存，重启即失效）：语义逐条对齐，见 otp.go。
 //
@@ -32,8 +32,8 @@ import (
 	"time"
 
 	"github.com/go-webauthn/webauthn/webauthn"
-	"github.com/WXies-Team/auth/internal/db"
-	"github.com/WXies-Team/auth/internal/protocol"
+	"github.com/WXies-Team/Auth/internal/db"
+	"github.com/WXies-Team/Auth/internal/protocol"
 	"github.com/bwmarrin/snowflake"
 	"github.com/go-sql-driver/mysql"
 	"github.com/golang-jwt/jwt/v5"
@@ -72,8 +72,8 @@ const dummyPasswordHash = "$2a$12$fLhdHrkU7451wJMbFcZKnOa0fZVVzqzWBgVx26XH1iYr2M
 // allowedApps 是 JWT aud 白名单。加新应用 = 改这里（同时下游服务要实现
 // /internal/verify 的期望 aud 比对）。
 var allowedApps = map[string]bool{
-	"calorie-diary": true,
-	"expense-diary": true,
+	"CalorieDiary": true,
+	"ExpenseDiary": true,
 }
 
 // HTTPError 携带状态码，由路由层翻译成 ApiError 响应体。

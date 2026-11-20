@@ -62,10 +62,10 @@ func TestBrandLogoRoutesServed(t *testing.T) {
 		path, ctype string
 		magic       []byte
 	}{
-		{"/brand/calorie-diary-v1.png", "image/png", []byte("\x89PNG\r\n\x1a\n")},
-		{"/brand/expense-diary-v1.png", "image/png", []byte("\x89PNG\r\n\x1a\n")},
+		{"/brand/CalorieDiary-v1.png", "image/png", []byte("\x89PNG\r\n\x1a\n")},
+		{"/brand/ExpenseDiary-v1.png", "image/png", []byte("\x89PNG\r\n\x1a\n")},
 		{"/brand/auth-v1.png", "image/png", []byte("\x89PNG\r\n\x1a\n")},
-		{"/brand/calorie-diary.svg", "image/svg+xml; charset=utf-8", []byte("<svg")},
+		{"/brand/CalorieDiary.svg", "image/svg+xml; charset=utf-8", []byte("<svg")},
 	}
 	for _, c := range cases {
 		rec := staticDo(t, c.path)

@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/WXies-Team/auth/internal/db"
+	"github.com/WXies-Team/Auth/internal/db"
 )
 
 // 过期行的顺路清理（与 otp_codes / audit_logs 同一套路）：不引入后台 goroutine

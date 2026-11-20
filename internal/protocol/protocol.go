@@ -15,7 +15,7 @@ import "encoding/json"
 // 该字段照常工作；注册不带 = 拒绝（强制验证码）。
 //
 // App 是本服务新增的字段：登录请求要声明目标应用，作为 JWT aud
-//（白名单 calorie-diary / expense-diary，缺失或未知拒绝）。
+//（白名单 CalorieDiary / ExpenseDiary，缺失或未知拒绝）。
 type AuthRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
@@ -28,7 +28,7 @@ type AuthRequest struct {
 // 白名单同集，其余回 400）。
 //
 // App 是本服务新增的**可选**字段：决定这封验证码邮件的品牌（空白 = 中性品牌 Auth，
-// 预留给将来的 web 账号台；给了就必须在 calorie-diary / expense-diary 白名单，未知值 400）。
+// 预留给将来的 web 账号台；给了就必须在 CalorieDiary / ExpenseDiary 白名单，未知值 400）。
 // 老客户端不传照常工作——可选字段加进来不会让它们挂掉。
 type SendCodeRequest struct {
 	Email   string `json:"email"`
@@ -162,7 +162,7 @@ type AIConsumeResponse struct {
 
 // EnsureUserEntry 是 POST /internal/users/ensure 的单条存量用户（迁移脚本 → 本服务）。
 //
-// **内部接口，不属于客户端契约**：与上面那些和 calorie-diary 逐字对齐的 /auth/* DTO
+// **内部接口，不属于客户端契约**：与上面那些和 CalorieDiary 逐字对齐的 /auth/* DTO
 // 无关，改字段名不影响任何 App。
 //
 // PasswordHash 原样落库：旧库已是 bcrypt 串，重算既没必要也需要明文；nil/缺字段/null
@@ -244,7 +244,7 @@ type ProfileUpdateRequest struct {
 // WebLoginRequest 是 POST /web/login/password 的请求体。
 //
 // App 是可选的分流位（C 批）：缺省 = web 流程（cookie 会话，回执与既往逐字节一致）；
-// 给了且在白名单（calorie-diary / expense-diary）= App 流程（回业务 JWT、不下发
+// 给了且在白名单（CalorieDiary / ExpenseDiary）= App 流程（回业务 JWT、不下发
 // cookie），白名单外 400。2FA 中间态时 app 由服务端随 login_states 带到第二步。
 type WebLoginRequest struct {
 	Email    string `json:"email"`
@@ -315,7 +315,7 @@ type PasskeyFinishRequest struct {
 	CeremonyID int64           `json:"ceremonyId"`
 	Response   json.RawMessage `json:"response"`
 	// App 是**可选**字段（C 批）：只在 login/finish 上起作用——给了且在白名单
-	//（calorie-diary / expense-diary）就签 JWT 回 {token,email}，缺省 = web 流程照旧
+	//（CalorieDiary / ExpenseDiary）就签 JWT 回 {token,email}，缺省 = web 流程照旧
 	// 发 cookie 会话，白名单外 400。register/finish 忽略它（应用声明来自已验签的 token）。
 	// 老客户端不传照常工作：多收一个不认识的字段是本服务的既定兼容口径。
 	App string `json:"app"`

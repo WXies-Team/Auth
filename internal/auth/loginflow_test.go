@@ -307,10 +307,10 @@ func TestEnforceAppsSwitch(t *testing.T) {
 		t.Fatalf("取身份: %v", err)
 	}
 
-	// 没开 2FA：开关开着也不拦。名单只放 calorie-diary，好让下面 expense-diary
+	// 没开 2FA：开关开着也不拦。名单只放 CalorieDiary，好让下面 ExpenseDiary
 	// 那条走「名单外放行」的分支（假实现也得像真的：只回请求的那个键的值）
-	svc.SetEnforceApps(func(string) (string, error) { return "calorie-diary", nil })
-	if _, err := svc.Login("web-enforce@example.com", "secret123", "calorie-diary", testMeta); err != nil {
+	svc.SetEnforceApps(func(string) (string, error) { return "CalorieDiary", nil })
+	if _, err := svc.Login("web-enforce@example.com", "secret123", "CalorieDiary", testMeta); err != nil {
 		t.Errorf("未开 2FA 不该被拦: %v", err)
 	}
 
@@ -322,29 +322,29 @@ func TestEnforceAppsSwitch(t *testing.T) {
 		time.Now().UnixMilli(), c.UID); err != nil {
 		t.Fatalf("置 enabled: %v", err)
 	}
-	_, err = svc.Login("web-enforce@example.com", "secret123", "calorie-diary", testMeta)
+	_, err = svc.Login("web-enforce@example.com", "secret123", "CalorieDiary", testMeta)
 	if err == nil || !strings.Contains(err.Error(), "升级应用") {
 		t.Errorf("名单内应 401 提示升级，得到 %v", err)
 	}
 	if code, _ := httpMsg(err); code != 401 {
 		t.Errorf("应是 401，得到 %d", code)
 	}
-	if _, err := svc.Login("web-enforce@example.com", "secret123", "expense-diary", testMeta); err != nil {
+	if _, err := svc.Login("web-enforce@example.com", "secret123", "ExpenseDiary", testMeta); err != nil {
 		t.Errorf("名单外的 app 不该被拦: %v", err)
 	}
 
 	// 键没配 / 读失败 → 放行（兼容开关不该把老客户端锁死）
 	svc.SetEnforceApps(func(string) (string, error) { return "", nil })
-	if _, err := svc.Login("web-enforce@example.com", "secret123", "calorie-diary", testMeta); err != nil {
+	if _, err := svc.Login("web-enforce@example.com", "secret123", "CalorieDiary", testMeta); err != nil {
 		t.Errorf("空名单应放行: %v", err)
 	}
 	svc.SetEnforceApps(func(string) (string, error) { return "", errBoom })
-	if _, err := svc.Login("web-enforce@example.com", "secret123", "calorie-diary", testMeta); err != nil {
+	if _, err := svc.Login("web-enforce@example.com", "secret123", "CalorieDiary", testMeta); err != nil {
 		t.Errorf("读键失败应放行: %v", err)
 	}
 	// 不设开关（默认形态）
 	svc.SetEnforceApps(nil)
-	if _, err := svc.Login("web-enforce@example.com", "secret123", "calorie-diary", testMeta); err != nil {
+	if _, err := svc.Login("web-enforce@example.com", "secret123", "CalorieDiary", testMeta); err != nil {
 		t.Errorf("未注入开关应放行: %v", err)
 	}
 }

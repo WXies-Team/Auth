@@ -6,10 +6,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/WXies-Team/auth/internal/ai"
-	"github.com/WXies-Team/auth/internal/auth"
-	"github.com/WXies-Team/auth/internal/config"
-	"github.com/WXies-Team/auth/internal/protocol"
+	"github.com/WXies-Team/Auth/internal/ai"
+	"github.com/WXies-Team/Auth/internal/auth"
+	"github.com/WXies-Team/Auth/internal/config"
+	"github.com/WXies-Team/Auth/internal/protocol"
 )
 
 // ---- AI 限额三端点（日记服务 quota.go 改道后调用）----

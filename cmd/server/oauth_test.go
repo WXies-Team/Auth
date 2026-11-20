@@ -9,21 +9,21 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/WXies-Team/auth/internal/auth"
+	"github.com/WXies-Team/Auth/internal/auth"
 )
 
 // B4 OAuth 跳转授权的路由级用例（真库，无 TEST_MYSQL_DSN 跳过，留 CI）：
 // 参数 fail-fast 错误页、未登录托管登录页（tx 续跑）、确认页、发码回跳、
 // 换 token 全链路与失败形状。
 
-// oauthConfig 给 calorie-diary 开通客户端，回 client_id 与一次性 secret。
+// oauthConfig 给 CalorieDiary 开通客户端，回 client_id 与一次性 secret。
 // 用 svc 业务层直调（管理端 HTTP 形状另有 TestOAuthAdminRouteShape 覆盖）：
 // AdminConfigureOAuth 的 Caller 只用于审计归属，落一行 super 用户取 uid 即可。
 func oauthConfig(t *testing.T, e *routeEnv) (clientID, secret string) {
 	t.Helper()
 	uid := seedUser(t, e, "oauth-route-super@example.com", "secret123", "super")
 	actor := auth.Caller{UID: uid, Email: "oauth-route-super@example.com"}
-	res, err := e.svc.AdminConfigureOAuth(actor, auth.AdminScope{Super: true}, "calorie-diary",
+	res, err := e.svc.AdminConfigureOAuth(actor, auth.AdminScope{Super: true}, "CalorieDiary",
 		auth.AdminOAuthInput{RedirectUris: []string{"https://app.example.com/cb"}})
 	if err != nil {
 		t.Fatalf("开通 OAuth 客户端: %v", err)
@@ -182,8 +182,8 @@ func TestOAuthFullFlowViaRoutes(t *testing.T) {
 		t.Errorf("token 回执内容不对: %+v", res)
 	}
 	caller, err := e.svc.ValidUserID("Bearer " + res.AccessToken)
-	if err != nil || caller.App != "calorie-diary" {
-		t.Errorf("签出的 JWT 应过校验且 aud=calorie-diary，得到 %+v err=%v", caller, err)
+	if err != nil || caller.App != "CalorieDiary" {
+		t.Errorf("签出的 JWT 应过校验且 aud=CalorieDiary，得到 %+v err=%v", caller, err)
 	}
 
 	// ⑤ 复用 code：expired_token（OAuth 形状）
@@ -300,7 +300,7 @@ func TestOAuthAdminRouteShape(t *testing.T) {
 	e := newRouteEnv(t)
 	super := makeActor(t, e, "oa-super", "super", nil)
 
-	rec := e.do(t, "POST", "/admin/projects/calorie-diary/oauth",
+	rec := e.do(t, "POST", "/admin/projects/CalorieDiary/oauth",
 		`{"redirectUris":["https://app.example.com/cb"],"rotateSecret":true}`,
 		super.withCSRF)
 	if rec.Code != http.StatusOK {
@@ -318,7 +318,7 @@ func TestOAuthAdminRouteShape(t *testing.T) {
 	if got := keysOf(t, rec.Body.Bytes()); got != "app,clientId,redirectUris,secret" {
 		t.Errorf("开通回执形状不对: %s", got)
 	}
-	if res.App != "calorie-diary" || res.ClientID == "" || res.Secret == "" || len(res.RedirectURIs) != 1 {
+	if res.App != "CalorieDiary" || res.ClientID == "" || res.Secret == "" || len(res.RedirectURIs) != 1 {
 		t.Errorf("开通回执内容不对: %+v", res)
 	}
 
@@ -339,39 +339,39 @@ func TestOAuthAdminRouteShape(t *testing.T) {
 	}
 	var found bool
 	for _, p := range page.Projects {
-		if p.App == "calorie-diary" {
+		if p.App == "CalorieDiary" {
 			found = true
 			if p.ClientID != res.ClientID {
 				t.Errorf("列表 clientId 应与开通一致，得到 %q", p.ClientID)
 			}
 		}
-		if p.App == "expense-diary" && p.ClientID != "" {
+		if p.App == "ExpenseDiary" && p.ClientID != "" {
 			t.Errorf("未开通项目的 clientId 应为空串，得到 %q", p.ClientID)
 		}
 	}
 	if !found {
-		t.Fatal("列表里应有 calorie-diary")
+		t.Fatal("列表里应有 CalorieDiary")
 	}
 
 	// 非登录态（无 cookie）401；普通用户 403
 	plain := makeActor(t, e, "oa-plain", "user", nil)
-	if rec := e.do(t, "POST", "/admin/projects/calorie-diary/oauth",
+	if rec := e.do(t, "POST", "/admin/projects/CalorieDiary/oauth",
 		`{"redirectUris":["https://x.example.com/cb"]}`, plain.withCSRF); rec.Code != http.StatusForbidden {
 		t.Errorf("普通用户应 403，得到 %d", rec.Code)
 	}
 	// app-admin 越权（无该 scope）403
-	appAdmin := makeActor(t, e, "oa-appadmin", "admin", []string{"expense-diary"})
-	if rec := e.do(t, "POST", "/admin/projects/calorie-diary/oauth",
+	appAdmin := makeActor(t, e, "oa-appadmin", "admin", []string{"ExpenseDiary"})
+	if rec := e.do(t, "POST", "/admin/projects/CalorieDiary/oauth",
 		`{"redirectUris":["https://x.example.com/cb"]}`, appAdmin.withCSRF); rec.Code != http.StatusForbidden {
 		t.Errorf("app-admin 越权应 403，得到 %d", rec.Code)
 	}
 	// 非法回跳地址 400
-	if rec := e.do(t, "POST", "/admin/projects/calorie-diary/oauth",
+	if rec := e.do(t, "POST", "/admin/projects/CalorieDiary/oauth",
 		`{"redirectUris":["not-a-url"]}`, super.withCSRF); rec.Code != http.StatusBadRequest {
 		t.Errorf("非法回跳地址应 400，得到 %d", rec.Code)
 	}
 	// 空清单 400
-	if rec := e.do(t, "POST", "/admin/projects/calorie-diary/oauth",
+	if rec := e.do(t, "POST", "/admin/projects/CalorieDiary/oauth",
 		`{"redirectUris":[]}`, super.withCSRF); rec.Code != http.StatusBadRequest {
 		t.Errorf("空回跳清单应 400，得到 %d", rec.Code)
 	}

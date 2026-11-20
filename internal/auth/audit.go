@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/WXies-Team/auth/internal/db"
+	"github.com/WXies-Team/Auth/internal/db"
 )
 
 // 审计日志的口径（规格 A1.4，ASVS V16.2/V16.3）：
@@ -188,7 +188,7 @@ type AuditQuery struct {
 	Limit  int
 	Offset int
 	// Apps 非空 = app-admin 的可见边界：只回 detail JSON 里带该 app 标记的条目
-	//（`"app":"calorie-diary"` 子串匹配）。**这是现状数据结构下唯一诚实可行的
+	//（`"app":"CalorieDiary"` 子串匹配）。**这是现状数据结构下唯一诚实可行的
 	// 口径**——audit_logs 没有 app 列，登录/注册类事件把 app 放进 detail（见
 	// auth.go 的 {"app": app}），其余事件（改密、凭证操作等）天然不归属任何
 	// app，app-admin 看不到它们正是收权想要的效果。空 = 不限（super）。

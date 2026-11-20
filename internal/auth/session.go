@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/WXies-Team/auth/internal/db"
-	"github.com/WXies-Team/auth/internal/geoip"
-	"github.com/WXies-Team/auth/internal/protocol"
+	"github.com/WXies-Team/Auth/internal/db"
+	"github.com/WXies-Team/Auth/internal/geoip"
+	"github.com/WXies-Team/Auth/internal/protocol"
 )
 
 // SessionMeta 是一次登录请求的来源信息：ip 进列表（限流口径同一个 clientIP），
@@ -272,7 +272,7 @@ func revokeUserSessions(ctx context.Context, ex execer, userID, keepSID int64, a
 // shortDevice 把 User-Agent 压成**设备列表里显示的那一格**。四态定案：
 //
 //	① UA 带 Client Hints 后缀且有机型 → 「平台 · 机型」（Android · Pixel 5，见 uaWithCH）；
-//	② App 规范 UA（`calorie-diary/1.2.3 (Android; Pixel 8)`）→ 友好机型（Pixel 8）；
+//	② App 规范 UA（`CalorieDiary/1.2.3 (Android; Pixel 8)`）→ 友好机型（Pixel 8）；
 //	③ 浏览器 UA → 有机型出「系统 · 机型」（Android · Pixel 8），否则「浏览器 · 系统」；
 //	④ 认不出 → 「未知设备」。
 //
@@ -421,7 +421,7 @@ func parseAppUA(ua string) (ok bool, osName, model string) {
 }
 
 // uaProductRunes / uaVersionRunes 是 App UA 头部两段的字符集：
-// 产品名 = 字母数字与连字符（calorie-diary），版本 = 数字与点（1.2.3）。
+// 产品名 = 字母数字与连字符（CalorieDiary），版本 = 数字与点（1.2.3）。
 func uaProductRunes(r rune) bool {
 	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-'
 }

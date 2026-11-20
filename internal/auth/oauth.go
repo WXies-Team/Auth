@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/WXies-Team/auth/internal/db"
+	"github.com/WXies-Team/Auth/internal/db"
 )
 
 // OAuth 跳转授权（授权码 + PKCE，RFC 9700 业界序列）：

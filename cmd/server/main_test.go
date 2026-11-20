@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/WXies-Team/auth/internal/auth"
-	"github.com/WXies-Team/auth/internal/protocol"
+	"github.com/WXies-Team/Auth/internal/auth"
+	"github.com/WXies-Team/Auth/internal/protocol"
 )
 
 // requireJWTSecret：缺失或短于 32 字节必须拒启——短 secret 等于弱签名。
@@ -40,10 +40,10 @@ func (f *fakeVerifier) Verify(bearer, expectApp string) (*auth.VerifyResult, err
 }
 
 func TestInternalVerifySuccess(t *testing.T) {
-	f := &fakeVerifier{res: &auth.VerifyResult{UID: 1234567, Email: "a@b.com", App: "calorie-diary"}}
+	f := &fakeVerifier{res: &auth.VerifyResult{UID: 1234567, Email: "a@b.com", App: "CalorieDiary"}}
 	h := internalVerify(f)
 
-	req := httptest.NewRequest(http.MethodPost, "/internal/verify", strings.NewReader(`{"app":"calorie-diary"}`))
+	req := httptest.NewRequest(http.MethodPost, "/internal/verify", strings.NewReader(`{"app":"CalorieDiary"}`))
 	req.Header.Set("Authorization", "Bearer tok")
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -52,7 +52,7 @@ func TestInternalVerifySuccess(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("应 200，得到 %d（%s）", rec.Code, rec.Body.String())
 	}
-	if f.gotBearer != "Bearer tok" || f.gotApp != "calorie-diary" {
+	if f.gotBearer != "Bearer tok" || f.gotApp != "CalorieDiary" {
 		t.Errorf("透传错误: bearer=%q app=%q", f.gotBearer, f.gotApp)
 	}
 	var out struct {
@@ -64,7 +64,7 @@ func TestInternalVerifySuccess(t *testing.T) {
 		t.Fatalf("响应不是合法 JSON: %v", err)
 	}
 	// uid 是 7 位随机整数：JSON 数字进、int64 字段出必须无损
-	if out.UID != 1234567 || out.Email != "a@b.com" || out.App != "calorie-diary" {
+	if out.UID != 1234567 || out.Email != "a@b.com" || out.App != "CalorieDiary" {
 		t.Errorf("回执字段错误: %+v", out)
 	}
 	var raw struct {
@@ -98,7 +98,7 @@ func TestInternalVerifyTranslatesError(t *testing.T) {
 	for _, code := range []int{401, 503} {
 		f := &fakeVerifier{err: &auth.HTTPError{Code: code, Message: "x"}}
 		h := internalVerify(f)
-		req := httptest.NewRequest(http.MethodPost, "/internal/verify", strings.NewReader(`{"app":"calorie-diary"}`))
+		req := httptest.NewRequest(http.MethodPost, "/internal/verify", strings.NewReader(`{"app":"CalorieDiary"}`))
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, req)
 		if rec.Code != code {
@@ -204,25 +204,25 @@ func TestLoopbackOnly(t *testing.T) {
 // /internal/verify 的限流按 app 分键：同机回环拓扑下所有调用方同源 127.0.0.1，
 // 按 IP 分键会把两个日记服务挤进同一个桶——打满一个 app 的额度不该牵连另一个。
 func TestInternalVerifyRateLimitPerApp(t *testing.T) {
-	// 把 calorie-diary 的桶清空后占满（key 与 internalVerify 里的拼法一致）：
+	// 把 CalorieDiary 的桶清空后占满（key 与 internalVerify 里的拼法一致）：
 	// 同包靠前的 internalVerify 用例可能已留下几跳，不清会把占桶次数算岔；
 	// 测完再清掉，不给同包其它用例留残留
 	drainVerifyBucket := func() {
 		limiter.mu.Lock()
-		delete(limiter.windows, "verify:calorie-diary")
+		delete(limiter.windows, "verify:CalorieDiary")
 		limiter.mu.Unlock()
 	}
 	drainVerifyBucket()
 	t.Cleanup(drainVerifyBucket)
 	for i := 0; i < verifyRatePerApp; i++ {
-		if !limiter.allow("verify:calorie-diary", verifyRatePerApp, time.Minute) {
+		if !limiter.allow("verify:CalorieDiary", verifyRatePerApp, time.Minute) {
 			t.Fatalf("第 %d 次占桶不该被拒", i+1)
 		}
 	}
 
-	f := &fakeVerifier{res: &auth.VerifyResult{UID: 1, Email: "a@b.com", App: "calorie-diary"}}
+	f := &fakeVerifier{res: &auth.VerifyResult{UID: 1, Email: "a@b.com", App: "CalorieDiary"}}
 	h := internalVerify(f)
-	req := httptest.NewRequest(http.MethodPost, "/internal/verify", strings.NewReader(`{"app":"calorie-diary"}`))
+	req := httptest.NewRequest(http.MethodPost, "/internal/verify", strings.NewReader(`{"app":"CalorieDiary"}`))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusTooManyRequests {
@@ -233,11 +233,11 @@ func TestInternalVerifyRateLimitPerApp(t *testing.T) {
 	}
 
 	// 另一个 app 的桶不受牵连，照常放行
-	req = httptest.NewRequest(http.MethodPost, "/internal/verify", strings.NewReader(`{"app":"expense-diary"}`))
+	req = httptest.NewRequest(http.MethodPost, "/internal/verify", strings.NewReader(`{"app":"ExpenseDiary"}`))
 	rec = httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
-		t.Errorf("expense-diary 不该被 calorie-diary 的额度牵连，得到 %d（%s）", rec.Code, rec.Body.String())
+		t.Errorf("ExpenseDiary 不该被 CalorieDiary 的额度牵连，得到 %d（%s）", rec.Code, rec.Body.String())
 	}
 }
 

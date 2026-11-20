@@ -7,8 +7,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/WXies-Team/auth/internal/auth"
-	"github.com/WXies-Team/auth/internal/ui"
+	"github.com/WXies-Team/Auth/internal/auth"
+	"github.com/WXies-Team/Auth/internal/ui"
 )
 
 // OAuth 跳转授权的 HTTP 层（B4）：

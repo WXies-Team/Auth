@@ -147,7 +147,7 @@ func TestValidateOAuthRedirects(t *testing.T) {
 
 func TestOAuthStoreTxSingleUseAndTTL(t *testing.T) {
 	o := newOAuthStore()
-	o.putTx("tx1", &oauthTx{App: "calorie-diary", State: "st", UID: 7})
+	o.putTx("tx1", &oauthTx{App: "CalorieDiary", State: "st", UID: 7})
 
 	// 读不消耗（确认页可能刷新重渲染）
 	if got := o.tx("tx1"); got == nil || got.UID != 7 {
@@ -157,14 +157,14 @@ func TestOAuthStoreTxSingleUseAndTTL(t *testing.T) {
 		t.Error("不存在的 tx 应回 nil")
 	}
 	// 取出即消耗
-	if got := o.takeTx("tx1"); got == nil || got.App != "calorie-diary" {
+	if got := o.takeTx("tx1"); got == nil || got.App != "CalorieDiary" {
 		t.Fatal("takeTx 应返回事务本体")
 	}
 	if o.takeTx("tx1") != nil || o.tx("tx1") != nil {
 		t.Error("tx 消耗后不该再被取出（单次）")
 	}
 	// 过期：写入后把 CreatedAt 拨老（putTx 恒写 now，测试要造过期行只能直接拨）
-	o.putTx("tx2", &oauthTx{App: "calorie-diary"})
+	o.putTx("tx2", &oauthTx{App: "CalorieDiary"})
 	o.mu.Lock()
 	o.txs["tx2"].CreatedAt = time.Now().Add(-oauthTxTTL - time.Second)
 	o.mu.Unlock()
@@ -175,11 +175,11 @@ func TestOAuthStoreTxSingleUseAndTTL(t *testing.T) {
 
 func TestOAuthStoreCodeSingleUseAndTTL(t *testing.T) {
 	o := newOAuthStore()
-	o.putCode("c1", &oauthCode{UID: 42, App: "expense-diary", Exp: time.Now().Add(oauthCodeTTL)})
+	o.putCode("c1", &oauthCode{UID: 42, App: "ExpenseDiary", Exp: time.Now().Add(oauthCodeTTL)})
 	// 过期码：写入时不擦、取出时判死
 	o.putCode("dead", &oauthCode{UID: 42, Exp: time.Now().Add(-time.Second)})
 
-	if got := o.takeCode("c1"); got == nil || got.UID != 42 || got.App != "expense-diary" {
+	if got := o.takeCode("c1"); got == nil || got.UID != 42 || got.App != "ExpenseDiary" {
 		t.Fatal("takeCode 应回授权码本体")
 	}
 	if o.takeCode("c1") != nil {
@@ -196,7 +196,7 @@ func TestOAuthStoreCodeSingleUseAndTTL(t *testing.T) {
 // bindTx 只在行还在时生效；消耗后绑定无效。
 func TestOAuthStoreBindTx(t *testing.T) {
 	o := newOAuthStore()
-	o.putTx("tx", &oauthTx{App: "calorie-diary"})
+	o.putTx("tx", &oauthTx{App: "CalorieDiary"})
 	o.bindTx("tx", 99)
 	if got := o.tx("tx"); got == nil || got.UID != 99 {
 		t.Fatal("bindTx 应写入 uid")

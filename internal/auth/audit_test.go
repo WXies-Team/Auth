@@ -61,10 +61,10 @@ func TestAuditCoreEvents(t *testing.T) {
 	}
 
 	// 登录失败 → login.fail:fail；成功 → login.success:ok，detail.method=password
-	if _, err := svc.Login("audit-flow@example.com", "wrong-pass", "calorie-diary", testMeta); err == nil {
+	if _, err := svc.Login("audit-flow@example.com", "wrong-pass", "CalorieDiary", testMeta); err == nil {
 		t.Fatal("错密码应失败")
 	}
-	if _, err := svc.Login("audit-flow@example.com", "secret123", "calorie-diary", testMeta); err != nil {
+	if _, err := svc.Login("audit-flow@example.com", "secret123", "CalorieDiary", testMeta); err != nil {
 		t.Fatalf("正确密码应成功: %v", err)
 	}
 	list := auditList(t, svc)
@@ -221,10 +221,10 @@ func TestAuditQueryFilters(t *testing.T) {
 	reg := registerViaCode(t, svc, mailer, "audit-query@example.com", "secret123")
 	c, _ := svc.ValidUserID("Bearer " + reg.Token)
 	c.Meta = testMeta
-	if _, err := svc.Login("audit-query@example.com", "nope", "calorie-diary", testMeta); err == nil {
+	if _, err := svc.Login("audit-query@example.com", "nope", "CalorieDiary", testMeta); err == nil {
 		t.Fatal("错密码应失败")
 	}
-	if _, err := svc.Login("audit-query@example.com", "secret123", "calorie-diary", testMeta); err != nil {
+	if _, err := svc.Login("audit-query@example.com", "secret123", "CalorieDiary", testMeta); err != nil {
 		t.Fatalf("登录: %v", err)
 	}
 	_ = reg
@@ -275,7 +275,7 @@ func TestAuditQueryFilters(t *testing.T) {
 func TestAuditQueryIPPrefix(t *testing.T) {
 	svc, mailer := newTestService(t)
 	registerViaCode(t, svc, mailer, "audit-ip@example.com", "secret123")
-	if _, err := svc.Login("audit-ip@example.com", "nope", "calorie-diary", testMeta); err == nil {
+	if _, err := svc.Login("audit-ip@example.com", "nope", "CalorieDiary", testMeta); err == nil {
 		t.Fatal("错密码应失败")
 	}
 

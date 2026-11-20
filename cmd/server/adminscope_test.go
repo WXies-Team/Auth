@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/WXies-Team/auth/internal/auth"
+	"github.com/WXies-Team/Auth/internal/auth"
 )
 
 // W2 分级授权的路由级矩阵：五种身份（super / 单 scope app-admin / 双 scope
@@ -143,7 +143,7 @@ func seedAIUsage(t *testing.T, e *routeEnv, uid int64, count int) {
 // TestAdminScopeMatrix 是 W2 的核心矩阵。身份：
 //
 //	superX    role=super
-//	oneApp    role=admin + calorie-diary 单授权
+//	oneApp    role=admin + CalorieDiary 单授权
 //	twoApps   role=admin + 双授权
 //	noScope   role=admin + 零授权行（无权限 admin）
 //	plainUser role=user
@@ -153,16 +153,16 @@ func seedAIUsage(t *testing.T, e *routeEnv, uid int64, count int) {
 func TestAdminScopeMatrix(t *testing.T) {
 	e := newRouteEnv(t)
 	superX := makeActor(t, e, "mx-super", "super", nil)
-	oneApp := makeActor(t, e, "mx-one", "admin", []string{"calorie-diary"})
-	twoApps := makeActor(t, e, "mx-two", "admin", []string{"calorie-diary", "expense-diary"})
+	oneApp := makeActor(t, e, "mx-one", "admin", []string{"CalorieDiary"})
+	twoApps := makeActor(t, e, "mx-two", "admin", []string{"CalorieDiary", "ExpenseDiary"})
 	noScope := makeActor(t, e, "mx-noscope", "admin", nil)
 	plain := makeActor(t, e, "mx-plain", "user", nil)
 
 	victim := seedUser(t, e, "mx-victim@example.com", "secret123", "user")
-	calSID := seedAppSession(t, e, "mx-victim@example.com", "calorie-diary")
-	expSID := seedAppSession(t, e, "mx-victim@example.com", "expense-diary")
-	seedAuditWithApp(t, e, "calorie-diary")
-	seedAuditWithApp(t, e, "expense-diary")
+	calSID := seedAppSession(t, e, "mx-victim@example.com", "CalorieDiary")
+	expSID := seedAppSession(t, e, "mx-victim@example.com", "ExpenseDiary")
+	seedAuditWithApp(t, e, "CalorieDiary")
+	seedAuditWithApp(t, e, "ExpenseDiary")
 	seedAIUsage(t, e, victim, 5)
 
 	// ---- GET /admin/sessions：范围过滤 ----
@@ -188,7 +188,7 @@ func TestAdminScopeMatrix(t *testing.T) {
 			t.Fatalf("super 列会话应 200，得到 %d %s", rec.Code, rec.Body.String())
 		}
 		got := countApps(rec)
-		if got["calorie-diary"] == 0 || got["expense-diary"] == 0 {
+		if got["CalorieDiary"] == 0 || got["ExpenseDiary"] == 0 {
 			t.Errorf("super 应见两 app 的会话，得到 %v", got)
 		}
 		// 单 scope：只见 calorie（web 会话也不该出现——它不属于任何授权 app）
@@ -198,28 +198,28 @@ func TestAdminScopeMatrix(t *testing.T) {
 		}
 		got = countApps(rec)
 		for app, n := range got {
-			if app != "calorie-diary" || n == 0 {
-				t.Errorf("单 scope 只该见 calorie-diary，得到 %v", got)
+			if app != "CalorieDiary" || n == 0 {
+				t.Errorf("单 scope 只该见 CalorieDiary，得到 %v", got)
 				break
 			}
 		}
 		// 双 scope：两 app 都在
 		rec = e.do(t, "GET", "/admin/sessions", "", twoApps.cookieOnly)
 		got = countApps(rec)
-		if got["calorie-diary"] == 0 || got["expense-diary"] == 0 {
+		if got["CalorieDiary"] == 0 || got["ExpenseDiary"] == 0 {
 			t.Errorf("双 scope 应见两 app，得到 %v", got)
 		}
 		// ?app= 在授权内：单 app 视图
-		rec = e.do(t, "GET", "/admin/sessions?app=expense-diary", "", twoApps.cookieOnly)
+		rec = e.do(t, "GET", "/admin/sessions?app=ExpenseDiary", "", twoApps.cookieOnly)
 		got = countApps(rec)
 		for app := range got {
-			if app != "expense-diary" {
+			if app != "ExpenseDiary" {
 				t.Errorf("?app=expense 只该见 expense，得到 %v", got)
 				break
 			}
 		}
 		// ?app= 越界：403
-		rec = e.do(t, "GET", "/admin/sessions?app=expense-diary", "", oneApp.cookieOnly)
+		rec = e.do(t, "GET", "/admin/sessions?app=ExpenseDiary", "", oneApp.cookieOnly)
 		if rec.Code != http.StatusForbidden {
 			t.Errorf("越界 ?app= 应 403，得到 %d %s", rec.Code, rec.Body.String())
 		}
@@ -286,10 +286,10 @@ func TestAdminScopeMatrix(t *testing.T) {
 			t.Fatalf("app-admin 查审计应 200，得到 %d %s", rec.Code, rec.Body.String())
 		}
 		for _, app := range auditApps(rec) {
-			if app != "" && app != "calorie-diary" {
+			if app != "" && app != "CalorieDiary" {
 				t.Errorf("单 scope 审计混入 %q", app)
 			}
-			if app == "expense-diary" {
+			if app == "ExpenseDiary" {
 				t.Errorf("单 scope 审计混入 expense 条目")
 			}
 		}
@@ -353,7 +353,7 @@ func TestAdminScopeMatrix(t *testing.T) {
 			{"users-detail", "GET", "/admin/users/" + strconv.FormatInt(victim, 10), ""},
 			{"users-role", "POST", "/admin/users/" + strconv.FormatInt(victim, 10) + "/role", `{"role":"admin"}`},
 			{"users-kick", "POST", "/admin/users/" + strconv.FormatInt(victim, 10) + "/revoke-sessions", `{}`},
-			{"roles-scope", "POST", "/admin/roles/" + strconv.FormatInt(victim, 10) + "/scope", `{"app":"calorie-diary","op":"grant"}`},
+			{"roles-scope", "POST", "/admin/roles/" + strconv.FormatInt(victim, 10) + "/scope", `{"app":"CalorieDiary","op":"grant"}`},
 			{"config-list", "GET", "/admin/config", ""},
 			{"config-write", "PUT", "/admin/config/llm_model", `{"value":"gpt-x"}`},
 		} {
@@ -388,7 +388,7 @@ func TestRolesEndpoints(t *testing.T) {
 
 	// 授予：role 提 admin + scopes 摘要可见 + 审计落行
 	rec := e.do(t, "POST", "/admin/roles/"+strconv.FormatInt(target, 10)+"/scope",
-		`{"app":"calorie-diary","op":"grant"}`, superX.withCSRF)
+		`{"app":"CalorieDiary","op":"grant"}`, superX.withCSRF)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("授予应 200，得到 %d %s", rec.Code, rec.Body.String())
 	}
@@ -414,7 +414,7 @@ func TestRolesEndpoints(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &detail); err != nil {
 		t.Fatalf("用户详情解析: %v (%s)", err, rec.Body.String())
 	}
-	if detail.Role != "admin" || len(detail.Scopes) != 1 || detail.Scopes[0] != "calorie-diary" {
+	if detail.Role != "admin" || len(detail.Scopes) != 1 || detail.Scopes[0] != "CalorieDiary" {
 		t.Errorf("用户详情 role/scopes 不对: %+v", detail)
 	}
 	rec = e.do(t, "GET", "/admin/users?query=ro-target", "", superX.cookieOnly)
@@ -436,7 +436,7 @@ func TestRolesEndpoints(t *testing.T) {
 
 	// 收光最后一个授权：role 降回 user
 	rec = e.do(t, "POST", "/admin/roles/"+strconv.FormatInt(target, 10)+"/scope",
-		`{"app":"calorie-diary","op":"revoke"}`, superX.withCSRF)
+		`{"app":"CalorieDiary","op":"revoke"}`, superX.withCSRF)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("回收应 200，得到 %d %s", rec.Code, rec.Body.String())
 	}
@@ -451,7 +451,7 @@ func TestRolesEndpoints(t *testing.T) {
 
 	// 非法 op / 名单外 app
 	rec = e.do(t, "POST", "/admin/roles/"+strconv.FormatInt(target, 10)+"/scope",
-		`{"app":"calorie-diary","op":"delete"}`, superX.withCSRF)
+		`{"app":"CalorieDiary","op":"delete"}`, superX.withCSRF)
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("非法 op 应 400，得到 %d", rec.Code)
 	}
@@ -464,7 +464,7 @@ func TestRolesEndpoints(t *testing.T) {
 	// role 变更走唯一入口 POST /admin/users/{uid}/role（旧 /admin/roles/{uid}/role
 	// 与 PATCH /admin/users/{uid} 已并入删除）。涉 super 的授予/回收收口根 su（W7-2）。
 	_ = e.do(t, "POST", "/admin/roles/"+strconv.FormatInt(target, 10)+"/scope",
-		`{"app":"calorie-diary","op":"grant"}`, superX.withCSRF)
+		`{"app":"CalorieDiary","op":"grant"}`, superX.withCSRF)
 	// 非根 super 授他人 super → 403（只有根 su 能给 super）
 	rec = e.do(t, "POST", "/admin/users/"+strconv.FormatInt(target, 10)+"/role",
 		`{"role":"super"}`, superX.withCSRF)
@@ -514,7 +514,7 @@ func TestRolesEndpoints(t *testing.T) {
 func TestSwitcherRendering(t *testing.T) {
 	e := newRouteEnv(t)
 	superX := makeActor(t, e, "sw-super", "super", nil)
-	oneApp := makeActor(t, e, "sw-one", "admin", []string{"calorie-diary"})
+	oneApp := makeActor(t, e, "sw-one", "admin", []string{"CalorieDiary"})
 
 	pageOf := func(a *adminActor, path string) (int, string) {
 		rec := e.do(t, "GET", path, "", a.cookieOnly)
@@ -526,7 +526,7 @@ func TestSwitcherRendering(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("super 打会话页应 200，得到 %d", code)
 	}
-	for _, want := range []string{`id="app-switch"`, `data-app=""`, `data-app="calorie-diary"`, `data-app="expense-diary"`, `>全部<`} {
+	for _, want := range []string{`id="app-switch"`, `data-app=""`, `data-app="CalorieDiary"`, `data-app="ExpenseDiary"`, `>全部<`} {
 		if !strings.Contains(html, want) {
 			t.Errorf("super 切换器缺 %q", want)
 		}
@@ -536,10 +536,10 @@ func TestSwitcherRendering(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("app-admin 打会话页应 200，得到 %d", code)
 	}
-	if !strings.Contains(html, `data-app="calorie-diary"`) {
+	if !strings.Contains(html, `data-app="CalorieDiary"`) {
 		t.Error("app-admin 切换器应含自己的 app")
 	}
-	if strings.Contains(html, `data-app="expense-diary"`) || strings.Contains(html, `>全部<`) {
+	if strings.Contains(html, `data-app="ExpenseDiary"`) || strings.Contains(html, `>全部<`) {
 		t.Error("app-admin 切换器不该出现未授权 app 或「全部」")
 	}
 	for _, banned := range []string{`href="/web/admin"`, `href="/web/admin/config"`, `href="/web/admin/roles"`} {
@@ -557,12 +557,12 @@ func TestSwitcherRendering(t *testing.T) {
 		t.Errorf("app-admin 访问角色页应 302，得到 %d", rec.Code)
 	}
 	// 越权 ?app= 页面：403 页（友好文案）
-	code, html = pageOf(oneApp, "/web/admin/sessions?app=expense-diary")
+	code, html = pageOf(oneApp, "/web/admin/sessions?app=ExpenseDiary")
 	if code != http.StatusForbidden || !strings.Contains(html, "无权访问") {
 		t.Errorf("越权 ?app= 页面应 403 且友好文案，得到 %d", code)
 	}
 	// super 的合法 ?app= 页面：200
-	if code, _ = pageOf(superX, "/web/admin/sessions?app=calorie-diary"); code != http.StatusOK {
+	if code, _ = pageOf(superX, "/web/admin/sessions?app=CalorieDiary"); code != http.StatusOK {
 		t.Errorf("super 带合法 ?app= 应 200，得到 %d", code)
 	}
 	// 普通用户：管理页 302 去概览
@@ -579,10 +579,10 @@ func TestSwitcherRendering(t *testing.T) {
 func TestAdminEmailAndProfileRoutes(t *testing.T) {
 	e := newRouteEnv(t)
 	superX := makeActor(t, e, "b5-route-super", "super", nil)
-	oneApp := makeActor(t, e, "b5-route-one", "admin", []string{"calorie-diary"})
+	oneApp := makeActor(t, e, "b5-route-one", "admin", []string{"CalorieDiary"})
 
 	target := seedUser(t, e, "b5-route-target@example.com", "secret123", "user")
-	seedAppSession(t, e, "b5-route-target@example.com", "calorie-diary")
+	seedAppSession(t, e, "b5-route-target@example.com", "CalorieDiary")
 	// 种一行档案（昵称 + 色 + 头像），列表/详情回执都要带
 	if _, err := e.pool.Exec(
 		"INSERT INTO user_profile (user_id, nickname, avatar_color, avatar_image, updated_at) VALUES (?,?,?,?,?)",

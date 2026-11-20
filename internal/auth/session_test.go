@@ -9,7 +9,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
-	"github.com/WXies-Team/auth/internal/protocol"
+	"github.com/WXies-Team/Auth/internal/protocol"
 )
 
 // 设备标签四态：App 规范 UA 出机型、浏览器 UA 出「系统 · 机型」/「浏览器 · 系统」、
@@ -28,11 +28,11 @@ func TestSessionDeviceLabel(t *testing.T) {
 		{"Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
 			"iOS · iPhone"},
 		// App 规范 UA（产品名/版本 + 平台段）→ 友好机型，不带「系统 · 」前缀
-		{"calorie-diary/1.2.3 (Android; Pixel 8)", "Pixel 8"},
-		{"expense-diary/2.0.1 (iOS; iPhone 15 Pro)", "iPhone 15 Pro"},
-		{"calorie-diary/1.0 (Android)", "Android"},
+		{"CalorieDiary/1.2.3 (Android; Pixel 8)", "Pixel 8"},
+		{"ExpenseDiary/2.0.1 (iOS; iPhone 15 Pro)", "iPhone 15 Pro"},
+		{"CalorieDiary/1.0 (Android)", "Android"},
 		// 品牌+型号的含空格机型：括号段第 2 段整段是机型，按空格再切会把品牌切掉
-		{"calorie-diary/1.2.3 (Android; Xiaomi 23127PN0CC)", "Xiaomi 23127PN0CC"},
+		{"CalorieDiary/1.2.3 (Android; Xiaomi 23127PN0CC)", "Xiaomi 23127PN0CC"},
 		// 浏览器 UA 带含空格机型：Mozilla 挡板让 parseAppUA 不接手，走 classifyUA 出
 		//「系统 · 机型」而不是裸机型
 		{"Mozilla/5.0 (Linux; Android 14; Xiaomi 23127PN0CC) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
@@ -76,7 +76,7 @@ func TestShortDeviceClientHintsSuffix(t *testing.T) {
 		{reducedUA + " | CH:;", "Android · K"},
 		// 无后缀：既有口径一字不变（老行、App 行）
 		{reducedUA, "Android · K"},
-		{"calorie-diary/1.2.3 (Android; Pixel 8)", "Pixel 8"},
+		{"CalorieDiary/1.2.3 (Android; Pixel 8)", "Pixel 8"},
 		{"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.6099.129",
 			"Edge · Windows"},
 		{"", "未知设备"},
@@ -133,7 +133,7 @@ func sidStr(id int64) string { return strconv.FormatInt(id, 10) }
 func TestSessionDeviceLabelHealsLegacyRows(t *testing.T) {
 	svc, _ := newTestService(t)
 	const legacyUA = "ktor-client/2.0"
-	const appUA = "calorie-diary/1.2.3 (Android; Xiaomi 23127PN0CC)"
+	const appUA = "CalorieDiary/1.2.3 (Android; Xiaomi 23127PN0CC)"
 	const uid = int64(8801234)
 	now := time.Now().UnixMilli()
 	if _, err := svc.pool.Exec(
@@ -152,7 +152,7 @@ func TestSessionDeviceLabelHealsLegacyRows(t *testing.T) {
 		if _, err := svc.pool.Exec(
 			"INSERT INTO sessions (id, user_id, app, device, ip, user_agent, created_at, last_seen_at)"+
 				" VALUES (?,?,?,?,?,?,?,?)",
-			r.id, uid, "calorie-diary", legacyUA, "127.0.0.1", r.ua, now, now); err != nil {
+			r.id, uid, "CalorieDiary", legacyUA, "127.0.0.1", r.ua, now, now); err != nil {
 			t.Fatalf("落会话: %v", err)
 		}
 	}
@@ -209,13 +209,13 @@ func TestSessionLifecycle(t *testing.T) {
 	}
 	verifyOK := func(tok, tag string) {
 		t.Helper()
-		if _, err := svc.Verify("Bearer "+tok, "calorie-diary"); err != nil {
+		if _, err := svc.Verify("Bearer "+tok, "CalorieDiary"); err != nil {
 			t.Errorf("%s 的 token 应通过 verify，得到 %v", tag, err)
 		}
 	}
 	verifyDead := func(tok, tag string) {
 		t.Helper()
-		_, err := svc.Verify("Bearer "+tok, "calorie-diary")
+		_, err := svc.Verify("Bearer "+tok, "CalorieDiary")
 		if code, msg := httpMsg(err); code != 401 {
 			t.Errorf("%s 的 token 应被 verify 判 401，得到 %d %q", tag, code, msg)
 		}
@@ -230,7 +230,7 @@ func TestSessionLifecycle(t *testing.T) {
 	callerUID = cA.UID
 
 	// 设备 B：密码登录，UA 带机型 → 设备标签按 UA 解析，IP 按 clientIP 口径记
-	respB, err := svc.Login("sess@example.com", "secret123", "calorie-diary",
+	respB, err := svc.Login("sess@example.com", "secret123", "CalorieDiary",
 		SessionMeta{IP: "10.0.0.7", UserAgent: androidUA})
 	if err != nil {
 		t.Fatalf("登录失败: %v", err)
@@ -253,8 +253,8 @@ func TestSessionLifecycle(t *testing.T) {
 		if it.Current {
 			currents++
 		}
-		if it.App != "calorie-diary" {
-			t.Errorf("会话 %s 的 app 应为 calorie-diary，得到 %q", it.ID, it.App)
+		if it.App != "CalorieDiary" {
+			t.Errorf("会话 %s 的 app 应为 CalorieDiary，得到 %q", it.ID, it.App)
 		}
 		if it.CreatedAt <= 0 || it.LastSeenAt <= 0 {
 			t.Errorf("会话 %s 的时间戳应为毫秒正整数，得到 created=%d seen=%d",
@@ -293,7 +293,7 @@ func TestSessionLifecycle(t *testing.T) {
 	}
 
 	// revoke-others：只动会话层，当前 token 照用
-	respC, err := svc.Login("sess@example.com", "secret123", "calorie-diary",
+	respC, err := svc.Login("sess@example.com", "secret123", "CalorieDiary",
 		SessionMeta{IP: "10.0.0.9", UserAgent: windowsUA})
 	if err != nil {
 		t.Fatalf("登录第三台失败: %v", err)
@@ -336,7 +336,7 @@ func TestSessionLifecycle(t *testing.T) {
 	verifyDead(respB.Token, "B")
 
 	// logout：token 层与会话层一起吊销，不留活死行
-	respD, err := svc.Login("sess@example.com", "secret123", "calorie-diary", testMeta)
+	respD, err := svc.Login("sess@example.com", "secret123", "CalorieDiary", testMeta)
 	if err != nil {
 		t.Fatalf("登录第四台失败: %v", err)
 	}
@@ -368,7 +368,7 @@ func TestTokenWithoutSIDIsRejected(t *testing.T) {
 	}
 	verifyOKNow := func(tok, tag string) {
 		t.Helper()
-		if _, err := svc.Verify("Bearer "+tok, "calorie-diary"); err != nil {
+		if _, err := svc.Verify("Bearer "+tok, "CalorieDiary"); err != nil {
 			t.Fatalf("%s: 新 token 应通过 verify: %v", tag, err)
 		}
 	}
@@ -376,7 +376,7 @@ func TestTokenWithoutSIDIsRejected(t *testing.T) {
 
 	// 形状 = 切换前签的 token：uid/ver/aud/iss/exp 齐全，唯独没有 sid
 	legacy := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"aud":   "calorie-diary",
+		"aud":   "CalorieDiary",
 		"iss":   issuer,
 		"uid":   caller.UID,
 		"email": caller.Email,
@@ -388,7 +388,7 @@ func TestTokenWithoutSIDIsRejected(t *testing.T) {
 		t.Fatalf("签 legacy token: %v", err)
 	}
 
-	_, verifyErr := svc.Verify("Bearer "+tok, "calorie-diary")
+	_, verifyErr := svc.Verify("Bearer "+tok, "CalorieDiary")
 	if code, msg := httpMsg(verifyErr); code != 401 {
 		t.Errorf("无 sid 的 token 应被 verify 判 401，得到 %d %q", code, msg)
 	}
@@ -408,7 +408,7 @@ func TestSessionScopeAndBatchRevoke(t *testing.T) {
 	if err != nil {
 		t.Fatalf("解析会话: %v", err)
 	}
-	respE, err := svc.Login("scope-sess@example.com", "secret123", "expense-diary", testMeta)
+	respE, err := svc.Login("scope-sess@example.com", "secret123", "ExpenseDiary", testMeta)
 	if err != nil {
 		t.Fatalf("expense 登录: %v", err)
 	}
@@ -421,10 +421,10 @@ func TestSessionScopeAndBatchRevoke(t *testing.T) {
 		t.Fatalf("建 web 会话: %v", err)
 	}
 
-	calOnly := []string{"calorie-diary"}
-	// Bearer（aud=calorie-diary）视角：只看得见自己 app 的一条
+	calOnly := []string{"CalorieDiary"}
+	// Bearer（aud=CalorieDiary）视角：只看得见自己 app 的一条
 	items, err := svc.ListSessions(c.UID, c.SID, calOnly)
-	if err != nil || len(items) != 1 || items[0].App != "calorie-diary" {
+	if err != nil || len(items) != 1 || items[0].App != "CalorieDiary" {
 		t.Fatalf("calorie 视角应只见 1 条，得到 %+v err=%v", items, err)
 	}
 	if items[0].ID != sidStr(c.SID) || !items[0].Current {
@@ -462,7 +462,7 @@ func TestSessionScopeAndBatchRevoke(t *testing.T) {
 	}
 
 	// 整批校验：混入他人的会话 → 404 且一条都不踢（先补两条活的）
-	resp2, err := svc.Login("scope-sess@example.com", "secret123", "calorie-diary", testMeta)
+	resp2, err := svc.Login("scope-sess@example.com", "secret123", "CalorieDiary", testMeta)
 	if err != nil {
 		t.Fatalf("再登录: %v", err)
 	}

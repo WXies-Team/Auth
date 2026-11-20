@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/WXies-Team/auth/internal/auth"
-	"github.com/WXies-Team/auth/internal/ui"
+	"github.com/WXies-Team/Auth/internal/auth"
+	"github.com/WXies-Team/Auth/internal/ui"
 )
 
 // 页面路由：服务端先做**登录态门禁**再渲染壳——没登录直接 302 去登录页，

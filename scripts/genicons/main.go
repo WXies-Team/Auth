@@ -52,15 +52,15 @@ var (
 // brandGlyphs 是三品牌 logo 的字形（键 = 文件名 slug）。auth = shield 素盾，与站点
 // favicon 三件套**同一份 path data**——全渠道一个图形（gen_test 有同源断言钉死）。
 var brandGlyphs = map[string][]string{
-	"calorie-diary": flamePaths,
-	"expense-diary": receiptPaths,
+	"CalorieDiary": flamePaths,
+	"ExpenseDiary": receiptPaths,
 	"auth":          shieldPaths,
 }
 
 // brandLabels 是 logo 的 alt/title 文案（与 auth 品牌注册表的 name 同值）。
 var brandLabels = map[string]string{
-	"calorie-diary": "热量日记",
-	"expense-diary": "开支日记",
+	"CalorieDiary": "热量日记",
+	"ExpenseDiary": "开支日记",
 	"auth":          "Auth",
 }
 
@@ -76,7 +76,7 @@ func generate() ([]fileOut, error) {
 
 	// 品牌邮件 logo：64px 设计尺寸 @2x = 128px，超椭圆切角 + 纯色 #3482FF 实底 +
 	// 白字形（字形外包盒占 76% ≈ 四周 12% 内边距）。矢量源同款（squircle 用采样折线逼近）。
-	for _, name := range []string{"calorie-diary", "expense-diary", "auth"} {
+	for _, name := range []string{"CalorieDiary", "ExpenseDiary", "auth"} {
 		png, err := encodePNG(iconSpec{size: 128, cutCorners: true, boxFrac: 0.76, paths: brandGlyphs[name]})
 		if err != nil {
 			return nil, fmt.Errorf("画 %s 品牌 logo: %w", name, err)

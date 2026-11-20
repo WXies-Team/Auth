@@ -9,7 +9,7 @@ import (
 // OAuth 的真库端到端（无 TEST_MYSQL_DSN 跳过，留 CI）：登记 → 授权事务 →
 // 确认发码 → 换 token → 复用拒 / PKCE 错拒 / redirect 不一致拒 / secret 轮换。
 
-// oauthSetup 造一套完整现场：super 管理员 + 一个已注册用户 + calorie-diary 的
+// oauthSetup 造一套完整现场：super 管理员 + 一个已注册用户 + CalorieDiary 的
 // 客户端登记（回 client_id 与一次性 secret）。
 type oauthFixture struct {
 	svc      *Service
@@ -25,7 +25,7 @@ func newOAuthFixture(t *testing.T) *oauthFixture {
 	svc, mailer := newTestService(t)
 	super := seedAdminUser(t, svc, mailer, "oauth-super@example.com", adminRoleSuper)
 	user := newPasskeyUser(t, svc, mailer, "oauth-user@example.com")
-	res, err := svc.AdminConfigureOAuth(super, AdminScope{Super: true}, "calorie-diary", AdminOAuthInput{
+	res, err := svc.AdminConfigureOAuth(super, AdminScope{Super: true}, "CalorieDiary", AdminOAuthInput{
 		RedirectUris: []string{"https://app.example.com/cb"},
 	})
 	if err != nil {
@@ -62,7 +62,7 @@ func TestOAuthEndToEndCodeFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("发起授权: %v", err)
 	}
-	if app != "calorie-diary" || tx == "" {
+	if app != "CalorieDiary" || tx == "" {
 		t.Fatalf("应解析到项目并回 tx，得到 app=%q tx=%q", app, tx)
 	}
 
@@ -91,7 +91,7 @@ func TestOAuthEndToEndCodeFlow(t *testing.T) {
 	code := redirect[strings.Index(redirect, "code=")+5:]
 	code = code[:strings.IndexAny(code, "&")]
 
-	// ⑤ 换 token：成功，JWT 可校验且 aud=calorie-diary
+	// ⑤ 换 token：成功，JWT 可校验且 aud=CalorieDiary
 	res, err := f.svc.OAuthExchangeToken(OAuthTokenRequest{
 		GrantType: "authorization_code", Code: code,
 		RedirectURI: "https://app.example.com/cb",
@@ -107,7 +107,7 @@ func TestOAuthEndToEndCodeFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("签出的 JWT 应可校验: %v", err)
 	}
-	if caller.App != "calorie-diary" || caller.UID != f.user.UID {
+	if caller.App != "CalorieDiary" || caller.UID != f.user.UID {
 		t.Errorf("JWT aud/uid 不对: %+v", caller)
 	}
 
@@ -272,7 +272,7 @@ func TestOAuthAdminConfigureLifecycle(t *testing.T) {
 	f := newOAuthFixture(t)
 
 	// 不轮换更新 redirect：secret 不回执
-	res, err := f.svc.AdminConfigureOAuth(f.super, AdminScope{Super: true}, "calorie-diary", AdminOAuthInput{
+	res, err := f.svc.AdminConfigureOAuth(f.super, AdminScope{Super: true}, "CalorieDiary", AdminOAuthInput{
 		RedirectUris: []string{"https://app.example.com/cb", "https://app.example.com/cb2"},
 	})
 	if err != nil {
@@ -307,7 +307,7 @@ func TestOAuthAdminConfigureLifecycle(t *testing.T) {
 	}
 
 	// 轮换：旧 secret 立即失效
-	res, err = f.svc.AdminConfigureOAuth(f.super, AdminScope{Super: true}, "calorie-diary", AdminOAuthInput{
+	res, err = f.svc.AdminConfigureOAuth(f.super, AdminScope{Super: true}, "CalorieDiary", AdminOAuthInput{
 		RedirectUris: []string{"https://app.example.com/cb"}, RotateSecret: true,
 	})
 	if err != nil {
@@ -340,7 +340,7 @@ func TestOAuthAdminConfigureLifecycle(t *testing.T) {
 		AuditOAuthClientWrite).Scan(&detail); err != nil {
 		t.Fatalf("查 OAuth 客户端审计: %v", err)
 	}
-	if !strings.Contains(detail, `"app":"calorie-diary"`) || !strings.Contains(detail, `"rotateSecret":"true"`) {
+	if !strings.Contains(detail, `"app":"CalorieDiary"`) || !strings.Contains(detail, `"rotateSecret":"true"`) {
 		t.Errorf("审计 detail 缺字段: %s", detail)
 	}
 	if strings.Contains(detail, res.Secret) || strings.Contains(detail, res.ClientID) {
@@ -349,8 +349,8 @@ func TestOAuthAdminConfigureLifecycle(t *testing.T) {
 
 	// 权限：app-admin 越权（未授权项目）403；名单外项目 400
 	appAdmin := seedAdminUser(t, f.svc, f.mailer, "oauth-appadmin@example.com", adminRoleAdmin)
-	if _, err := f.svc.AdminConfigureOAuth(appAdmin, AdminScope{Apps: []string{"expense-diary"}},
-		"calorie-diary", AdminOAuthInput{RedirectUris: []string{"https://x.example.com/cb"}}); err == nil {
+	if _, err := f.svc.AdminConfigureOAuth(appAdmin, AdminScope{Apps: []string{"ExpenseDiary"}},
+		"CalorieDiary", AdminOAuthInput{RedirectUris: []string{"https://x.example.com/cb"}}); err == nil {
 		t.Error("app-admin 管未授权项目应 403")
 	}
 	if _, err := f.svc.AdminConfigureOAuth(f.super, AdminScope{Super: true}, "not-an-app",
@@ -358,17 +358,17 @@ func TestOAuthAdminConfigureLifecycle(t *testing.T) {
 		t.Error("名单外项目应 400")
 	}
 	// 授权后 app-admin 可管自己项目
-	if err := f.svc.AdminSetScope(f.super, appAdmin.UID, "expense-diary", true); err != nil {
+	if err := f.svc.AdminSetScope(f.super, appAdmin.UID, "ExpenseDiary", true); err != nil {
 		t.Fatalf("授 scope: %v", err)
 	}
-	res, err = f.svc.AdminConfigureOAuth(appAdmin, AdminScope{Apps: []string{"expense-diary"}},
-		"expense-diary", AdminOAuthInput{RedirectUris: []string{"https://x.example.com/cb"}})
+	res, err = f.svc.AdminConfigureOAuth(appAdmin, AdminScope{Apps: []string{"ExpenseDiary"}},
+		"ExpenseDiary", AdminOAuthInput{RedirectUris: []string{"https://x.example.com/cb"}})
 	if err != nil || res.ClientID == "" {
 		t.Errorf("app-admin 管授权项目应成功，得到 %+v err=%v", res, err)
 	}
 
 	// OAuthClientIDFor：未开通回空串
-	if cid, _ := f.svc.OAuthClientIDFor("expense-diary"); cid != res.ClientID {
+	if cid, _ := f.svc.OAuthClientIDFor("ExpenseDiary"); cid != res.ClientID {
 		t.Errorf("OAuthClientIDFor 应回登记的 client_id，得到 %q", cid)
 	}
 }
@@ -382,7 +382,7 @@ func TestAdminListProjectsCarriesOAuth(t *testing.T) {
 	}
 	var found bool
 	for _, p := range projects {
-		if p.App != "calorie-diary" {
+		if p.App != "CalorieDiary" {
 			continue
 		}
 		found = true
@@ -391,6 +391,6 @@ func TestAdminListProjectsCarriesOAuth(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatal("列表里应有 calorie-diary")
+		t.Fatal("列表里应有 CalorieDiary")
 	}
 }

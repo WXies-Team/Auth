@@ -1,4 +1,4 @@
-module github.com/WXies-Team/auth
+module github.com/WXies-Team/Auth
 
 go 1.27.1
 

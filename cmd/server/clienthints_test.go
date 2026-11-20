@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/WXies-Team/auth/internal/auth"
+	"github.com/WXies-Team/Auth/internal/auth"
 )
 
 // webSessMeta 从请求头取 Client Hints 两头（原头值不清——清理在 auth.uaWithCH，

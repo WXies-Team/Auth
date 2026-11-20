@@ -39,8 +39,8 @@ func TestGeneratedAssetsInSync(t *testing.T) {
 //（<slug>-v1.png + 矢量源 <slug>.svg）——文件名拼错会让邮件里出现裂图。
 func TestBrandLogoFilenamesMatchRegistryConvention(t *testing.T) {
 	want := map[string]bool{
-		"calorie-diary-v1.png": true, "expense-diary-v1.png": true, "auth-v1.png": true,
-		"calorie-diary.svg": true, "expense-diary.svg": true, "auth.svg": true,
+		"CalorieDiary-v1.png": true, "ExpenseDiary-v1.png": true, "auth-v1.png": true,
+		"CalorieDiary.svg": true, "ExpenseDiary.svg": true, "auth.svg": true,
 	}
 	files, err := generate()
 	if err != nil {
@@ -186,7 +186,7 @@ func TestFaviconTransparentBlueAndBrandLogosUnchanged(t *testing.T) {
 	}
 
 	// ---- 品牌邮件 logo：纯色 #3482FF 实底（**零渐变**）+ 白矢量 + 超椭圆切角 ----
-	for _, name := range []string{"calorie-diary", "expense-diary", "auth"} {
+	for _, name := range []string{"CalorieDiary", "ExpenseDiary", "auth"} {
 		img, err := png.Decode(bytes.NewReader(readAsset(t, "internal/ui/static/brand/"+name+"-v1.png")))
 		if err != nil {
 			t.Fatalf("解码 %s-v1.png: %v", name, err)
@@ -287,8 +287,8 @@ func TestBrandLogoGlyphMapping(t *testing.T) {
 		file  string
 		paths []string
 	}{
-		{"calorie-diary", flamePaths},
-		{"expense-diary", receiptPaths},
+		{"CalorieDiary", flamePaths},
+		{"ExpenseDiary", receiptPaths},
 		{"auth", shieldPaths},
 	}
 	for _, c := range cases {

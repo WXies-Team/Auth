@@ -292,8 +292,8 @@ func AppLabel(key string) string {
 // 新应用加这里 + allowedApps 两处）。定序即展示序。前端不存第二份清单——
 // Render 把它序列化成 JSON 注进页面（Data.AppsJSON），JS 从那里读。
 var knownApps = []struct{ key, label string }{
-	{"calorie-diary", "热量日记"},
-	{"expense-diary", "开支日记"},
+	{"CalorieDiary", "热量日记"},
+	{"ExpenseDiary", "开支日记"},
 }
 
 // knownAppsJSON 把注册表序列化成 [{key,label},...]——模板/JS 唯一的 app 清单来源。

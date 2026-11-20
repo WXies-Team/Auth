@@ -16,7 +16,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/WXies-Team/auth/internal/db"
+	"github.com/WXies-Team/Auth/internal/db"
 )
 
 const testSecret = "test-secret-do-not-use-in-prod-0123456789"
@@ -86,14 +86,14 @@ func newTestService(t *testing.T) (*Service, *recordMailer) {
 
 // registerViaCode 走真实链路：发码 → 从邮件正文取码 → 注册。
 // 绕过发码直接塞一个码进去，测的就不是注册流程了。app 与注册声明的一致
-// （calorie-diary）：码信品牌与会话 aud 同源，正是生产的取值路径。
+// （CalorieDiary）：码信品牌与会话 aud 同源，正是生产的取值路径。
 func registerViaCode(t *testing.T, svc *Service, m *recordMailer, email, password string) *Response {
 	t.Helper()
-	if err := svc.SendCode(email, PurposeRegister, "calorie-diary"); err != nil {
+	if err := svc.SendCode(email, PurposeRegister, "CalorieDiary"); err != nil {
 		t.Fatalf("发码失败: %v", err)
 	}
 	code := codeIn(t, m)
-	resp, err := svc.Register(email, password, code, "calorie-diary", testMeta)
+	resp, err := svc.Register(email, password, code, "CalorieDiary", testMeta)
 	if err != nil {
 		t.Fatalf("注册失败: %v", err)
 	}
@@ -190,34 +190,34 @@ func TestRegisterLoginLogout(t *testing.T) {
 	}
 
 	// 不带验证码的注册必须被拒（强制验证码）
-	_, eNoCode := svc.Register("fresh@example.com", "secret123", "", "calorie-diary", testMeta)
+	_, eNoCode := svc.Register("fresh@example.com", "secret123", "", "CalorieDiary", testMeta)
 	if code, msg := httpMsg(eNoCode); code != 400 || !strings.Contains(msg, "请先获取") {
 		t.Errorf("无验证码注册应 400「请先获取验证码」，得到 %d %q", code, msg)
 	}
 
 	// 重复注册：400 且文案直白——查重在验证码之前
-	_, err = svc.Register("user@example.com", "secret123", "", "calorie-diary", testMeta)
+	_, err = svc.Register("user@example.com", "secret123", "", "CalorieDiary", testMeta)
 	if code, msg := httpMsg(err); code != 400 || !strings.Contains(msg, "已注册") {
 		t.Errorf("重复注册应 400「该邮箱已注册，请直接登录」，得到 %d %q", code, msg)
 	}
 
 	// 校验规则（邮箱格式与密码长度都在验证码之前，报错顺序一致）
-	_, eMail := svc.Register("not-an-email", "secret123", "", "calorie-diary", testMeta)
+	_, eMail := svc.Register("not-an-email", "secret123", "", "CalorieDiary", testMeta)
 	if code, _ := httpMsg(eMail); code != 400 {
 		t.Errorf("非法邮箱应 400，得到 %d", code)
 	}
-	_, eShort := svc.Register("a@b.com", "12345", "", "calorie-diary", testMeta)
+	_, eShort := svc.Register("a@b.com", "12345", "", "CalorieDiary", testMeta)
 	if code, msg := httpMsg(eShort); code != 400 || !strings.Contains(msg, "至少8位") {
 		t.Errorf("密码不足 8 位应 400 并提示现规则，得到 %d %q", code, msg)
 	}
 
 	// 登录：正常成功
-	if _, err = svc.Login("USER@EXAMPLE.COM", "secret123", "calorie-diary", testMeta); err != nil {
+	if _, err = svc.Login("USER@EXAMPLE.COM", "secret123", "CalorieDiary", testMeta); err != nil {
 		t.Errorf("登录失败: %v", err)
 	}
 	// 登录：邮箱不存在与密码错必须**同一句话**（否则可枚举注册过的邮箱）
-	_, e1 := svc.Login("nobody@example.com", "secret123", "calorie-diary", testMeta)
-	_, e2 := svc.Login("user@example.com", "wrong-pass", "calorie-diary", testMeta)
+	_, e1 := svc.Login("nobody@example.com", "secret123", "CalorieDiary", testMeta)
+	_, e2 := svc.Login("user@example.com", "wrong-pass", "CalorieDiary", testMeta)
 	c1, m1 := httpMsg(e1)
 	c2, m2 := httpMsg(e2)
 	if c1 != 401 || c2 != 401 {
@@ -234,11 +234,11 @@ func TestAppWhitelist(t *testing.T) {
 	svc, mailer := newTestService(t)
 	registerViaCode(t, svc, mailer, "app@example.com", "secret123")
 
-	if err := validateApp("calorie-diary"); err != nil {
-		t.Errorf("calorie-diary 应在白名单: %v", err)
+	if err := validateApp("CalorieDiary"); err != nil {
+		t.Errorf("CalorieDiary 应在白名单: %v", err)
 	}
-	if err := validateApp("expense-diary"); err != nil {
-		t.Errorf("expense-diary 应在白名单: %v", err)
+	if err := validateApp("ExpenseDiary"); err != nil {
+		t.Errorf("ExpenseDiary 应在白名单: %v", err)
 	}
 	for _, bad := range []string{"", "evil-app", "CALORIE-DIARY"} {
 		if err := validateApp(bad); err == nil {
@@ -250,10 +250,10 @@ func TestAppWhitelist(t *testing.T) {
 	if code, _ := httpMsg(err); code != 400 {
 		t.Errorf("未知 app 登录应 400，得到 %d", code)
 	}
-	// expense-diary 登录成功且 aud=expense-diary
-	resp, err := svc.Login("app@example.com", "secret123", "expense-diary", testMeta)
+	// ExpenseDiary 登录成功且 aud=ExpenseDiary
+	resp, err := svc.Login("app@example.com", "secret123", "ExpenseDiary", testMeta)
 	if err != nil {
-		t.Fatalf("expense-diary 登录失败: %v", err)
+		t.Fatalf("ExpenseDiary 登录失败: %v", err)
 	}
 	claims := jwt.MapClaims{}
 	if _, err := jwt.ParseWithClaims(resp.Token, claims, func(j *jwt.Token) (any, error) {
@@ -262,8 +262,8 @@ func TestAppWhitelist(t *testing.T) {
 		t.Fatalf("token 解析失败: %v", err)
 	}
 	aud, _ := claims.GetAudience()
-	if len(aud) == 0 || aud[0] != "expense-diary" {
-		t.Errorf("aud 应为 expense-diary，得到 %v", aud)
+	if len(aud) == 0 || aud[0] != "ExpenseDiary" {
+		t.Errorf("aud 应为 ExpenseDiary，得到 %v", aud)
 	}
 }
 
@@ -282,8 +282,8 @@ func TestJWTClaimsAndRevocation(t *testing.T) {
 		t.Fatalf("token 解析失败: %v", err)
 	}
 	aud, _ := claims.GetAudience()
-	if len(aud) == 0 || aud[0] != "calorie-diary" {
-		t.Errorf("aud 应为 calorie-diary，得到 %v", aud)
+	if len(aud) == 0 || aud[0] != "CalorieDiary" {
+		t.Errorf("aud 应为 CalorieDiary，得到 %v", aud)
 	}
 	iss, _ := claims.GetIssuer()
 	if iss != issuer {
@@ -316,7 +316,7 @@ func TestJWTClaimsAndRevocation(t *testing.T) {
 	}
 	// 拿别的密钥签的 token（伪造/旧密钥）必须 401
 	forged := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"aud": "calorie-diary", "iss": issuer, "uid": caller.UID,
+		"aud": "CalorieDiary", "iss": issuer, "uid": caller.UID,
 		"email": "jwt@example.com", "ver": 1, "exp": time.Now().Add(time.Hour).Unix(),
 	})
 	forgedTok, _ := forged.SignedString([]byte("some-other-secret-at-least-32-bytes-long!"))
@@ -340,21 +340,21 @@ func TestVerifyAudienceBoundary(t *testing.T) {
 	svc, mailer := newTestService(t)
 	reg := registerViaCode(t, svc, mailer, "verify@example.com", "secret123")
 
-	res, err := svc.Verify("Bearer "+reg.Token, "calorie-diary")
+	res, err := svc.Verify("Bearer "+reg.Token, "CalorieDiary")
 	if err != nil {
 		t.Fatalf("期望应用匹配应通过: %v", err)
 	}
-	if res.UID == 0 || res.Email != "verify@example.com" || res.App != "calorie-diary" {
+	if res.UID == 0 || res.Email != "verify@example.com" || res.App != "CalorieDiary" {
 		t.Errorf("回执错误: %+v", res)
 	}
 
-	if _, err := svc.Verify("Bearer "+reg.Token, "expense-diary"); err == nil {
+	if _, err := svc.Verify("Bearer "+reg.Token, "ExpenseDiary"); err == nil {
 		t.Error("换期望 aud 必须 401（权限边界）")
 	}
 	if _, err := svc.Verify("Bearer "+reg.Token, "evil-app"); err == nil {
 		t.Error("未知期望 aud 必须 401")
 	}
-	if _, err := svc.Verify("", "calorie-diary"); err == nil {
+	if _, err := svc.Verify("", "CalorieDiary"); err == nil {
 		t.Error("空 token 应 401")
 	}
 
@@ -365,7 +365,7 @@ func TestVerifyAudienceBoundary(t *testing.T) {
 	if err := svc.Logout(caller.UID); err != nil {
 		t.Fatalf("logout 失败: %v", err)
 	}
-	if _, err := svc.Verify("Bearer "+reg.Token, "calorie-diary"); err == nil {
+	if _, err := svc.Verify("Bearer "+reg.Token, "CalorieDiary"); err == nil {
 		t.Error("吊销后的 token 在 /internal/verify 也必须 401")
 	}
 }
@@ -396,22 +396,22 @@ func TestChangePasswordRevokesOldSession(t *testing.T) {
 	if err != nil {
 		t.Errorf("改密返回的新 token 应可用: %v", err)
 	}
-	if reissued.App != "calorie-diary" || reissued.UID != caller.UID {
+	if reissued.App != "CalorieDiary" || reissued.UID != caller.UID {
 		t.Errorf("重发 token 应沿用会话身份: %+v", reissued)
 	}
 	// 会话层与 token 层同批吊销：改密后设备列表只剩换发给本设备的新会话，
 	// 旧行不留在列表里当没有 token 的活死行
-	items, err := svc.ListSessions(caller.UID, reissued.SID, []string{"calorie-diary"})
+	items, err := svc.ListSessions(caller.UID, reissued.SID, []string{"CalorieDiary"})
 	if err != nil {
 		t.Errorf("取设备列表失败: %v", err)
 	} else if len(items) != 1 || items[0].ID != sidStr(reissued.SID) || !items[0].Current {
 		t.Errorf("改密后应只剩本设备的新会话，得到 %+v", items)
 	}
 	// 新密码登录成功、旧密码失败
-	if _, err := svc.Login("pw@example.com", "newsecret1", "calorie-diary", testMeta); err != nil {
+	if _, err := svc.Login("pw@example.com", "newsecret1", "CalorieDiary", testMeta); err != nil {
 		t.Errorf("新密码登录失败: %v", err)
 	}
-	if _, err := svc.Login("pw@example.com", "secret123", "calorie-diary", testMeta); err == nil {
+	if _, err := svc.Login("pw@example.com", "secret123", "CalorieDiary", testMeta); err == nil {
 		t.Error("旧密码不应再能登录")
 	}
 }
@@ -450,7 +450,7 @@ func TestChangePasswordByCode(t *testing.T) {
 	if _, err := svc.ChangePasswordByCode(caller, wrong, "newsecret1"); err == nil {
 		t.Fatal("错码不该改密")
 	}
-	if _, err := svc.Login("chg@example.com", "secret123", "calorie-diary", testMeta); err != nil {
+	if _, err := svc.Login("chg@example.com", "secret123", "CalorieDiary", testMeta); err != nil {
 		t.Errorf("错码失败后原密码应仍可用: %v", err)
 	}
 	// 对码 → 改密成功，旧 token 当场失效、返回的新 token 可用
@@ -464,7 +464,7 @@ func TestChangePasswordByCode(t *testing.T) {
 	if _, err := svc.ValidUserID("Bearer " + next.Token); err != nil {
 		t.Errorf("改密返回的新 token 应可用: %v", err)
 	}
-	if _, err := svc.Login("chg@example.com", "newsecret1", "calorie-diary", testMeta); err != nil {
+	if _, err := svc.Login("chg@example.com", "newsecret1", "CalorieDiary", testMeta); err != nil {
 		t.Errorf("新密码登录失败: %v", err)
 	}
 	// 码是一次性的：用过就不能再改
@@ -520,7 +520,7 @@ func TestChangePasswordByCodeAfterEmailChange(t *testing.T) {
 	if em, _ := claims["email"].(string); em != "new2@example.com" {
 		t.Errorf("新 token 的 email claim 应是新邮箱，得到 %q", em)
 	}
-	if _, err := svc.Login("new2@example.com", "newsecret1", "calorie-diary", testMeta); err != nil {
+	if _, err := svc.Login("new2@example.com", "newsecret1", "CalorieDiary", testMeta); err != nil {
 		t.Errorf("新密码登录失败: %v", err)
 	}
 }
@@ -675,14 +675,14 @@ func TestResetPasswordRevokesSessions(t *testing.T) {
 	reg := registerViaCode(t, svc, mailer, "reset@example.com", "secret123")
 
 	// 用途分流：未注册邮箱不给找回码、已注册邮箱不给注册码（文案都直白）
-	if err := svc.SendCode("nobody@example.com", PurposeReset, "calorie-diary"); err == nil {
+	if err := svc.SendCode("nobody@example.com", PurposeReset, "CalorieDiary"); err == nil {
 		t.Error("未注册邮箱发找回码应被拒")
 	}
-	if err := svc.SendCode("reset@example.com", PurposeRegister, "calorie-diary"); err == nil {
+	if err := svc.SendCode("reset@example.com", PurposeRegister, "CalorieDiary"); err == nil {
 		t.Error("已注册邮箱不该再收到注册码")
 	}
 
-	if err := svc.SendCode("reset@example.com", PurposeReset, "calorie-diary"); err != nil {
+	if err := svc.SendCode("reset@example.com", PurposeReset, "CalorieDiary"); err != nil {
 		t.Fatalf("发码失败: %v", err)
 	}
 	if mailer.to != "reset@example.com" {
@@ -701,7 +701,7 @@ func TestResetPasswordRevokesSessions(t *testing.T) {
 	if err := svc.ResetPassword("reset@example.com", wrong, "newsecret1"); err == nil {
 		t.Fatal("错码不该重置密码")
 	}
-	if _, err := svc.Login("reset@example.com", "secret123", "calorie-diary", testMeta); err != nil {
+	if _, err := svc.Login("reset@example.com", "secret123", "CalorieDiary", testMeta); err != nil {
 		t.Errorf("错码失败后原密码应仍可用: %v", err)
 	}
 
@@ -712,10 +712,10 @@ func TestResetPasswordRevokesSessions(t *testing.T) {
 	if _, err := svc.ValidUserID("Bearer " + reg.Token); err == nil {
 		t.Error("重置密码后旧 token 必须失效")
 	}
-	if _, err := svc.Login("reset@example.com", "newsecret1", "calorie-diary", testMeta); err != nil {
+	if _, err := svc.Login("reset@example.com", "newsecret1", "CalorieDiary", testMeta); err != nil {
 		t.Errorf("新密码应可登录: %v", err)
 	}
-	if _, err := svc.Login("reset@example.com", "secret123", "calorie-diary", testMeta); err == nil {
+	if _, err := svc.Login("reset@example.com", "secret123", "CalorieDiary", testMeta); err == nil {
 		t.Error("旧密码不该还能登录")
 	}
 	// 码是一次性的：同一张码不能改两次密码
@@ -731,7 +731,7 @@ func TestResetPasswordRevokesSessions(t *testing.T) {
 func TestRegisterFailureAfterVerifyAllowsImmediateResend(t *testing.T) {
 	svc, mailer := newTestService(t)
 	const email = "reg-fail@example.com"
-	if err := svc.SendCode(email, PurposeRegister, "calorie-diary"); err != nil {
+	if err := svc.SendCode(email, PurposeRegister, "CalorieDiary"); err != nil {
 		t.Fatalf("发注册码: %v", err)
 	}
 	code := codeIn(t, mailer)
@@ -744,11 +744,11 @@ func TestRegisterFailureAfterVerifyAllowsImmediateResend(t *testing.T) {
 	t.Cleanup(func() {
 		_, _ = svc.pool.Exec("RENAME TABLE sessions_m12_bak TO sessions")
 	})
-	if _, err := svc.Register(email, "secret123", code, "calorie-diary", testMeta); err == nil {
+	if _, err := svc.Register(email, "secret123", code, "CalorieDiary", testMeta); err == nil {
 		t.Fatal("sessions 表不可用时注册应失败")
 	}
 	// 码已随 verify 烧掉：重发不该撞 60 秒冷却
-	if err := svc.SendCode(email, PurposeRegister, "calorie-diary"); err != nil {
+	if err := svc.SendCode(email, PurposeRegister, "CalorieDiary"); err != nil {
 		t.Errorf("注册失败后应能立刻重发注册码（无冷却白等），得到: %v", err)
 	}
 	// 换新码重试注册（表已由 Cleanup 恢复，但 Cleanup 在测试末尾才跑——
@@ -757,7 +757,7 @@ func TestRegisterFailureAfterVerifyAllowsImmediateResend(t *testing.T) {
 		t.Fatalf("恢复 sessions: %v", err)
 	}
 	code2 := codeIn(t, mailer)
-	if _, err := svc.Register(email, "secret123", code2, "calorie-diary", testMeta); err != nil {
+	if _, err := svc.Register(email, "secret123", code2, "CalorieDiary", testMeta); err != nil {
 		t.Errorf("恢复后重试注册应成功: %v", err)
 	}
 }
@@ -774,12 +774,12 @@ func TestSendCodeFailureRollsBackCooldown(t *testing.T) {
 	good := svc.mailer
 	svc.mailer = failMailer{}
 
-	err := svc.SendCode("bounce@example.com", PurposeRegister, "calorie-diary")
+	err := svc.SendCode("bounce@example.com", PurposeRegister, "CalorieDiary")
 	if code, msg := httpMsg(err); code != 503 || !strings.Contains(msg, "稍后重试") {
 		t.Fatalf("发信失败应 503 白话，得到 %d %q", code, msg)
 	}
 	svc.mailer = good
-	if err := svc.SendCode("bounce@example.com", PurposeRegister, "calorie-diary"); err != nil {
+	if err := svc.SendCode("bounce@example.com", PurposeRegister, "CalorieDiary"); err != nil {
 		t.Errorf("发信失败后应能立刻重试（冷却已回滚），得到: %v", err)
 	}
 }
@@ -795,8 +795,8 @@ func TestSendCodeAppBranding(t *testing.T) {
 		app, email, subject, from string
 	}{
 		{"", "brand-neutral@example.com", "【Auth】注册验证码", "Auth"},
-		{"calorie-diary", "brand-calorie@example.com", "【热量日记】注册验证码", "热量日记"},
-		{"expense-diary", "brand-expense@example.com", "【开支日记】注册验证码", "开支日记"},
+		{"CalorieDiary", "brand-calorie@example.com", "【热量日记】注册验证码", "热量日记"},
+		{"ExpenseDiary", "brand-expense@example.com", "【开支日记】注册验证码", "开支日记"},
 	}
 	for _, c := range cases {
 		if err := svc.SendCode(c.email, PurposeRegister, c.app); err != nil {
@@ -828,25 +828,25 @@ func TestLoginByEmailCode(t *testing.T) {
 	registerViaCode(t, svc, mailer, "login@example.com", "secret123")
 
 	// 未注册：先于验码返回可执行文案——「验证码已过期」不是用户能执行的下一步
-	_, err := svc.LoginByEmailCode("nobody@example.com", "123456", "calorie-diary", testMeta)
+	_, err := svc.LoginByEmailCode("nobody@example.com", "123456", "CalorieDiary", testMeta)
 	if code, msg := httpMsg(err); code != 400 || !strings.Contains(msg, "邮箱未注册，请先注册") {
 		t.Errorf("未注册应 400「邮箱未注册，请先注册」，得到 %d %q", code, msg)
 	}
 
 	// 跨用途：找回密码的码不能拿来登录（purpose 进 key，五种码互不串用）
-	if err := svc.SendCode("login@example.com", PurposeReset, "calorie-diary"); err != nil {
+	if err := svc.SendCode("login@example.com", PurposeReset, "CalorieDiary"); err != nil {
 		t.Fatalf("发找回码失败: %v", err)
 	}
-	if _, err := svc.LoginByEmailCode("login@example.com", codeIn(t, mailer), "calorie-diary", testMeta); err == nil {
+	if _, err := svc.LoginByEmailCode("login@example.com", codeIn(t, mailer), "CalorieDiary", testMeta); err == nil {
 		t.Error("找回密码码不该能登录")
 	}
 
 	// 正常登录
-	if err := svc.SendCode("login@example.com", PurposeLogin, "calorie-diary"); err != nil {
+	if err := svc.SendCode("login@example.com", PurposeLogin, "CalorieDiary"); err != nil {
 		t.Fatalf("发登录码失败: %v", err)
 	}
 	code := codeIn(t, mailer)
-	resp, err := svc.LoginByEmailCode("login@example.com", code, "calorie-diary", testMeta)
+	resp, err := svc.LoginByEmailCode("login@example.com", code, "CalorieDiary", testMeta)
 	if err != nil {
 		t.Fatalf("验证码登录失败: %v", err)
 	}
@@ -857,7 +857,7 @@ func TestLoginByEmailCode(t *testing.T) {
 		t.Errorf("登录码签发的 token 应可用: %v", err)
 	}
 	// 用后即焚：同一个码不能再登第二次
-	if _, err := svc.LoginByEmailCode("login@example.com", code, "calorie-diary", testMeta); err == nil {
+	if _, err := svc.LoginByEmailCode("login@example.com", code, "CalorieDiary", testMeta); err == nil {
 		t.Error("登录码是一次性的，用过必须作废")
 	}
 }

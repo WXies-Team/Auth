@@ -58,8 +58,8 @@ func TestDedupeUIDs(t *testing.T) {
 
 // 批次号：单发（空串）不落空键，批量补 batch_id —— 审计页靠它把「哪一批」还原出来。
 func TestWithBatchID(t *testing.T) {
-	d := map[string]string{"app": "calorie-diary"}
-	if got := withBatchID(d, ""); got["app"] != "calorie-diary" {
+	d := map[string]string{"app": "CalorieDiary"}
+	if got := withBatchID(d, ""); got["app"] != "CalorieDiary" {
 		t.Errorf("原 detail 应保留: %v", got)
 	}
 	if _, leaked := d["batch_id"]; leaked {
@@ -192,7 +192,7 @@ func TestAdminBulkEndToEnd(t *testing.T) {
 	if err := svc.pool.QueryRow("SELECT password_must_change FROM users WHERE id = ?", v1.UID).Scan(&must); err != nil || must != 1 {
 		t.Errorf("批量重置应强制下次登录改密（must_change=1），得到 %d（%v）", must, err)
 	}
-	if _, err := svc.Login("bulk-v1@example.com", "secret123", "calorie-diary", testMeta); err == nil {
+	if _, err := svc.Login("bulk-v1@example.com", "secret123", "CalorieDiary", testMeta); err == nil {
 		t.Error("重置后旧密码应失效")
 	}
 	// 双层审计：批次总账一条 + 逐用户 password.reset 带同一 batch_id
@@ -209,11 +209,11 @@ func TestAdminBulkEndToEnd(t *testing.T) {
 
 	// ---- ② ban：封禁行落库（范围 + 原因） ----
 	if _, err := svc.AdminBulk(super, scope, bulkKindBan, uids, AdminBanInput{
-		App: "calorie-diary", Reason: "批量测试"}); err != nil {
+		App: "CalorieDiary", Reason: "批量测试"}); err != nil {
 		t.Fatalf("批量封禁: %v", err)
 	}
 	var bans int
-	if err := svc.pool.QueryRow("SELECT COUNT(*) FROM user_bans WHERE app = 'calorie-diary'").Scan(&bans); err != nil || bans != 2 {
+	if err := svc.pool.QueryRow("SELECT COUNT(*) FROM user_bans WHERE app = 'CalorieDiary'").Scan(&bans); err != nil || bans != 2 {
 		t.Errorf("应落 2 条封禁行，得到 %d（%v）", bans, err)
 	}
 	var reason string
@@ -224,14 +224,14 @@ func TestAdminBulkEndToEnd(t *testing.T) {
 
 	// ---- ③ unban + 去重：输入 3 个 uid（v1 重复）→ 只执行 2 项 ----
 	un, err := svc.AdminBulk(super, scope, bulkKindUnban, []int64{v1.UID, v1.UID, v2.UID},
-		AdminBanInput{App: "calorie-diary"})
+		AdminBanInput{App: "CalorieDiary"})
 	if err != nil {
 		t.Fatalf("批量解封: %v", err)
 	}
 	if un.Total != 2 {
 		t.Errorf("重复 uid 应在入口折掉，得到 Total=%d（输入 3 个）", un.Total)
 	}
-	if err := svc.pool.QueryRow("SELECT COUNT(*) FROM user_bans WHERE app = 'calorie-diary'").Scan(&bans); err != nil || bans != 0 {
+	if err := svc.pool.QueryRow("SELECT COUNT(*) FROM user_bans WHERE app = 'CalorieDiary'").Scan(&bans); err != nil || bans != 0 {
 		t.Errorf("解封后应无封禁行，得到 %d（%v）", bans, err)
 	}
 	// 总账条数：三次批次 = 3 条
@@ -243,13 +243,13 @@ func TestAdminBulkEndToEnd(t *testing.T) {
 
 	// ---- ④ 权限矩阵：app-admin 的越权项落成单条失败，err 本身不回 403 ----
 	appAdmin := seedAdminUser(t, svc, mailer, "bulk-one@example.com", adminRoleAdmin)
-	if err := svc.AdminSetScope(super, appAdmin.UID, "calorie-diary", true); err != nil {
+	if err := svc.AdminSetScope(super, appAdmin.UID, "CalorieDiary", true); err != nil {
 		t.Fatalf("授 scope: %v", err)
 	}
-	appScope := AdminScope{Apps: []string{"calorie-diary"}}
+	appScope := AdminScope{Apps: []string{"CalorieDiary"}}
 
 	// 越权项目：逐项失败、消息可读、整批不报错（选 10 个人有 2 个不归你管 → 动另外 8 个）
-	out, err := svc.AdminBulk(appAdmin, appScope, bulkKindBan, uids, AdminBanInput{App: "expense-diary"})
+	out, err := svc.AdminBulk(appAdmin, appScope, bulkKindBan, uids, AdminBanInput{App: "ExpenseDiary"})
 	if err != nil {
 		t.Fatalf("越权批量应逐项失败而非整批报错: %v", err)
 	}
@@ -273,7 +273,7 @@ func TestAdminBulkEndToEnd(t *testing.T) {
 		t.Errorf("无授权项目会话应逐项 403，得到 %+v（%v）", noSess, err)
 	}
 	// 授权范围内照常成功
-	okRes, err := svc.AdminBulk(appAdmin, appScope, bulkKindBan, []int64{v1.UID}, AdminBanInput{App: "calorie-diary"})
+	okRes, err := svc.AdminBulk(appAdmin, appScope, bulkKindBan, []int64{v1.UID}, AdminBanInput{App: "CalorieDiary"})
 	if err != nil || okRes.Succeeded != 1 {
 		t.Errorf("授权项目内应成功，得到 %+v（%v）", okRes, err)
 	}

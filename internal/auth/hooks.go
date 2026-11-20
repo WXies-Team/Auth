@@ -19,14 +19,14 @@ type ConfigFunc func(key string) (string, error)
 const HookTokenKey = "hook_token"
 
 // 注销钩子的两个 App 键：值是该 App 的 /internal/delete-user 地址。键名用下划线
-// （app_config 的既有习惯），与 JWT aud 的连字符写法（calorie-diary）不是一回事，
+// （app_config 的既有习惯），与 JWT aud 的连字符写法（CalorieDiary）不是一回事，
 // 所以逐个列全、不做字符串替换。
 var hookApps = []struct {
 	app string
 	key string
 }{
-	{"calorie-diary", "hook_calorie_diary"},
-	{"expense-diary", "hook_expense_diary"},
+	{"CalorieDiary", "hook_calorie_diary"},
+	{"ExpenseDiary", "hook_expense_diary"},
 }
 
 // hookTimeout 是单个钩子端点的调用上限。注销请求的 WriteTimeout 是 60 秒，

@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/WXies-Team/auth/internal/auth"
+	"github.com/WXies-Team/Auth/internal/auth"
 )
 
 // 契约 2：老 APK 的旧注销 body（只有 password）→ 400 指引升级、账号分毫不动；
@@ -19,7 +19,7 @@ import (
 func TestDeleteRouteLegacyBodyAndNewFlow(t *testing.T) {
 	e := newRouteEnv(t)
 	uid := seedUser(t, e, "del-route@example.com", "secret123", "user")
-	resp, err := e.svc.Login("del-route@example.com", "secret123", "calorie-diary", auth.SessionMeta{})
+	resp, err := e.svc.Login("del-route@example.com", "secret123", "CalorieDiary", auth.SessionMeta{})
 	if err != nil {
 		t.Fatalf("登录: %v", err)
 	}
