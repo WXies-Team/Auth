@@ -24,14 +24,14 @@
          到底给了什么，逐条列出来才可被核对。列表来自服务端 oauthScopes，与实际
          发票/回传的字段一一对应，前端不硬编码。 -->
     <div class="hint-box" style="margin-top:12px">
-      <strong>登录到「{{.AppName}}」后，它将获得：</strong>
+      <strong>登录到「{{.AppName}}」，它将获得：</strong>
       <ul class="scope-list">
         {{range .Scopes}}<li>{{.}}</li>{{else}}<li>你的账号标识与邮箱地址</li>{{end}}
       </ul>
     </div>
     <p class="hint" style="margin-top:10px">
-      回跳地址：<span class="mono">{{.RedirectHost}}</span>
-      · 确认后浏览器将跳转到该域名。若不是你预期的站点，请点「拒绝并返回」。
+      回跳地址：<span class="mono">{{.RedirectHost}}</span>。
+      确认后将跳转到该域名；非预期请点「拒绝并返回」。
     </p>
     <form method="post" action="/oauth/authorize/confirm" style="margin-top:16px">
       <input type="hidden" name="tx" value="{{.Tx}}">

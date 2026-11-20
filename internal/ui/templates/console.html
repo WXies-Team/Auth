@@ -11,7 +11,7 @@
   <!-- 最近登录：Google 安全检查页的标配信息，帮助用户发现异常活动。
        数据取现有 /api/sessions 的首条（服务端已按 last_seen_at DESC 排序），无需新端点。 -->
   <p class="hint" id="me-last-login"><span class="skeleton sk-line" style="width:220px;display:inline-block"></span></p>
-  <p class="hint" id="me-meta">可随时在「登录会话」页退出某台设备。</p>
+  <p class="hint" id="me-meta">在「登录会话」页退出指定设备。</p>
   <div class="row" style="margin-top:12px">
     <a class="btn" href="/web/console/sessions">{{icon "monitor-smartphone"}} 管理已登录设备</a>
     <button type="button" class="btn danger" id="logout">{{icon "log-out"}} 退出登录</button>
@@ -37,7 +37,7 @@
       <a class="btn small" href="/web/console/passkeys">管理</a>
     </div>
   </div>
-  <p class="hint" style="margin-top:10px">至少保留一种登录方式：只有密码、两步验证或 Passkey 至少有其一，账号才进得来。</p>
+  <p class="hint" style="margin-top:10px">至少保留一种登录方式，否则无法登录。</p>
 </section>
 
 {{end}}

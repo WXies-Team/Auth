@@ -15,7 +15,7 @@
        纯 HTML 表单 POST（零 JS），提交成功由服务端 302 进控制台并种会话 cookie -->
   <div class="card" id="invite-card">
     <h2>接受邀请</h2>
-    <p class="dim" style="margin-top:6px">你被邀请以 <span class="mono">{{.Email}}</span> 注册{{if .AppName}}，并加入「{{.AppName}}」{{end}}。</p>
+    <p class="dim" style="margin-top:6px">以 <span class="mono">{{.Email}}</span> 注册{{if .AppName}}，加入「{{.AppName}}」{{end}}。</p>
     <form method="post" action="/web/invite" style="margin-top:12px">
       <input type="hidden" name="token" value="{{.Token}}">
       <label class="field"><span>邮箱</span>
@@ -30,7 +30,7 @@
       {{if .Error}}<p class="err" role="alert">{{.Error}}</p>{{end}}
       <button type="submit" class="btn primary" style="width:100%">设置密码并完成注册</button>
     </form>
-    <p class="hint" style="margin-top:12px">邀请链接 24 小时内有效，且只能使用一次。</p>
+    <p class="hint" style="margin-top:12px">链接 24 小时内有效，仅可使用一次。</p>
   </div>
   {{end}}
   {{end}}

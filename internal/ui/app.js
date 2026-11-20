@@ -678,7 +678,7 @@ function initLogin() {
           '#toggle-email': '没有验证器？获取邮箱验证码',
           '#toggle-recovery': '使用恢复码',
         },
-        intro: '该账号已开启两步验证：请输入验证器上的 6 位验证码完成登录。',
+        intro: '输入验证器上的 6 位验证码。',
       },
       email: {
         label: '邮箱验证码（6 位）', placeholder: '输入邮箱里收到的 6 位验证码', numeric: true,
@@ -687,14 +687,14 @@ function initLogin() {
           '#toggle-email': '换回验证器验证码',
           '#toggle-recovery': '使用恢复码',
         },
-        intro: '该账号已开启两步验证：请输入邮箱里的 6 位验证码完成登录。',
+        intro: '输入邮箱里的 6 位验证码。',
       },
       recovery: {
         label: '恢复码', placeholder: 'XXXX-XXXX-XXXX-XXXX', numeric: false,
         // 邮箱码专属的发码按钮收起；toggle-email 藏起来，免得摆一个点了没反应的按钮
         hide: ['#send-2fa-code', '#toggle-email'],
         buttons: { '#toggle-recovery': '改用两步验证码' },
-        intro: '该账号已开启两步验证：请输入一个恢复码完成登录。',
+        intro: '输入一个恢复码。',
       },
     },
   });
@@ -769,7 +769,7 @@ function initLogin() {
     try {
       await api('/auth/send-code', { method: 'POST', body: { email, purpose } });
       cooldown(btn, 60);
-      toast('验证码已发送。没收到？在垃圾箱里搜索发件人『Auth』，60 秒后可重新发送');
+      toast('验证码已发送。在垃圾箱里搜索发件人『Auth』，60 秒后可重新发送');
       return true;
     } catch (err) { showErr(errSel, err.message); return false; }
   }
@@ -960,7 +960,7 @@ async function initConsole() {
     popIn(badge);   // 徽标浮现
   }
 
-  fill('#stat-password', async () => me.passwordSet ? '已设置' : '未设置（该账号靠验证码或 Passkey 登录）');
+  fill('#stat-password', async () => me.passwordSet ? '已设置' : '未设置');
   fill('#stat-totp', async () => (await api('/api/totp')).enabled ? '已开启' : '未开启');
   fill('#stat-passkey', async () => {
     const keys = await api('/api/passkeys');
@@ -1025,7 +1025,7 @@ function initSessions() {
       return;
     }
     if (!rows.length) {
-      list.innerHTML = emptyState('只有当前设备处于登录状态', '在新设备上登录后，它会出现在这里，可随时逐条退出。');
+      list.innerHTML = emptyState('只有当前设备处于登录状态', '新设备登录后会显示在这里。');
       return;
     }
     list.innerHTML = '';
@@ -1111,7 +1111,7 @@ function initPasskeys() {
     try {
       const rows = await api('/api/passkeys');
       if (!rows.length) {
-        list.innerHTML = emptyState('还没有 Passkey', '添加后可以用指纹或面容登录，不用再输密码。点右上角「添加 Passkey」创建。');
+        list.innerHTML = emptyState('还没有 Passkey', '点右上角「添加 Passkey」创建，用指纹或面容登录。');
         return;
       }
       list.innerHTML = '';
@@ -1123,7 +1123,7 @@ function initPasskeys() {
           <div class="item" data-id="${it.id}">
             <span class="grow">
               <span class="title pk-name">${esc(it.name)}</span>
-              ${it.current ? '<span class="badge on">本机登录所用</span>' : ''}
+              ${it.current ? '<span class="badge on">本设备</span>' : ''}
               <br><span class="meta">添加于 ${esc(fmtTime(it.createdAt))} · ${lastUsed}</span>
             </span>
             <span class="row" style="gap:6px">
@@ -1204,7 +1204,7 @@ function initPasskeys() {
         const renameBtn = fresh.querySelector('[data-act=rename]');
         if (renameBtn) {
           renameBtn.click();
-          toast('给它起个名字，方便以后辨认（Esc 跳过）');
+          toast('为这把 Passkey 起名，Esc 跳过');
         }
       }
     } catch (err) {
@@ -1305,12 +1305,11 @@ function initSecurity() {
     const el = $('#topbar-email');
     const email = el ? (el.getAttribute('title') || el.textContent) : '';
     const body = [
-      'Auth 统一账号服务 —— 恢复码',
+      'Auth 恢复码',
       `账号：${email}`,
-      `生成日期：${todayStr()}`,
+      `生成：${todayStr()}`,
       '',
-      '每个恢复码只能使用一次，用于两步验证开启后验证器不可用时登录。' +
-        '使用后即失效；重生成会让全部旧码作废。请离线妥善保存。',
+      '每个恢复码只能用一次，验证器不可用时用于登录。用完即失效；重生成会让旧码全部作废。请离线保存。',
       '',
       ...codes,
       '',
@@ -1533,7 +1532,7 @@ function initAccount() {
     try {
       await api('/auth/send-code', { method: 'POST', body: { email, purpose: 'delete' } });
       cooldown($('#send-delete-code'), 60);
-      toast('验证码已发送。没收到？在垃圾箱里搜索发件人『Auth』，60 秒后可重新发送');
+      toast('验证码已发送。在垃圾箱里搜索发件人『Auth』，60 秒后可重新发送');
     } catch (err) { showErr('#delete-error', err.message); }
   });
   $('#delete-cancel').addEventListener('click', () => closeDialog($('#delete-dialog')));
@@ -2133,19 +2132,16 @@ function initAdminUsers() {
   const BULK_TITLE = { password_reset: '批量重置密码', ban: '批量封禁', unban: '批量解除封禁' };
   const BULK_CONSEQUENCES = {
     password_reset: [
-      '为每位所选用户生成一个 16 位临时密码，并要求其下次登录时修改',
-      '新密码邮件通知到各自的登录邮箱（临时密码不进本面板，也不进日志）',
-      '这些账号的现有登录会被全部吊销，已登录设备需重新登录',
+      '为每位用户生成 16 位临时密码，邮件通知到其登录邮箱；临时密码不进本面板与日志',
+      '要求下次登录时修改密码；现有登录全部吊销，已登录设备需重新登录',
     ],
     ban: [
-      '所选用户在下方所选范围内无法登录，该范围内已登录的设备立即被退出',
-      '重复封禁按本次配置覆盖既有记录；限时到期自动解除，永久需手动解封',
-      '一次配置（范围/时长/原因）套用到全部所选用户',
+      '所选范围内无法登录，已登录设备立即退出；限时到期自动解除，永久需手动解封',
+      '重复封禁按本次配置覆盖；一次配置（范围/时长/原因）套用全部所选用户',
     ],
     unban: [
-      '解除所选用户在下方所选范围内的封禁，该范围随即恢复登录',
-      '解封是幂等的：没有生效中封禁的用户同样回执成功',
-      '只解除所选范围，不影响同一账号其它项目的封禁',
+      '解除所选范围的封禁并恢复登录；不影响该账号其它项目的封禁',
+      '没有生效中封禁的用户同样回执成功',
     ],
   };
   let bulkJob = null;    // {kind, uids}
@@ -2274,7 +2270,7 @@ function initAdminUsers() {
       pager.set(res.total, res.items.length);
       body.innerHTML = '';
       if (!res.items.length) {
-        body.innerHTML = `<tr><td colspan="7" class="empty"><span class="empty-title">暂无匹配的用户</span><span class="empty-hint">换一个关键词，或点「邀请用户」创建第一个账号。</span></td></tr>`;
+        body.innerHTML = `<tr><td colspan="7" class="empty"><span class="empty-title">暂无匹配的用户</span><span class="empty-hint">调整关键词，或点「邀请用户」新建账号。</span></td></tr>`;
         $('#users-selall').checked = false;
         return;
       }
@@ -2298,7 +2294,7 @@ function initAdminUsers() {
       refreshBulkBar();
     } catch (err) {
       showErr('#users-error', err.message);
-      body.innerHTML = emptyCell(7, '读取失败', '稍后重试；如果一直失败，把上面的提示语发给管理员。');
+      body.innerHTML = emptyCell(7, '读取失败', '稍后重试。');
       refreshBulkBar();
     }
   }
@@ -2347,7 +2343,7 @@ function initAdminUsers() {
       // 应用授权开关：选项来自服务端注册表（known-apps JSON），不再硬编码 app 清单；
       // super 无需按应用授权（平台级自带全部范围）
       const scopeList = d.role === 'super'
-        ? '<div class="empty">平台管理员不受项目授权限制，管理全部项目。</div>'
+        ? '<div class="empty">平台管理员管理全部项目。</div>'
         : APPS.map(app => {
             const granted = scopes.indexOf(app.key) >= 0;
             return `<div class="item">
@@ -2752,7 +2748,7 @@ function initAdminUsers() {
 }
 
 /* ---------- 后台：项目访问（W4）——每项目一张卡：登录范围开关 + 登录名单 ---------- */
-const EMPTY_MEMBERS_HINT = '名单为空：开启限制后将只有管理员可以登录该项目。';
+const EMPTY_MEMBERS_HINT = '名单为空时开启限制，只有管理员能登录。';
 function initAdminAccess() {
   const wrap = $('#access-list');
   if (!wrap) return;
@@ -3040,7 +3036,7 @@ function initAdminSessions() {
       if (total > items.length) {
         // 截断要说出来，别让管理员以为列表是全集
         $('#sd-body').appendChild(node(
-          `<p class="hint">共 ${total} 条会话，这里只显示最近 ${items.length} 条；要处理更早的会话，请到「会话总览」按 uid 检索。</p>`));
+          `<p class="hint">共 ${total} 条会话，这里只显示最近 ${items.length} 条；更早的会话请到「会话总览」按 uid 检索。</p>`));
       }
       items.sort((a, b) => Number(b.lastSeenAt || 0) - Number(a.lastSeenAt || 0)).forEach(s => {
         const el = node(`
@@ -3182,7 +3178,7 @@ function initAdminAudit() {
       });
     } catch (err) {
       showErr('#audit-error', err.message);
-      body.innerHTML = emptyCell(7, '读取失败', '稍后重试；如果一直失败，把上面的提示语发给管理员。');
+      body.innerHTML = emptyCell(7, '读取失败', '稍后重试。');
     }
   }
 

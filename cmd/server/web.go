@@ -495,14 +495,14 @@ p  { font-size:15px; line-height:1.7; margin:0 0 10px; color:#333; }
 	}
 	_, _ = io.WriteString(w, head+`<div id="main">
 <h1>注销确认</h1>
-<p>你正在撤销此前提交的注销申请。撤销后账号与数据一切如常，随时可以重新登录。</p>
-<p class="warn">如果不是你本人操作，请撤销后立即修改密码并检查登录设备。</p>
+<p>撤销后账号与数据保持不变，可随时重新登录。</p>
+<p class="warn">非本人操作？请撤销后立即修改密码并检查登录设备。</p>
 <button class="btn" id="go">撤销注销</button>
 <p class="err hidden" id="err"></p>
 </div>
 <div class="hidden" id="done">
 <h1>注销已撤销</h1>
-<p>你的注销申请已撤销，账号与数据一切如常。</p>
+<p>注销申请已撤销，账号与数据保持不变。</p>
 <a class="link" href="/web/login">前往登录</a>
 </div>
 <script>

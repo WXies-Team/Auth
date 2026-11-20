@@ -31,12 +31,12 @@
   <h2 id="ai-days-title">每日用量</h2>
   <p class="hint" id="ai-today"></p>
   <div class="bars" id="ai-bars"></div>
-  <div class="empty hidden" id="ai-empty"><span class="empty-title">所选区间内暂无用量</span><span class="empty-hint">换一个时间范围试试。</span></div>
+  <div class="empty hidden" id="ai-empty"><span class="empty-title">所选区间暂无用量</span><span class="empty-hint">换一个时间范围。</span></div>
 </section>
 
 <section class="card" aria-labelledby="ai-users-title">
   <h2 id="ai-users-title">按用户</h2>
-  <p class="hint">按所选时间范围用量降序；「占比」为该用户占全站同期用量的百分比。</p>
+  <p class="hint">按区间用量降序；「占比」为该用户占全站同期用量的百分比。</p>
   <div class="table-wrap">
     <table>
       <caption class="sr-only">用户用量</caption>
@@ -71,14 +71,14 @@
   <span class="bar-track" style="max-width:320px"><span class="bar-fill" id="aid-limit-bar" style="width:0%"></span></span>
   <p class="hint" id="aid-limit-hint"></p>
   <div class="bars" id="aid-bars"></div>
-  <div class="empty hidden" id="aid-empty"><span class="empty-title">该区间内暂无用量</span><span class="empty-hint">换一个时间范围试试。</span></div>
+  <div class="empty hidden" id="aid-empty"><span class="empty-title">该区间暂无用量</span><span class="empty-hint">换一个时间范围。</span></div>
 </section>
 
 <!-- 编辑限额（super only）：ai_* 四键，走 PUT /admin/config/{key} -->
 <dialog class="dlg" id="quota-dialog" aria-labelledby="quota-title">
   <form method="dialog" id="quota-form">
     <h2 id="quota-title">编辑 AI 限额</h2>
-    <p class="dim">改后 ≤10 秒热生效；留空表示不修改该键。</p>
+    <p class="dim">≤10 秒生效；留空表示不修改该键。</p>
     <label class="field"><span>每用户每分钟次数（ai_rate_per_minute）</span>
       <input type="text" id="q-input-rate" inputmode="numeric" autocomplete="off">
     </label>
