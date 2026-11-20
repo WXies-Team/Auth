@@ -21,8 +21,11 @@ concurrency:
 jobs:
   go:
     runs-on: self-hosted
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       # 版本从 go.mod 读（单一来源，不会与本地开发版本飘掉）。真库测试需要
       # TEST_MYSQL_DSN，CI 上没有 MySQL 会自动 Skip——但其余测试照跑。
@@ -30,7 +33,7 @@ jobs:
       # 没有 HOME（坑与热量日记服务同款），go 会以「GOCACHE is not defined」失败。
       # HOME 指到工作区旁持久目录：GOMODCACHE/GOCACHE 跨 run 留存，go mod 不再每 run
       # 重下；本地即缓存 → setup-go 远端 actions/cache 关闭。
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
           cache: false
