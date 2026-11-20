@@ -54,5 +54,5 @@ jobs:
           BASE_DIR: ${{ secrets.SERVER_BASE_DIR }}
           APP_PORT: '8868'
           SUPERVISORCTL: ${{ vars.SUPERVISORCTL || 'supervisorctl' }}
-          PROGRAM: auth
+          PROGRAM: Auth
         run: ci/deploy-server.sh dist/server.tar

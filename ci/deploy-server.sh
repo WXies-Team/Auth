@@ -16,7 +16,7 @@ TAR_FILE=${1:?usage: deploy-server.sh <server.tar>}
 SSH_PORT=${SSH_PORT:-22}
 APP_PORT=${APP_PORT:-8868}
 SUPERVISORCTL=${SUPERVISORCTL:-supervisorctl}
-PROGRAM=${PROGRAM:-auth}
+PROGRAM=${PROGRAM:-Auth}
 KEEP_RELEASES=${KEEP_RELEASES:-5}
 RELEASE=$(git rev-parse --short=8 HEAD)
 
