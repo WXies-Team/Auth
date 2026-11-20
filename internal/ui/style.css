@@ -29,10 +29,26 @@
   --font-title4: 15px;   --lh-title4: 1.4;
   --font-body2: 14px;    --lh-body2: 1.6;
   --font-footnote: 12px; --lh-footnote: 1.5;
-  /* 玻璃材质：顶栏 vs 悬浮底栏两套底 + 高光环；@supports not 时退实底 */
+  /* 玻璃材质：顶栏 / 底栏 / 卡片 / 菜单 / 对话框 / 提示条分层，越高越不透明以保住文字对比。
+     所有 @supports not 分支统一退实底令牌，质感可以丢、可读性不能丢。 */
   --glass-bg: rgba(247, 247, 247, .72);
   --glass-float-bg: rgba(255, 255, 255, .62);
+  --glass-card-bg: rgba(255, 255, 255, .78);
+  --glass-menu-bg: rgba(255, 255, 255, .9);
+  --glass-dialog-bg: rgba(255, 255, 255, .94);
   --glass-stroke: rgba(255, 255, 255, .45);
+  --glass-card-blur: 16px;
+  --glass-card-saturate: 1.4;
+  /* 语义面 / 反馈色：徽标容器、进度轨道、空态、Toast 全部走语义令牌，不写死色值 */
+  --badge-bg: var(--surface-container-high);
+  --badge-on-bg: var(--primary-soft);
+  --progress-track: var(--surface-variant);
+  --progress-fill: var(--primary);
+  --empty-bg: var(--surface-variant);
+  --toast-bg: var(--ink);
+  --toast-ink: var(--canvas);
+  --toast-bad-bg: var(--danger);
+  --toast-bad-ink: #ffffff;
   /* Switch 组件几何（弹簧滑块用） */
   --switch-h: 26px; --switch-thumb: 20px; --switch-pad: 3px;
 
@@ -106,6 +122,9 @@
     --surface-variant: #2D2D2D;
     --glass-bg: rgba(0, 0, 0, .6);
     --glass-float-bg: rgba(38, 38, 38, .58);
+    --glass-card-bg: rgba(36, 36, 36, .78);
+    --glass-menu-bg: rgba(32, 32, 32, .9);
+    --glass-dialog-bg: rgba(28, 28, 28, .94);
     --glass-stroke: rgba(255, 255, 255, .1);
   }
 }
@@ -172,6 +191,9 @@ code { font-family: var(--mono); }
   .topnav {
     flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain;
     -webkit-overflow-scrolling: touch; scrollbar-width: none;
+    /* 必须 flex-start：保留桌面的 flex-end 时，内容一溢出就往**左**跑，
+       最左的「管理后台」按钮被裁在容器外且滚不到（实测 375px 下 left:-37px）。 */
+    justify-content: flex-start;
     padding-bottom: 2px;
   }
   .topnav::-webkit-scrollbar { display: none; }
@@ -285,17 +307,23 @@ button.app-chip { background: transparent; border: 0; font: inherit; cursor: poi
     box-shadow: 0 6px 22px rgba(0, 0, 0, .4), inset 0 0 0 1px var(--glass-stroke);
   }
 }
-/* 无玻璃能力时顶栏与底栏都退实底：顶栏用画布色、底栏用卡片色，文字对比不打折。 */
+/* 无玻璃能力时全部退实底：顶栏画布色，其余 surfaceContainer/卡片色。
+   质感可以丢，文字对比与组件边界一点不打折。 */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .topbar { background: var(--canvas); }
   .tabnav { background: var(--card); }
+  .card, .toolbar, .detail { background: var(--card); }
+  .select-menu { background: var(--card); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-2); }
+  .dlg { background: var(--card); }
+  .toast { background: var(--ink); }
+  .toast.bad { background: var(--danger); }
 }
 .tabnav::-webkit-scrollbar { display: none; }
 .tabnav .nav-item {
   /* 后台 6 项时整条会超 390 视口：让项**均分宽度**而不是溢出后靠横滚找（横滚在
-     固定浮层上既难点中又难发现）。flex-basis 0 让它们等分，min-width:0 允许收缩，
-     文案不换行、超长才截断。 */
-  flex: 1 1 auto; min-width: 0;
+     固定浮层上既难点中又难发现）。min-width 钉在 44——实测 375px 下内容撑出的项
+     只有 43px 宽，差 1px 就够不着「触控目标 ≥44」；文案不换行、超长才截断。 */
+  flex: 1 1 auto; min-width: var(--tap);
   flex-direction: column; justify-content: center; gap: 2px;
   padding: 6px 10px;
   border-radius: 20px; font-size: 11px; line-height: 1.1;
@@ -353,10 +381,17 @@ details.section > summary { cursor: pointer; font-weight: 500; }
      画环是全站圆角异常与「行选中变黑后描边消失」的总根因：inset 阴影画在**子元素
      背景之下**，任何触到卡片边缘的背景（表格行 hover、选中 chip、按钮）都会把它
      盖掉，圆角那条线随之断裂。改成纯填充后没有环可被盖，圆角恒完整。 */
-  background: var(--card);
+  background: var(--glass-card-bg);
   border-radius: var(--radius-card);
   padding: var(--sp-5);
+  /* 0.9.5 GlassPage：卡片面 = 五级表面里的 surfaceContainer 半透明玻璃。
+     backdrop-filter 会造层叠上下文，故 hover/focus-within 抬 z-index，
+     保证卡内的下拉菜单盖得住后续卡片（不靠 clip-path 裁圆角，阴影/焦点环不破）。 */
+  position: relative;
+  -webkit-backdrop-filter: blur(var(--glass-card-blur)) saturate(var(--glass-card-saturate));
+  backdrop-filter: blur(var(--glass-card-blur)) saturate(var(--glass-card-saturate));
 }
+.card:hover, .card:focus-within { z-index: 2; }
 .card h2 { font-size: 17px; font-weight: 500; margin: 0 0 var(--sp-1); }
 .card h3 { font-size: var(--font-title4); font-weight: 500; margin: var(--sp-4) 0 var(--sp-2); }
 .card p { margin: var(--sp-2) 0; }
@@ -471,19 +506,23 @@ input:-webkit-autofill {
 .select-btn[aria-expanded=true] .ico { transform: rotate(180deg); }
 .select-menu {
   position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 25;
-  margin: 0; padding: 6px; list-style: none; max-height: 280px; overflow: auto;
-  background: var(--card); background-clip: padding-box;
-  border: none; box-shadow: inset 0 0 0 1px var(--line), var(--shadow-2);
-  border-radius: var(--radius-ctl);
+  margin: 0; padding: var(--sp-2); list-style: none; max-height: 280px; overflow: auto;
+  /* Popover：比卡片更不透明的玻璃 + 大圆角，浮在内容之上不靠纯色硬块 */
+  background: var(--glass-menu-bg); background-clip: padding-box;
+  border: none; box-shadow: inset 0 0 0 1px var(--glass-stroke), var(--shadow-2);
+  border-radius: var(--radius-lg);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  backdrop-filter: blur(24px) saturate(1.6);
 }
 .select-menu[hidden] { display: none !important; }
 .select-opt {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  min-height: 38px; padding: 0 12px; border-radius: calc(var(--radius-ctl) - 6px);
-  color: var(--ink); font-size: 15px; cursor: pointer;
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2);
+  min-height: 38px; padding: 0 var(--sp-3); border-radius: var(--radius-pill);
+  color: var(--ink); font-size: var(--font-title4); cursor: pointer;
   transition: background-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
 }
-.select-opt:hover, .select-opt.active { background: var(--canvas); }
+.select-opt:hover, .select-opt.active { background: var(--surface-container-high); }
+.select-opt:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .select-opt[aria-selected=true] { color: var(--primary-text); font-weight: 500; }
 .select-opt[aria-selected=true]::after { content: "✓"; font-size: 13px; }
 
@@ -620,15 +659,21 @@ input:disabled { opacity: .6; }
    此前 .btn.small 只有 38px、.app-chip 28px、复选框 20px —— 在手机上是难点中的难点。 */
 @media (pointer: coarse) {
   .btn, input[type=text], input[type=email], input[type=password], input[type=date],
-  input[type=datetime-local], input[type=search], select, textarea { min-height: 44px; }
-  .btn.small { min-height: 40px; }
-  .app-chip { min-height: 36px; }
-  .select-btn { min-height: 44px; }
-  .select-opt { min-height: 44px; }
-  .tab { min-height: 44px; }
-  .nav-item { min-height: 44px; }
+  input[type=datetime-local], input[type=search], select, textarea { min-height: var(--tap); }
+  /* 触屏上一律抬到 44 的硬下限：小按钮/分段/色板/品牌/跳转链接此前分别只有
+     40/36/32/28/42，手机上都是难点中的难点（WCAG 2.5.5 / Apple HIG 44pt）。 */
+  .btn.small, .app-chip, .select-btn, .select-opt, .tab, .nav-item,
+  .brand, .skip, .acct { min-height: var(--tap); }
   input[type=checkbox], input[type=radio] { width: 24px; height: 24px; }
-  .pf-chip { width: 32px; height: 32px; }
+  /* 勾选框视觉保持 24（表格列放得下），但用透明伪元素把**命中区**撑到 44×44：
+     伪元素不占布局、不改变对勾 ::after，点标签外的空白也能切（WCAG 2.5.5）。 */
+  input[type=checkbox]::before, input[type=radio]::before {
+    content: ""; position: absolute; left: 50%; top: 50%;
+    width: var(--tap); height: var(--tap); transform: translate(-50%, -50%);
+  }
+  .pf-chip { width: var(--tap); height: var(--tap); }
+  /* 「自动」是文字胶囊，宽度随内容，不能压成 44 方片 */
+  .pf-chip.auto { width: auto; min-width: var(--tap); min-height: var(--tap); }
 }
 
 .ico { width: 18px; height: 18px; flex: none; vertical-align: middle; }
@@ -697,13 +742,18 @@ input:disabled { opacity: .6; }
    此前筛选表单裸放在画布上，字段、快捷档位、按钮各漂各的，与下方表格没有
    视觉归属关系——收进一张卡后「筛选 → 结果」的因果关系一眼可读。 */
 .toolbar {
-  background: var(--card);
+  /* 与 .card 同一套玻璃面；筛选卡里的下拉菜单靠 :focus-within 抬层不被结果卡盖住 */
+  background: var(--glass-card-bg);
   border-radius: var(--radius-card);
-  padding: 16px;
-  display: grid; gap: 12px;
+  padding: var(--sp-4);
+  display: grid; gap: var(--sp-3);
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   align-items: end;
+  position: relative;
+  -webkit-backdrop-filter: blur(var(--glass-card-blur)) saturate(var(--glass-card-saturate));
+  backdrop-filter: blur(var(--glass-card-blur)) saturate(var(--glass-card-saturate));
 }
+.toolbar:hover, .toolbar:focus-within { z-index: 2; }
 .toolbar > .field { margin: 0; }
 /* .toolbar-inline（审计页的时间范围档位、用户页的搜索/批量两行）也独占整行：
    它没写 grid-column 时只落进**一个** auto-fit 列（1280 视口下 203px），而它的
@@ -720,10 +770,10 @@ input:disabled { opacity: .6; }
 .badge {
   display: inline-flex; align-items: center; gap: 4px;
   font-size: var(--font-footnote); line-height: var(--lh-footnote); padding: 3px 11px; border-radius: var(--radius-pill);
-  background: var(--sub-bg); background-clip: padding-box; border: none; color: var(--dim);
+  background: var(--badge-bg); background-clip: padding-box; border: none; color: var(--dim);
   vertical-align: middle;
 }
-.badge.on { color: var(--primary-text); background: var(--primary-soft); }
+.badge.on { color: var(--primary-text); background: var(--badge-on-bg); }
 .badge.off { color: var(--dim); }
 .badge.warn { color: var(--danger-ink); background: var(--danger-bg); }
 /* 邀请四态徽标的绿色档（accepted）：与 .ok-note 同一 --ok 取色 */
@@ -772,10 +822,15 @@ td.wrap-cell { white-space: normal; overflow-wrap: anywhere; word-break: normal;
 /* ---- 对话框（弹入：scale .96→1 + fade，200ms；遮罩淡入）---- */
 /* 原生 dialog 有 UA 默认边框，border:none 必须显式写；内环取代旧的 1px 实线 */
 .dlg {
-  border: none; border-radius: var(--radius-card);
-  box-shadow: inset 0 0 0 1px var(--line);
-  background: var(--card); background-clip: padding-box; color: var(--ink); padding: 22px;
-  max-width: 420px; width: calc(100vw - 32px);
+  /* Modal：28 大圆角 + 高不透明玻璃 + 柔和双层投影；文字对比靠高不透明度守住，
+     不支持 backdrop-filter 时由 @supports not 退回实底。 */
+  border: none; border-radius: var(--radius-xl);
+  box-shadow: inset 0 0 0 1px var(--glass-stroke), var(--shadow-2);
+  background: var(--glass-dialog-bg); background-clip: padding-box; color: var(--ink);
+  padding: var(--sp-6);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  backdrop-filter: blur(24px) saturate(1.6);
+  max-width: 420px; width: calc(100vw - var(--sp-8));
 }
 .dlg[open] { animation: dlg-in var(--dur-3) var(--ease) backwards; }
 .dlg::backdrop { background: rgba(0, 0, 0, .4); animation: fade-in var(--dur-3) var(--ease) backwards; }
@@ -783,22 +838,28 @@ td.wrap-cell { white-space: normal; overflow-wrap: anywhere; word-break: normal;
 .dlg form { display: grid; gap: 6px; }
 
 /* ---- 提示条（滑入 + 淡入；消失淡出）---- */
-/* 窄屏：toast 抬到玻璃底栏之上并上移——底栏 z-index 40 且同在底部居中，
-   不抬的话踢会话/改密/封禁的成功提示全被底栏压住看不见。 */
-@media (max-width: 899.98px) {
-  .toast { z-index: 50; bottom: calc(max(10px, env(safe-area-inset-bottom)) + 72px); }
-}
 .toast {
   position: fixed; left: 50%; transform: translate(-50%, 8px);
   bottom: max(16px, env(safe-area-inset-bottom));
-  background: var(--ink); color: var(--canvas);
-  padding: 10px 16px; border-radius: 999px; z-index: 30;
+  /* Snackbar：药丸 + 语义反馈色 + 轻玻璃；成功/失败靠文案与颜色双重表达 */
+  background: var(--toast-bg); color: var(--toast-ink);
+  padding: var(--sp-3) var(--sp-4); border-radius: var(--radius-pill); z-index: 30;
   font-size: var(--font-body2); opacity: 0;
+  box-shadow: var(--shadow-2);
+  -webkit-backdrop-filter: blur(var(--glass-card-blur)) saturate(var(--glass-card-saturate));
+  backdrop-filter: blur(var(--glass-card-blur)) saturate(var(--glass-card-saturate));
   transition: opacity var(--dur-2) var(--ease), transform var(--dur-2) var(--ease);
-  max-width: calc(100vw - 32px);
+  max-width: calc(100vw - var(--sp-8));
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
-.toast.bad { background: var(--danger); color: #fff; }
+.toast.bad { background: var(--toast-bad-bg); color: var(--toast-bad-ink); }
+/* 窄屏：toast 抬到玻璃底栏之上并上移——底栏 z-index 40 且同在底部居中，
+   不抬的话踢会话/改密/封禁的成功提示全被底栏压住看不见。
+   注意必须写在 .toast 基础规则**之后**：同特异性下后写的才生效（此前放前面
+   被基础规则的 z-index:30 / bottom:16px 覆盖，实测 toast 被底栏压住）。 */
+@media (max-width: 899.98px) {
+  .toast { z-index: 50; bottom: calc(max(10px, env(safe-area-inset-bottom)) + 72px); }
+}
 
 /* ---- 二维码与恢复码 ---- */
 /* 定宽二维码盒：padding 8→9 补掉退役的 1px border，内容盒仍 198×198 不抖码 */
@@ -831,7 +892,7 @@ td.wrap-cell { white-space: normal; overflow-wrap: anywhere; word-break: normal;
 .spark { display: flex; align-items: flex-end; gap: 3px; height: 36px; margin-top: 6px; }
 .spark i {
   flex: 1; min-width: 4px; border-radius: 3px 3px 0 0;
-  background: var(--primary); opacity: .85;
+  background: var(--progress-fill); opacity: .85;
   transition: height var(--dur-3) var(--ease);
 }
 .ai-user-row { cursor: pointer; }
@@ -881,10 +942,10 @@ td .user-cell .truncate { max-width: 24ch; }
 /* 16px 定高轨道：padding:1px 复刻旧 border 的内容盒（填充条仍 14px 高、
    环区不被填充盖住）；填充条是被圆角裁的子背景层 → 裁切从 overflow:hidden
    换成 clip-path（子元素的圆角裁切走 clip-path 才有抗锯齿）。 */
-.bar-track { background: var(--canvas); background-clip: padding-box; border: none; box-shadow: inset 0 0 0 1px var(--line); border-radius: 8px; height: 16px; padding: 1px; clip-path: inset(0 round 8px); }
+.bar-track { background: var(--progress-track); background-clip: padding-box; border: none; box-shadow: inset 0 0 0 1px var(--line); border-radius: var(--radius-xs); height: 16px; padding: 1px; clip-path: inset(0 round 8px); }
 /* display:block（W9 终检修）：.bar-fill 是行内 span，行内盒不吃 height:100%，
    填充条一直 0 高不可见——.bar-track 是 grid/flex 子项已是块级盒，填充条补上即可 */
-.bar-fill { display: block; height: 100%; background: var(--primary); transition: width var(--dur-3) var(--ease); }
+.bar-fill { display: block; height: 100%; background: var(--progress-fill); transition: width var(--dur-3) var(--ease); }
 .bar-num { text-align: right; font-family: var(--mono); }
 
 /* ---- 登录页 ---- */
@@ -908,7 +969,11 @@ td .user-cell .truncate { max-width: 24ch; }
 .sk-avatar { width: 32px; height: 32px; border-radius: 50%; flex: none; }
 .sk-grow { flex: 1 1 auto; min-width: 0; }
 
-.empty { text-align: center; color: var(--dim); padding: 28px 12px; }
+/* 空态：Miuix Empty 的柔和语义面，颜色只表达「中性空」，不误读成错误 */
+.empty {
+  text-align: center; color: var(--dim); padding: var(--sp-7) var(--sp-3);
+  background: var(--empty-bg); border-radius: var(--radius-lg);
+}
 /* 空态标题+说明+主行动（Polaris：解释为什么空 + 给一个下一步）。
    此前只有一句灰字，用户看不出「是没数据还是坏了」。 */
 .empty-title { display: block; color: var(--ink); font-size: var(--font-title4); font-weight: 500; margin-bottom: var(--sp-1); }
@@ -956,8 +1021,16 @@ td .user-cell .truncate { max-width: 24ch; }
 }
 .pf-chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
-/* ---- 详情面板（后台用户）---- */
-.detail { border-top: 1px dashed var(--line); margin-top: 12px; padding-top: 12px; }
+/* ---- 详情面板（BottomSheet / Drawer 的页内形态）----
+   后台用户、会话、AI 三处钻取面板共用：玻璃面 + 大圆角 + 上边分隔，
+   进场由 app.js slideIn（克制 easing，不用弹簧）；@supports not 退实底。 */
+.detail {
+  border-top: 1px dashed var(--line); margin-top: var(--sp-3); padding-top: var(--sp-3);
+  border-radius: var(--radius-lg);
+  background: var(--glass-card-bg); background-clip: padding-box;
+  -webkit-backdrop-filter: blur(var(--glass-card-blur)) saturate(var(--glass-card-saturate));
+  backdrop-filter: blur(var(--glass-card-blur)) saturate(var(--glass-card-saturate));
+}
 
 @media (max-width: 640px) {
   /* 圆角**不随断点变**：--radius-card 全站 16，窄屏另起 18 会与按钮/输入框的

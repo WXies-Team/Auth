@@ -43,10 +43,13 @@
       </span>
     </div>
   </div>
-  <nav class="tabnav" aria-label="分区导航（窄屏）">
-    {{template "nav-items" .Nav}}
-  </nav>
 </header>
+<!-- 窄屏底栏必须放在 .topbar **之外**：玻璃顶栏的 backdrop-filter 会成为固定定位的
+     包含块，若 .tabnav 留在 header 内，position:fixed 就相对顶栏而不是视口，
+     底栏会被钉到页面顶部（实测 375px 下 top:-4px）。移出来即可恢复贴底。 -->
+<nav class="tabnav" aria-label="分区导航（窄屏）">
+  {{template "nav-items" .Nav}}
+</nav>
 {{end}}
 
 <div class="shell">
