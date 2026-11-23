@@ -13,7 +13,7 @@ Go+MySQL unified account service behind `auth.horatio.cn` (register/login, email
 | Package / deploy | `ci/build-server.sh` → `dist/server.tar`; `ci/deploy-server.sh dist/server.tar` |
 | Local run | copy `.env.example` → `.env`, set `MYSQL_DSN`, `JWT_SECRET`, `TOTP_ENC_KEY`; listen `127.0.0.1:8868` (nginx TLS in front) |
 
-Before finishing: `go build ./...` and `go test ./...`. `JWT_SECRET` and `TOTP_ENC_KEY` must each be ≥32 bytes or the server refuses to start; losing `TOTP_ENC_KEY` invalidates every bound TOTP (recovery codes only).
+Before finishing: `JWT_SECRET` and `TOTP_ENC_KEY` must each be ≥32 bytes or the server refuses to start; losing `TOTP_ENC_KEY` invalidates every bound TOTP (recovery codes only). The commands themselves are the Definition of done below.
 
 ## Context loading
 
@@ -40,6 +40,6 @@ Before finishing: `go build ./...` and `go test ./...`. `JWT_SECRET` and `TOTP_E
 - Expose `/internal/*` through nginx — keep `BIND_ADDR` at `127.0.0.1`.
 - Change endpoint JSON shapes without updating both diary clients.
 
-## Output
+## Definition of done
 
-Chinese, lead with the conclusion. Keep instruction files in English.
+`go build ./...`, `go vet ./...` and `go test ./...` pass locally; endpoint JSON changes ship together with both diary clients; no `.env`/real secrets in the diff.
