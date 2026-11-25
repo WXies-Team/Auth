@@ -306,6 +306,14 @@ func TestAdminConfigRequiresFullEndpoint(t *testing.T) {
 	}
 }
 
+// 会话总览的搜索卡与用户表之间必须有显式间距：#sess-users-view 是块容器，
+// .content 的 grid gap 不作用于它内部，靠 toolbar 自己的下边距隔开（2026-10-22 实报回归）。
+func TestSessionsSearchToolbarSpacing(t *testing.T) {
+	if !strings.Contains(mustCSS(t), "#sess-users-view > .toolbar { margin-bottom: var(--gap); }") {
+		t.Error("会话总览搜索卡缺下边距，会与下方用户表黏连")
+	}
+}
+
 // 宽屏 rail 必须跟随动态视口高度：100vh 在横屏平板/移动浏览器上高于可视区，
 // 会把 rail 底部的管理入口与头像推到屏幕底部之外；中间导航单独滚动。
 func TestRailFitsDynamicViewport(t *testing.T) {

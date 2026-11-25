@@ -1051,6 +1051,9 @@ td .user-cell .truncate { max-width: 24ch; }
   grid-column: 1 / -1; display: flex; gap: 8px; justify-content: flex-end;
 }
 .toolbar-inline { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+/* 会话总览的搜索卡与下方用户表之间显式留节奏：#sess-users-view 是普通块容器，
+   .content 的 grid gap 只作用于它的直接子项，进不来——缺了它两张卡会黏连。 */
+#sess-users-view > .toolbar { margin-bottom: var(--gap); }
 
 /* 分页条 */
 .pager { display: flex; align-items: center; gap: var(--sp-2); justify-content: flex-end; }
