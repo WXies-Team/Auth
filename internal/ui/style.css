@@ -210,6 +210,11 @@ body {
   outline-offset: 2px;
   border-radius: inherit;
 }
+/* 指针点击不画焦点方框（Safari/部分安卓仍会对 :focus 画默认环）；键盘仍走
+   :focus-visible 的圆角焦点环。 */
+:where(a, button, summary, [role="button"], [tabindex]):focus:not(:focus-visible) {
+  outline: none;
+}
 a, button, input, select, textarea {
   transition: outline-color var(--dur-1) var(--ease), outline-offset var(--dur-1) var(--ease);
 }
