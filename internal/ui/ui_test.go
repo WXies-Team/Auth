@@ -292,6 +292,37 @@ func TestRenderOptsIntoClientHints(t *testing.T) {
 // 顶栏账号胶囊与管理后台入口都在 layout 里，且管理入口由 .IsAdmin 门控
 // （role 判定发生在 cmd/server 的 pageHandler，非管理员的 HTML 里没有这个按钮）。
 // 进入后台后入口变「返回控制台」（.InAdmin 门控）。
+// 配置中心要求接口地址填完整端点：只写 /v1 会被前端当场拦下，避免后端再拼
+// /chat/completions；提示文案与校验正则都要在 initAdminConfig 里。
+func TestAdminConfigRequiresFullEndpoint(t *testing.T) {
+	block := jsBlock(t, mustJS(t), "function initAdminConfig() {", "\n/* ---------- 后台：AI 用量")
+	for _, want := range []string{
+		"必须填写完整接口地址（含 /chat/completions",
+		`/^https?:\/\/.+\/chat\/completions\/?$/`,
+	} {
+		if !strings.Contains(block, want) {
+			t.Errorf("配置中心缺完整接口地址校验/提示：%s", want)
+		}
+	}
+}
+
+// 宽屏 rail 必须跟随动态视口高度：100vh 在横屏平板/移动浏览器上高于可视区，
+// 会把 rail 底部的管理入口与头像推到屏幕底部之外；中间导航单独滚动。
+func TestRailFitsDynamicViewport(t *testing.T) {
+	css := mustCSS(t)
+	for _, want := range []string{
+		"height: 100dvh;",
+		"max-height: 100dvh;",
+		"overflow: hidden;",
+		".rail-nav {",
+		"flex: 1 1 auto; min-height: 0;",
+	} {
+		if !strings.Contains(css, want) {
+			t.Errorf("rail 缺动态视口/滚动约束：%s", want)
+		}
+	}
+}
+
 func TestTopbarAccountAndAdminEntry(t *testing.T) {
 	raw, err := files.ReadFile("templates/layout.html")
 	if err != nil {
@@ -304,6 +335,7 @@ func TestTopbarAccountAndAdminEntry(t *testing.T) {
 		// ≥900px 顶栏被 CSS 隐藏，管理入口与账号胶囊必须在 rail 底部另出一份，
 		// 否则桌面端只剩导航项、没有进入管理后台的按钮。
 		`<div class="rail-foot">`,
+		`<div class="rail-nav">{{template "nav-items" .Nav}}</div>`,
 		`id="rail-admin-entry"`,
 		// B5：顶栏账号胶囊升级为头像（图/色块+首字）+ 昵称（回退邮箱前缀，完整邮箱在 title）
 		`id="topbar-email" title="{{.Email}}"`,

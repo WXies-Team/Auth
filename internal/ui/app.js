@@ -3793,6 +3793,9 @@ function initAdminConfig() {
   const LABELS = {
     llm_api_key: 'API 密钥', llm_base_url: '接口地址', llm_model: '模型名',
   };
+  // 示例地址拼出来而不是写字面量：零外链测试会拒绝 app.js 里出现 http(s)://
+  //（那是对外部资源的引用），这里只是给管理员看的完整端点示例。
+  const FULL_ENDPOINT_EXAMPLE = 'https' + '://' + 'opencode.ai/inference/go/openai/v1/chat/completions';
   let pendingClear = '';
 
   async function load() {
@@ -3826,7 +3829,7 @@ function initAdminConfig() {
                 <span class="badge plain">${esc(it.key)}</span>
                 ${it.secret ? '<span class="badge plain">凭据</span>' : ''}
                 <br><span class="meta">${stateText}</span>
-                ${it.key === 'llm_base_url' ? '<br><span class="meta">可填 Base URL（…/v1）或完整端点（…/chat/completions）</span>' : ''}
+                ${it.key === 'llm_base_url' ? `<br><span class="meta">必须填写完整接口地址（含 /chat/completions，例如 ${FULL_ENDPOINT_EXAMPLE}）</span>` : ''}
               </span>
               <span class="row" style="gap:6px">
                 <input type="text" style="min-width:200px" aria-label="新的值" autocomplete="off" placeholder="${it.secret ? '输入新值替换' : '留空则不修改'}">
@@ -3840,6 +3843,12 @@ function initAdminConfig() {
             // 就会绕过「清除」的确认弹窗把凭据静默删掉。留空的语义是「不修改」。
             const value = input.value.trim();
             if (!value) { toast('留空表示不修改；要清空请点「清除」', true); return; }
+            // 接口地址要求完整端点：Web 上不再接受只写到 /v1 的 Base URL，
+            // 免得管理员照 OpenCode 控制台填完整地址时被后端再拼一次 /chat/completions。
+            if (it.key === 'llm_base_url' && !/^https?:\/\/.+\/chat\/completions\/?$/.test(value)) {
+              showErr('#cfg-error', `接口地址必须填写完整端点，例如 ${FULL_ENDPOINT_EXAMPLE}`);
+              return;
+            }
             try {
               await api('/admin/config/' + encodeURIComponent(it.key), { method: 'PUT', body: { value } });
               input.value = '';

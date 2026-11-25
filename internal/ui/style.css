@@ -278,18 +278,29 @@ a, button, input, select, textarea {
   .dock { display: none !important; }
   .rail {
     display: flex; flex-direction: column; gap: var(--sp-4);
-    position: sticky; top: 0; height: 100vh;
+    position: sticky; top: 0;
+    /* 100dvh 跟随浏览器实际可视区（地址栏/工具栏收起后的高度），
+       100vh 在移动浏览器/横屏平板上会比可视区高，底部 rail-foot 被推到屏幕外。 */
+    height: 100vh;
+    height: 100dvh;
+    max-height: 100dvh;
     padding: var(--sp-5) var(--sp-4) calc(var(--sp-5) + env(safe-area-inset-bottom));
     border-right: 1px solid var(--line);
-    overflow-y: auto;
+    /* rail 自身不滚：中间导航滚动，底部管理入口/账号胶囊始终贴底可见 */
+    overflow: hidden;
   }
-  .rail-nav { display: grid; gap: 2px; }
+  .rail-nav {
+    display: grid; gap: 2px;
+    flex: 1 1 auto; min-height: 0;
+    overflow-y: auto; overscroll-behavior: contain;
+    align-content: start;
+  }
   .rail-label {
     font-size: var(--font-footnote); font-weight: 700; color: var(--section-title);
     letter-spacing: .3px; margin: var(--sp-4) 0 var(--sp-1); padding: 0 12px;
   }
   .rail-label:first-child { margin-top: 0; }
-  .rail-foot { margin-top: auto; display: grid; gap: var(--sp-2); }
+  .rail-foot { margin-top: auto; flex: none; display: grid; gap: var(--sp-2); }
   .rail .acct { max-width: 100%; }
   .rail .acct-name { max-width: 150px; }
 }
@@ -821,6 +832,8 @@ td.wrap-cell { white-space: normal; overflow-wrap: anywhere; word-break: normal;
 .item .grow { flex: 1 1 220px; min-width: 0; }
 .item .title { font-weight: 500; }
 .item .meta { color: var(--dim); font-size: 13px; }
+/* 接口地址等长 URL 在配置卡里完整换行展示，不裁到 /v1 看起来像配置缺半截 */
+.item .meta code { word-break: break-all; }
 .item.current { background: var(--primary-soft); }
 @media (hover: hover) { .item.current:hover { background: var(--primary-soft); } }
 

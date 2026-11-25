@@ -50,7 +50,7 @@
   <!-- 宽屏左侧 rail（≥900px 显示）：分区标签 + 导航；账号胶囊只在顶栏一处（避免重复 id） -->
   <nav class="rail" aria-label="主导航">
     <p class="rail-label">{{if .InAdmin}}管理后台{{else}}控制台{{end}}</p>
-    {{template "nav-items" .Nav}}
+    <div class="rail-nav">{{template "nav-items" .Nav}}</div>
     <!-- 宽屏 rail 底部：管理入口 + 账号胶囊。顶栏在 ≥900px 被隐藏，若只把
          入口放在顶栏，桌面端就完全没有「管理后台」按钮（账号胶囊同理会消失）。
          这里复用同一份 Data，不新增后端字段；id 加 rail- 前缀避免与顶栏重复。 -->
