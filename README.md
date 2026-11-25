@@ -51,7 +51,8 @@ Web 端点（**全部新增路径，老端点形状不变**；写操作需 `X-CS
 | `POST /web/login/password` | 密码登录；已开两步验证时回 `{status:"2fa_required",loginToken,methods}` |
 | `POST /web/login/email-code` | 邮箱验证码登录（不叠两步验证） |
 | `POST /web/login/totp` | 两步验证第二步：`{loginToken}` + TOTP 码 / 恢复码 / 邮箱验证码（`emailCode`，可选）→ `{token,email}` |
-| `POST /web/session` | 当前身份：`{uid,email,role,csrfToken,totpEnabled,passkeyCount,passwordSet}` |
+| `POST /web/session` | 当前身份：`{uid,email,role,csrfToken,totpEnabled,passkeyCount,passwordSet,isRoot}`（`isRoot` 与后端 `RootUID` 同源，UI 不再硬编码 uid） |
+| `POST /web/session/refresh` | 轮换本会话 token（cookie 会话；旧 token 保留 60 秒宽限窗，窗外出现即判重放并吊销整个轮换家族） |
 | `POST /web/reauth` | 重新验证（密码 / TOTP 码 / 恢复码），刷 2 小时强认证窗（敏感操作成功即滑动续期） |
 | `POST /web/logout` | 登出本行会话，回 `Clear-Site-Data` 并清 cookie |
 | `POST /webauthn/register/options`、`/finish` | Passkey 注册仪式（finish 需 2 小时内强认证） |
@@ -59,9 +60,10 @@ Web 端点（**全部新增路径，老端点形状不变**；写操作需 `X-CS
 | `GET /api/passkeys`、`PATCH`/`DELETE /api/passkeys/{id}` | Passkey 列表 / 改名 / 删除 |
 | `GET /api/totp` | 两步验证状态 `{enabled,createdAt}` |
 | `POST /api/totp/setup`、`/enable`、`/disable`、`/regenerate-recovery-codes` | 先验后启的绑定流程与恢复码管理 |
-| `GET /admin/users`、`GET/PATCH /admin/users/{uid}`、`POST /admin/users/{uid}/revoke-sessions` | 后台用户查询、角色变更、整户踢出会话 |
-| `GET /admin/sessions`、`DELETE /admin/sessions/{id}` | 全站会话总览与吊销 |
+| `GET /admin/users`、`GET/PATCH /admin/users/{uid}`、`POST /admin/users/{uid}/revoke-sessions` | 后台用户查询（可选 `role=` / `banned=` 过滤）、角色变更、整户踢出会话 |
+| `GET /admin/sessions`、`DELETE /admin/sessions/{id}` | 全站会话总览（含 `apps` / `regions` 汇总）与吊销 |
 | `GET /admin/audit` | 审计查询（action / actor / target / 时间区间，倒序分页） |
+| `GET /admin/projects` | 项目列表：`members`（登录放行名单）+ `admins`（该项目管理员，来自 `admin_scopes`） |
 | `GET /admin/config`、`PUT /admin/config/{key}` | 配置中心：白名单键，secret 只回末 4 位 |
 | `GET /admin/ai-usage?days=30` | AI 用量与四档限额（空表如实为空） |
 
@@ -100,14 +102,24 @@ ci/build-server.sh    # 测试 + 打包 dist/server.tar（CI 部署用的同一�
 | `app_config` 表 | `mail_smtp_host` / `mail_smtp_port` / `mail_smtp_user` / `mail_smtp_pass` | 阿里企业邮箱 SMTP 发信凭据（**唯一发信路径**，四键齐才可发信；`host=smtp.qiye.aliyun.com`、`port=465`（SSL）、账户名与发件人 = 完整地址 `support@horatio.cn`、密码填三方客户端安全密码），部署时人工灌，改库 10 秒内热生效 |
 | `app_config` 表 | `hook_token` | 注销钩子与 `/internal/users/ensure` 共用的 Bearer，与日记侧共享；没配则并入端点一律 401 |
 | `app_config` 表 | `hook_calorie_diary` / `hook_expense_diary` | 各 App 的 `/internal/delete-user` 地址；**键缺失 = 注销时跳过该 App**（只在测试/开发态成立），改库 10 秒内热生效 |
-| `app_config` 表 | `webauthn_opaque_origins`（可选） | 逗号分隔的 `android:apk-key-hash:<签名证书指纹>`；**没配 = 只有网页端能用 Passkey**，两个日记 App 的原生仪式被 origin 校验挡下（写错也只降级不拒启，见启动日志） |
+| `app_config` 表 | `webauthn_opaque_origins`（可选） | 逗号分隔的 `android:apk-key-hash:<签名证书指纹>`；**两个 App 各至少一条**（debug/release 可并行，最多 8 条）。精确串匹配，写错只让对应 App 的原生仪式被拒；格式非法时整批降级为「仅网页端」并记启动日志，不拒启 |
 | `app_config` 表 | `totp_enforce_apps`（可选） | 逗号分隔的 App 名单，**默认空 = 零影响**；名单内的 App 在用户开了两步验证后走 `/auth/login` 会回 401「请升级应用后使用新版登录」——老客户端唯一的行为开关，翻它是作者的显式动作 |
 | `app_config` 表 | `ai_rate_per_minute` / `ai_concurrency` / `ai_daily_per_user` / `ai_daily_global` | AI 限额看板读这四键（缺省 20 / 8 / 500 / 5000，与日记侧 quota.go 同名同义） |
 
-**管理员自举**：`users.role` 默认 `user`，首个管理员部署时手工执行一次
+**管理员自举与根管理员**：`users.role` 默认 `user`，首个管理员部署时手工执行一次
 `UPDATE users SET role = 'admin' WHERE email = '<你的邮箱>';`（也进审计的正常路径）。
 后台要求该账号先绑两步验证或 Passkey，之后每次管理操作都要 2 小时内强认证过
 （管理操作成功即重置这 2 小时计时器）。
+
+**根平台管理员按 uid 钉死**：`internal/auth.RootUID = 5939716`（当前对应
+`hs@horatio.cn`；邮箱常量 `RootSuperEmail` 只在库里还没有该 uid 行时兜底解析）。
+只有根管理员能任命/回收 `super`（平台管理员）；**所有** `super` 都能任命/回收项目
+管理员（`admin_scopes`）；app-admin 无任何授予权；任何人不能改自己的角色、不能授予
+不低于自己的角色。`/web/session` 的 `isRoot` 是这套判定的唯一对外出口。
+
+**会话寿命**：所有会话有服务端强制的 90 天绝对到期（`expiresAt`）；web 会话另有
+7 天空闲闸（`idleExpiresAt`）。改密/找回密码/封禁/踢人当场吊销对应会话；旧 token
+在 `/web/session/refresh` 轮换后只保留 60 秒宽限窗，窗外重用会吊销整个家族。
 
 ## 部署
 
