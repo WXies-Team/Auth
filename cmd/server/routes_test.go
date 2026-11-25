@@ -701,6 +701,16 @@ func TestAdminAuthzMatrix(t *testing.T) {
 		t.Errorf("后台列表回执应恰为 items,total，得到 %s", got)
 	}
 
+	// 项目成员选择器：按邮箱片段搜已注册用户（项目成员管理不再手输邮箱）。
+	rec = e.do(t, "GET", "/admin/projects/CalorieDiary/candidates?query=worker", "", cookies)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "worker@example.com") {
+		t.Errorf("候选用户搜索应 200 且包含 worker，得到 %d %s", rec.Code, rec.Body.String())
+	}
+	rec = e.do(t, "GET", "/admin/projects/evil-app/candidates?query=worker", "", cookies)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("未知项目搜索候选应 400，得到 %d %s", rec.Code, rec.Body.String())
+	}
+
 	// ④ 降级自己 → 400（服务端守卫；前端禁用只是提示）。角色调整唯一入口是
 	//    POST /admin/users/{uid}/role（旧 PATCH /admin/users/{uid} 已并入并删除）
 	rec = e.do(t, "POST", "/admin/users/"+strconv.FormatInt(boss, 10)+"/role", `{"role":"user"}`, withCSRF)

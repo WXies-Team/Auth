@@ -543,6 +543,65 @@ type AdminProject struct {
 	RedirectURIs []string             `json:"redirectUris"`
 }
 
+// AdminUserCandidate 是项目成员选择器的一行（只暴露挑选所需的最小字段）。
+type AdminUserCandidate struct {
+	UID   int64  `json:"uid"`
+	Email string `json:"email"`
+	Role  string `json:"role"`
+}
+
+// AdminProjectCandidates 供项目成员选择器搜索**已注册用户**（GET
+// /admin/projects/{app}/candidates?query=）：项目管理员只能搜自己有权管理的
+// 项目，避免把全站用户目录暴露给项目级管理员；super 可搜全部项目。
+// 只回前 20 条，空查询回空数组（不把整个用户表倒出来）。
+func (s *Service) AdminProjectCandidates(scope AdminScope, app, rawQuery string) ([]AdminUserCandidate, error) {
+	if !allowedApps[app] {
+		return nil, badRequest("未知项目，请重新选择后重试")
+	}
+	if err := adminTargetScope(scope, app); err != nil {
+		return nil, err
+	}
+	q := strings.TrimSpace(rawQuery)
+	if q == "" {
+		return []AdminUserCandidate{}, nil
+	}
+	rows, err := s.pool.QueryContext(db.QueryCtx(),
+		`SELECT id, email, role FROM users
+		 WHERE role <> 'super' AND (LOWER(email) LIKE LOWER(?) OR id = ?)
+		 ORDER BY id LIMIT 20`, "%"+q+"%", numericOrZero(q))
+	if err != nil {
+		return nil, fmt.Errorf("查项目候选用户: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	out := make([]AdminUserCandidate, 0, 8)
+	for rows.Next() {
+		var u AdminUserCandidate
+		if err := rows.Scan(&u.UID, &u.Email, &u.Role); err != nil {
+			return nil, fmt.Errorf("读项目候选用户: %w", err)
+		}
+		out = append(out, u)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("遍历项目候选用户: %w", err)
+	}
+	return out, nil
+}
+
+// numericOrZero 把纯数字查询转成 uid；非数字回 0（SQL 里 id=0 不命中任何人）。
+func numericOrZero(s string) int64 {
+	var n int64
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return 0
+		}
+		n = n*10 + int64(r-'0')
+		if n > 1<<62 {
+			return 0
+		}
+	}
+	return n
+}
+
 // AdminListProjects 列项目与名单（契约 6）：super = 全部 knownApps，
 // app-admin = 仅其 admin_scopes 项目（零 scope 回空列表，页面空态说明）。
 // restricted 直查 project_policy（不进 app_config 缓存）。

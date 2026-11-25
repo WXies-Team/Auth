@@ -431,6 +431,23 @@ func TestProjectRestrictionAndAccess(t *testing.T) {
 		t.Errorf("app-admin 只该见授权项目: %+v err=%v", appProjects, err)
 	}
 
+	// 项目成员选择器：空查询不倒全表；按邮箱片段能搜到；app-admin 只能搜自己的项目。
+	if cands, err := svc.AdminProjectCandidates(superScope, "CalorieDiary", "  "); err != nil || len(cands) != 0 {
+		t.Errorf("空查询应回空数组，得到 %+v err=%v", cands, err)
+	}
+	cands, err := svc.AdminProjectCandidates(superScope, "CalorieDiary", "w5-member")
+	if err != nil || len(cands) != 1 || cands[0].UID != member.UID || cands[0].Email != member.Email {
+		t.Errorf("按邮箱片段应搜到 member，得到 %+v err=%v", cands, err)
+	}
+	if _, err := svc.AdminProjectCandidates(appScope, "ExpenseDiary", "w5"); err != nil {
+		t.Errorf("app-admin 搜自己的项目应放行: %v", err)
+	}
+	if _, err := svc.AdminProjectCandidates(appScope, "CalorieDiary", "w5"); err == nil {
+		t.Error("app-admin 搜未授权项目应 403")
+	} else if code, _ := httpMsg(err); code != 403 {
+		t.Errorf("越权搜索应 403，得到 %d %v", code, err)
+	}
+
 	// app-admin 越权：管 calorie 的限制与名单一律 403；未知 slug 400
 	restrictErr := svc.AdminSetRestricted(appAdmin, appScope, "CalorieDiary", false)
 	if code, _ := httpMsg(restrictErr); code != 403 {

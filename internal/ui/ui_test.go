@@ -1846,52 +1846,47 @@ func TestSelectOptionFocusVisible(t *testing.T) {
 
 // ================= 2026-11 三模块重写（项目访问/会话总览/用户）+ 拒绝态 =================
 
-// 项目访问页：豁免层级必须「谁对什么豁免」三层齐备（页顶图例 + 每卡一份），
-// 且豁免管理（授予/回收项目管理员授权）有可操作入口与确认弹层。
-func TestAdminAccessExemptionHierarchy(t *testing.T) {
+// 项目访问页：用「成员 + 角色」表达谁能访问（平台管理员 / 项目管理员 / 登录名单），
+// 不再使用「豁免管理」这种实现词；添加成员必须从已注册用户里搜索选择。
+func TestAdminAccessMembersAndPicker(t *testing.T) {
 	raw, err := files.ReadFile("templates/admin-access.html")
 	if err != nil {
 		t.Fatalf("读 admin-access 模板: %v", err)
 	}
 	tpl := string(raw)
 	for _, want := range []string{
-		`id="access-ladder"`, // 页顶豁免层级图例
-		`id="access-stats"`,  // 项目数/受限数统计（aria-live 由下方钉）
-		`id="access-denied"`, // 拒绝态面板容器
-		`id="exempt-dlg"`,    // 豁免管理弹层
-		`id="exempt-email"`,  // 按邮箱查找账号
-		"豁免 · 全部项目",          // 平台管理员层
-		"豁免 · 本项目",           // 项目管理员层
-		"在册 · 本项目",           // 名单成员层
-		"豁免管理",               // 可操作入口
-		`id="access-dlg"`,    // 通用确认弹层（调整范围/移出名单/豁免授予回收）
+		`id="access-ladder"`, `id="access-stats"`, `id="access-denied"`,
+		`id="member-dlg"`, `id="member-query"`, `id="member-results"`,
+		`id="member-role"`, `id="access-dlg"`,
+		"谁可以访问项目", "平台管理员", "项目管理员", "登录名单", "添加成员",
 	} {
 		if !strings.Contains(tpl, want) {
 			t.Errorf("admin-access.html 缺 %q", want)
 		}
 	}
+	if strings.Contains(tpl, "exempt-dlg") || strings.Contains(tpl, "豁免管理") {
+		t.Error("旧的「豁免管理」弹层/术语不应保留")
+	}
 	if !strings.Contains(tpl, `id="access-stats" aria-live="polite"`) {
 		t.Error("access-stats 应带 aria-live=polite（计数变化可被读屏感知）")
 	}
-	// 撤下的 Web 接入 Secret 层不许回来（TestReauthStagedAndWebAccessRemoved 同口径）
 	if strings.Contains(tpl, "oauth-secret-dlg") {
 		t.Error("Web 接入的一次性 Secret 层不应随重写回来")
 	}
 
-	jsBytes, err := files.ReadFile("app.js")
-	if err != nil {
-		t.Fatalf("读 app.js: %v", err)
-	}
-	js := string(jsBytes)
+	js := mustJS(t)
+	block := jsBlock(t, js, "function initAdminAccess() {", "\n/* ---------- 后台：会话总览")
 	for _, want := range []string{
-		"data-exempt-manage", // 每卡的豁免管理入口
-		"授予本项目豁免", "回收本项目豁免", // 授予/回收动作文案
-		"body: { app: exemptApp, op:", // 走既有 /admin/roles/{uid}/scope 契约
-		"未启用登录限制 · 全员可登录",             // 开放登录时的生效说明
-		"项目管理员豁免由平台管理员在「用户」页授予",       // 项目管理员（app-admin）的只读口径
+		"data-add-member",                               // 每卡的添加入口
+		"/candidates?query=",                            // 从已注册用户里搜
+		"body: { app: p.app, op: 'grant' }",             // 授予项目管理员
+		"op: 'revoke'",                                  // 移除项目管理员
+		"member-role-field",                             // 角色选择（可登录 / 项目管理员）
+		"项目管理员可管理本项目成员",                                 // 角色语义
+		"emptyEl.hidden = peopleEl.children.length > 0", // 空态随成员列表
 	} {
-		if !strings.Contains(js, want) {
-			t.Errorf("app.js 缺豁免管理结构 %q", want)
+		if !strings.Contains(block, want) {
+			t.Errorf("项目访问实现缺 %q", want)
 		}
 	}
 }
@@ -2519,31 +2514,30 @@ func TestWebSessionRefreshRotationWiring(t *testing.T) {
 	}
 }
 
-// 项目卡要直接列出 /admin/projects.admins（恒数组），并在卡内回收豁免；
-// 回收继续走既有 /admin/roles/{uid}/scope，不发明新端点，也不给 app-admin 出按钮。
-func TestAdminProjectAdminsInlineRevoke(t *testing.T) {
+// 项目卡用一份统一成员列表：项目管理员与登录名单合并展示，管理员行可被平台管理员
+// 移除（走 /admin/roles/{uid}/scope），名单成员行走项目 access 端点；app-admin 不出现
+// 移除管理员的按钮。
+func TestAdminProjectMembersInlineRevoke(t *testing.T) {
 	js := mustJS(t)
-	card := jsBlock(t, js, "function cardOf(p)", "/* ---- 豁免管理")
+	card := jsBlock(t, js, "function cardOf(p)", "/* ---- 添加成员")
 	for _, want := range []string{
-		`data-admins`, `adminsEmpty.hidden = adminsEl.children.length > 0`,
-		`(p.admins || []).forEach`, `data-revoke-admin`,
-		"/admin/roles/${a.uid}/scope", `op: 'revoke'`,
+		`data-people`, `peopleOf(p)`, `personRow`, `data-remove`,
+		`/admin/roles/${person.uid}/scope`, `op: 'revoke'`,
 		`fadeOutRow(row, () => load())`,
 	} {
 		if !strings.Contains(card, want) {
-			t.Errorf("项目卡 admins 内联/回收缺 %q", want)
+			t.Errorf("项目卡成员列表缺 %q", want)
 		}
 	}
-	if strings.Count(card, "IS_SUPER") < 2 {
-		t.Error("回收豁免按钮应像豁免管理入口一样只对平台管理员渲染")
+	if !strings.Contains(card, "isAdmin && !IS_SUPER") {
+		t.Error("移除项目管理员按钮只应给平台管理员")
 	}
-	// 只钉回收这一条路径：卡里本来就有 /admin/projects/{app}/access|restrict，
-	// 不能把旧端点算成「新造」；admins 回收必须走 /admin/roles/{uid}/scope。
-	revokeRow := jsBlock(t, js, "function adminRow(a)", "function memberRow(email)")
-	if strings.Contains(revokeRow, "/admin/projects/") {
-		t.Error("admins 回收不该新造项目端点")
+	// 管理员移除走角色 scope，登录名单移除走项目 access；两条路径不能串。
+	rowBlock := jsBlock(t, js, "function personRow(person)", "function paintPeople()")
+	if strings.Count(rowBlock, "/admin/roles/${person.uid}/scope") != 1 {
+		t.Error("移除项目管理员应恰走一次 /admin/roles/{uid}/scope")
 	}
-	if strings.Count(revokeRow, "/admin/roles/${a.uid}/scope") != 1 {
-		t.Error("回收豁免应恰走一次 /admin/roles/{uid}/scope")
+	if strings.Count(rowBlock, "/admin/projects/${encodeURIComponent(p.app)}/access") != 1 {
+		t.Error("移出登录名单应恰走一次项目 access 端点")
 	}
 }

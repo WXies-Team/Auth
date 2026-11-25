@@ -3016,17 +3016,17 @@ function initAdminUsers() {
   loadInvites();
 }
 
-/* ---------- 后台：项目访问 —— 豁免层级 + 每项目一张卡 ----------
-   「谁对什么豁免」三层与服务端 gate.go 的判定同源：平台管理员豁免全部项目、
-   项目管理员豁免被授权的项目、名单内成员是「仅限受邀」时唯一能登录的普通账号。
-   豁免管理 = 授予/回收项目管理员授权（POST /admin/roles/{uid}/scope，仅平台
-   管理员；按邮箱查 uid 走既有 GET /admin/users?query=，契约零改动）。 */
-const EMPTY_MEMBERS_HINT = '名单为空时开启限制，只有管理员能登录。';
+/* ---------- 后台：项目访问 —— 成员列表 + 搜索添加 ----------
+   一个项目一份成员列表：项目管理员（可管理本项目）与登录名单成员（只能登录）。
+   添加时从已注册用户里搜，不再手输邮箱；候选接口按项目鉴权，app-admin 只搜
+   自己的项目。授予/移除项目管理员仍走 POST /admin/roles/{uid}/scope，契约不变。 */
+const EMPTY_MEMBERS_HINT = '还没有成员。开放登录时所有账号都能登录；仅限受邀时只有项目管理员和名单成员可以登录。';
 function initAdminAccess() {
   const wrap = $('#access-list');
   if (!wrap) return;
   let pending = null;
   let loaded = [];
+  let picker = null;
 
   function confirmAccess(title, desc, danger, done, fn) {
     pending = { done, fn };
@@ -3088,269 +3088,237 @@ function initAdminAccess() {
     setListBusy(wrap, false);
   }
 
+  // 一个项目的人员 = 项目管理员 ∪ 登录名单；同一个人同时有两种身份时只显示
+  // 更高的「项目管理员」，避免两行重复与误删。
+  function peopleOf(p) {
+    const m = new Map();
+    (p.admins || []).forEach(a => m.set(String(a.email).toLowerCase(), {
+      uid: a.uid, email: a.email, role: 'admin',
+    }));
+    (p.members || []).forEach(x => {
+      const k = String(x.email).toLowerCase();
+      if (!m.has(k)) m.set(k, { uid: x.uid, email: x.email, role: 'member' });
+    });
+    return [...m.values()].sort((a, b) =>
+      (a.role === b.role ? String(a.email).localeCompare(String(b.email)) : a.role === 'admin' ? -1 : 1));
+  }
+
   function cardOf(p) {
     const name = p.name || p.app;
-    let restricted = !!p.restricted;
-    const members = p.members || [];
     const card = node(`
       <section class="card access-card" data-app="${esc(p.app)}">
         <div class="row between access-head">
-          <h2>${esc(name)} <span class="badge${restricted ? ' on' : ''}" data-badge>${restricted ? '仅限受邀' : '开放登录'}</span></h2>
+          <h2>${esc(name)} <span class="badge" data-badge></span></h2>
           <span class="app-switch" role="group" aria-label="「${esc(name)}」登录范围">
-            <button type="button" class="app-chip${restricted ? '' : ' on'}" data-restrict="0" aria-pressed="${restricted ? 'false' : 'true'}">开放登录</button>
-            <button type="button" class="app-chip${restricted ? ' on' : ''}" data-restrict="1" aria-pressed="${restricted ? 'true' : 'false'}">仅限受邀</button>
+            <button type="button" class="app-chip" data-restrict="0">开放登录</button>
+            <button type="button" class="app-chip" data-restrict="1">仅限受邀</button>
           </span>
         </div>
+        <p class="hint" data-scope-note></p>
 
-        <!-- 本项目视角的「谁对什么豁免」：与页顶图例同三层，落点收窄到本项目 -->
-        <h3>登录要求与豁免</h3>
-        <div class="access-exempt">
-          <div class="item">
-            <span class="grow"><span class="title">平台管理员</span><br>
-              <span class="meta">豁免全部项目，不受本项目限制</span></span>
-            <span class="badge on">豁免 · 全部项目</span>
-          </div>
-          <div class="item">
-            <span class="grow"><span class="title">本项目管理员</span><br>
-              <span class="meta">被授予「${esc(name)}」管理权的账号豁免本项目</span></span>
-            <span class="badge on">豁免 · 本项目</span>
-          </div>
-          <div class="item">
-            <span class="grow"><span class="title">登录名单</span><br>
-              <span class="meta">「仅限受邀」时唯一能登录的普通账号</span></span>
-            <span class="badge${restricted ? '' : ' off'}" data-member-count>${members.length} 人在册</span>
-          </div>
+        <div class="row between" style="margin-top:14px">
+          <h3 style="margin:0">成员</h3>
+          <button type="button" class="btn small primary" data-add-member>添加成员</button>
         </div>
-        <h3>本项目管理员</h3>
-        <div class="list" data-admins style="margin-top:6px"></div>
-        <p class="hint" data-admins-empty hidden>还没有账号被授予本项目的管理豁免。</p>
-        <div class="row" style="gap:8px;margin-top:8px">
-          ${IS_SUPER
-      ? '<button type="button" class="btn small" data-exempt-manage>豁免管理</button><span class="hint">授予/回收「谁豁免本项目」的项目管理员权限</span>'
-      : '<span class="hint">项目管理员豁免由平台管理员在「用户」页授予；你可管理下方名单。</span>'}
-        </div>
-        <p class="hint" data-open-note${restricted ? ' hidden' : ''}>未启用登录限制 · 全员可登录，上述豁免与名单当前不构成门槛。</p>
-
-        <h3>登录名单</h3>
-        <div class="list" data-members style="margin-top:6px"></div>
-        ${members.length ? '' : `<p class="hint" data-empty>${EMPTY_MEMBERS_HINT}</p>`}
-        <form class="row" data-add style="margin-top:10px">
-          <label class="field grow" style="margin:0"><span class="sr-only">要加入「${esc(name)}」登录名单的邮箱</span>
-            <input type="email" placeholder="输入邮箱加入登录名单" autocomplete="off"></label>
-          <button type="submit" class="btn">添加</button>
-        </form>
-        <p class="err" data-add-err role="alert" hidden></p>
+        <p class="hint">项目管理员可管理本项目成员；登录名单成员只能登录，不能管理成员。</p>
+        <div class="list" data-people style="margin-top:6px"></div>
+        <p class="hint" data-empty hidden>${EMPTY_MEMBERS_HINT}</p>
+        <p class="err" data-card-err role="alert" hidden></p>
       </section>`);
-    const listEl = card.querySelector('[data-members]');
-    const countEl = card.querySelector('[data-member-count]');
-    const syncCount = () => {
-      if (!countEl) return;
-      countEl.textContent = `${listEl.children.length} 人在册`;
-      countEl.classList.toggle('off', !restricted);
-      popIn(countEl);
-    };
 
-    // admins 来自 /admin/projects 的服务端聚合（恒数组）；与登录名单分开列，
-    // 回收仍走既有 POST /admin/roles/{uid}/scope，不引入新端点。
-    const adminsEl = card.querySelector('[data-admins]');
-    const adminsEmpty = card.querySelector('[data-admins-empty]');
-    function adminRow(a) {
+    const peopleEl = card.querySelector('[data-people]');
+    const emptyEl = card.querySelector('[data-empty]');
+    const cardErr = card.querySelector('[data-card-err]');
+
+    function setRestricted(next) {
+      p.restricted = next;
+      $$('.app-chip', card).forEach(chip => {
+        const on = (chip.dataset.restrict === '1') === next;
+        chip.classList.toggle('on', on);
+        chip.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+      const badge = card.querySelector('[data-badge]');
+      badge.textContent = next ? '仅限受邀' : '开放登录';
+      badge.classList.toggle('on', next);
+      card.querySelector('[data-scope-note]').textContent = next
+        ? '只有项目管理员和登录名单成员可以登录本项目。'
+        : '开放登录：所有已注册账号都能登录；成员角色保留，仅在切到「仅限受邀」后生效。';
+      popIn(badge);
+    }
+
+    function personRow(person) {
+      const isAdmin = person.role === 'admin';
       const row = node(`
-        <div class="item" data-admin-uid="${esc(a.uid)}">
-          <span class="grow"><span class="title mono">${esc(a.email)}</span><br>
-            <span class="meta">uid ${esc(a.uid)} · 豁免本项目登录限制</span></span>
-          ${IS_SUPER ? '<button type="button" class="btn small danger" data-revoke-admin>回收豁免</button>' : ''}
+        <div class="item" data-uid="${esc(person.uid)}" data-email="${esc(person.email)}">
+          <span class="grow"><span class="title mono">${esc(person.email)}</span><br>
+            <span class="meta">uid ${esc(person.uid)} · ${isAdmin ? '项目管理员，可管理成员' : '登录名单成员'}</span></span>
+          <span class="badge ${isAdmin ? 'on' : 'plain'}">${isAdmin ? '项目管理员' : '登录名单'}</span>
+          ${isAdmin && !IS_SUPER ? '' : `<button type="button" class="btn small ${isAdmin ? 'danger' : ''}" data-remove>${isAdmin ? '移除管理员' : '移除'}</button>`}
         </div>`);
-      const revoke = row.querySelector('[data-revoke-admin]');
-      if (revoke) revoke.addEventListener('click', () => {
-        confirmAccess(
-          '回收项目豁免',
-          `将回收 ${a.email} 对「${name}」的管理权，该账号不再豁免本项目的登录要求；全部项目都回收后角色会降回普通用户。`,
-          true,
-          `已回收 ${a.email} 的「${name}」豁免`,
+      const remove = row.querySelector('[data-remove]');
+      if (remove) remove.addEventListener('click', () => {
+        if (isAdmin) {
+          confirmAccess('移除项目管理员',
+            `将移除 ${person.email} 对「${name}」的管理权；若该账号还在登录名单里，仍可登录本项目。`,
+            true, `已移除 ${person.email} 的「${name}」项目管理员`,
+            async () => {
+              await api(`/admin/roles/${person.uid}/scope`, { method: 'POST', body: { app: p.app, op: 'revoke' } });
+              fadeOutRow(row, () => load());
+            });
+          return;
+        }
+        confirmAccess('移出登录名单',
+          `将把「${person.email}」移出「${name}」的登录名单；开启限制后，该账号将无法登录本项目。`,
+          true, `已将 ${person.email} 移出「${name}」登录名单`,
           async () => {
-            await api(`/admin/roles/${a.uid}/scope`, { method: 'POST', body: { app: p.app, op: 'revoke' } });
+            await api(`/admin/projects/${encodeURIComponent(p.app)}/access`, { method: 'DELETE', body: { email: person.email } });
             fadeOutRow(row, () => load());
           });
       });
       return row;
     }
-    (p.admins || []).forEach(a => adminsEl.appendChild(adminRow(a)));
-    adminsEmpty.hidden = adminsEl.children.length > 0;
 
-    function memberRow(email) {
-      const row = node(`
-        <div class="item" data-email="${esc(email)}">
-          <span class="grow"><span class="title mono">${esc(email)}</span></span>
-          <button type="button" class="btn small danger" data-remove>移除</button>
-        </div>`);
-      row.querySelector('[data-remove]').addEventListener('click', () => {
-        confirmAccess('移出登录名单',
-          `将把「${email}」移出「${name}」的登录名单；开启限制后，该邮箱将无法登录该项目。`,
-          true, `已将 ${email} 移出「${name}」登录名单`,
-          async () => {
-            await api(`/admin/projects/${encodeURIComponent(p.app)}/access`, { method: 'DELETE', body: { email } });
-            fadeOutRow(row, () => {
-              row.remove();
-              syncCount();
-              if (!listEl.children.length && !card.querySelector('[data-empty]')) {
-                listEl.insertAdjacentElement('afterend', node(`<p class="hint" data-empty>${EMPTY_MEMBERS_HINT}</p>`));
-              }
-            });
-          });
+    function paintPeople() {
+      peopleEl.innerHTML = '';
+      peopleOf(p).forEach(person => {
+        const row = personRow(person);
+        peopleEl.appendChild(row);
+        popIn(row);
       });
-      return row;
+      emptyEl.hidden = peopleEl.children.length > 0;
     }
-    members.forEach(m => listEl.appendChild(memberRow(m.email)));
 
-    function setState(next) {
-      restricted = next;
-      $$('.app-chip', card).forEach(chip => {
-        const on = (chip.dataset.restrict === '1') === restricted;
-        chip.classList.toggle('on', on);
-        chip.setAttribute('aria-pressed', on ? 'true' : 'false');
-      });
-      const badge = card.querySelector('[data-badge]');
-      badge.textContent = restricted ? '仅限受邀' : '开放登录';
-      badge.classList.toggle('on', restricted);
-      const openNote = card.querySelector('[data-open-note]');
-      if (openNote) openNote.hidden = restricted;
-      syncCount();
-      popIn(badge);
-    }
     $$('.app-chip', card).forEach(chip => chip.addEventListener('click', () => {
       const want = chip.dataset.restrict === '1';
-      if (want === restricted) return;
+      if (want === p.restricted) return;
       confirmAccess('调整登录范围',
         want
-          ? '开启后，除平台管理员、该项目的管理员和名单内用户外，其他账号将无法登录该项目。'
-          : '关闭后所有账号都可登录该项目（名单与豁免保留，仅不再构成门槛）。',
+          ? '开启后，除平台管理员、项目管理员和登录名单成员外，其他账号将无法登录该项目。'
+          : '关闭后所有已注册账号都可登录该项目（成员与角色保留，仅不再构成门槛）。',
         want,
         want ? `已开启「${name}」仅限受邀登录` : `已关闭「${name}」的登录限制`,
         async () => {
           await api(`/admin/projects/${encodeURIComponent(p.app)}/restrict`, { method: 'POST', body: { restricted: want } });
-          setState(want);
+          setRestricted(want);
         });
     }));
 
-    card.querySelector('[data-add]').addEventListener('submit', async e => {
-      e.preventDefault();
-      const form = e.currentTarget;
-      const input = $('input', form);
-      const errEl = card.querySelector('[data-add-err]');
-      errEl.textContent = ''; errEl.hidden = true;
-      const email = input.value.trim();
-      if (!email) { errEl.textContent = '请输入邮箱'; errEl.hidden = false; return; }
-      const btn = $('button[type=submit]', form);
-      setBusy(btn, true);
-      try {
-        await api(`/admin/projects/${encodeURIComponent(p.app)}/access`, { method: 'POST', body: { email } });
-        input.value = '';
-        const emptyEl = card.querySelector('[data-empty]');
-        if (emptyEl) emptyEl.remove();
-        const row = memberRow(email);
-        listEl.appendChild(row);
-        popIn(row);
-        syncCount();
-        toast(`已将 ${email} 加入「${name}」登录名单`);
-      } catch (err) {
-        errEl.hidden = false;
-        if (err.status === 404) {
-          // 「人不在系统里」的正解是发出邀请，而不是留一句死胡同
-          errEl.innerHTML = `${esc(email)} 尚未注册。` +
-            `<button type="button" class="btn small" id="access-invite">发送邀请</button>`;
-          const ib = $('#access-invite');
-          if (ib) ib.addEventListener('click', async () => {
-            setBusy(ib, true);
-            try {
-              await api('/admin/users/invite', { method: 'POST', body: { email, app: p.app } });
-              errEl.textContent = `已向 ${email} 发出「${name}」的邀请，对方注册后即可登录。`;
-              input.value = '';
-            } catch (e2) {
-              errEl.textContent = e2.message;
-            } finally { setBusy(ib, false); }
-          });
-        } else {
-          errEl.textContent = err.message;
-        }
-      } finally { setBusy(btn, false); }
-    });
-
-    const exemptBtn = card.querySelector('[data-exempt-manage]');
-    if (exemptBtn) exemptBtn.addEventListener('click', () => openExempt(p));
-
+    card.querySelector('[data-add-member]').addEventListener('click', () => openMemberPicker(p));
+    setRestricted(!!p.restricted);
+    paintPeople();
     return card;
   }
 
-  /* ---- 豁免管理（仅平台管理员）：邮箱 → uid → 当前授权 → 授予/回收 ---- */
-  let exemptApp = '';
-  function openExempt(p) {
-    exemptApp = p.app;
-    $('#exempt-dlg-desc').textContent =
-      `调整「${p.name || p.app}」的项目管理员豁免：被授予的账号无视本项目的登录要求，并可管理其名单。`;
-    $('#exempt-email').value = '';
-    $('#exempt-result').classList.add('hidden');
-    $('#exempt-result').innerHTML = '';
-    showErr('#exempt-error', '');
-    openDialog($('#exempt-dlg'), '#exempt-email');
+  /* ---- 添加成员：搜索已注册用户 → 勾选 → 选角色 → 添加 ----
+     候选接口按项目鉴权（app-admin 只搜自己的项目），不在前端手输邮箱。 */
+  function openMemberPicker(p) {
+    picker = { p, selected: new Map(), timer: null };
+    $('#member-dlg-title').textContent = `添加成员 · ${p.name || p.app}`;
+    $('#member-dlg-desc').textContent =
+      '搜索已注册用户，选择「可登录」或「项目管理员」。项目管理员可管理本项目成员，并始终可以登录。';
+    $('#member-query').value = '';
+    $('#member-results').innerHTML = '';
+    $('#member-empty').hidden = true;
+    showErr('#member-error', '');
+    $('#member-role').value = 'member';
+    // 只有平台管理员能任命项目管理员（与服务端 scope 端点的授权一致）。
+    $('#member-role-field').hidden = !IS_SUPER;
+    updateAddBtn();
+    openDialog($('#member-dlg'), '#member-query');
+    setTimeout(() => $('#member-query').focus(), 30);
   }
-  $('#exempt-close').addEventListener('click', () => closeDialog($('#exempt-dlg')));
-  $('#exempt-form').addEventListener('submit', async e => {
-    e.preventDefault();
-    showErr('#exempt-error', '');
-    const email = $('#exempt-email').value.trim();
-    if (!email) { showErr('#exempt-error', '请输入账号邮箱'); return; }
-    const btn = $('#exempt-find');
-    setBusy(btn, true);
-    try {
-      const res = await api('/admin/users?query=' + encodeURIComponent(email) + '&limit=20&offset=0');
-      const hit = (res.items || []).find(u => String(u.email || '').toLowerCase() === email.toLowerCase());
-      if (!hit) {
-        showErr('#exempt-error', `${email} 尚未注册。先在「用户」页发出邀请，对方注册后再来调整豁免。`);
-        return;
-      }
-      renderExemptResult(await api('/admin/users/' + hit.uid));
-    } catch (err) {
-      showErr('#exempt-error', err.message);
-    } finally { setBusy(btn, false); }
-  });
 
-  function renderExemptResult(d) {
-    const granted = (d.scopes || []).indexOf(exemptApp) >= 0;
-    const isSuperUser = d.role === 'super';
-    const label = appLabel(exemptApp);
-    const box = $('#exempt-result');
-    box.innerHTML = `
-      <div class="item">
-        <span class="grow"><span class="title">${esc(d.email)}</span><br>
-          <span class="meta">uid ${esc(d.uid)} · ${esc(ROLE_LABEL[d.role] || d.role)}</span></span>
-        <span class="badge ${granted || isSuperUser ? 'on' : 'off'}">${isSuperUser ? '豁免 · 全部项目' : granted ? '豁免 · 本项目' : '未获本项目豁免'}</span>
-      </div>
-      ${isSuperUser
-        ? '<p class="hint">平台管理员已豁免全部项目，无需再授予单项目豁免。</p>'
-        : granted
-          ? '<p class="hint">回收后该账号不再豁免本项目的登录要求；全部项目都回收时角色降回普通用户。</p>'
-          : '<p class="hint">授予后该账号成为本项目的项目管理员：豁免本项目登录要求，并可管理其名单。</p>'}`;
-    box.classList.remove('hidden');
-    swapIn(box);
-    if (isSuperUser) return;
-    const op = node(`<button type="button" class="btn small ${granted ? 'danger' : 'primary'}" data-exempt-op style="margin-top:8px">${granted ? '回收本项目豁免' : '授予本项目豁免'}</button>`);
-    op.addEventListener('click', () => {
-      confirmAccess(
-        granted ? '回收项目豁免' : '授予项目豁免',
-        granted
-          ? `将回收 ${d.email} 对「${label}」的管理权，该账号不再豁免本项目的登录要求；全部项目都回收后角色会降回普通用户。`
-          : `将授予 ${d.email} 管理「${label}」：豁免本项目的登录要求（角色自动提为项目管理员）。`,
-        granted,
-        granted ? `已回收 ${d.email} 的「${label}」豁免` : `已授予 ${d.email}「${label}」豁免`,
-        async () => {
-          await api(`/admin/roles/${d.uid}/scope`, { method: 'POST', body: { app: exemptApp, op: granted ? 'revoke' : 'grant' } });
-          renderExemptResult(await api('/admin/users/' + d.uid));
-          load();
-        });
-    });
-    box.appendChild(op);
+  function updateAddBtn() {
+    const btn = $('#member-add');
+    const n = picker ? picker.selected.size : 0;
+    btn.disabled = n === 0;
+    btn.textContent = n ? `添加 ${n} 人` : '添加';
   }
+
+  async function searchCandidates() {
+    if (!picker) return;
+    const q = $('#member-query').value.trim();
+    const box = $('#member-results');
+    const empty = $('#member-empty');
+    showErr('#member-error', '');
+    picker.selected.clear();
+    updateAddBtn();
+    box.innerHTML = '';
+    if (!q) { empty.hidden = true; return; }
+    try {
+      const res = await api(`/admin/projects/${encodeURIComponent(picker.p.app)}/candidates?query=${encodeURIComponent(q)}`);
+      const existing = new Map(peopleOf(picker.p).map(x => [String(x.email).toLowerCase(), x.role]));
+      const items = res.items || [];
+      if (!items.length) { empty.hidden = false; return; }
+      empty.hidden = true;
+      items.forEach(u => {
+        const role = existing.get(String(u.email).toLowerCase());
+        const disabled = !!role;
+        const row = node(`
+          <label class="item pick-row${disabled ? ' is-disabled' : ''}">
+            <input type="checkbox" data-uid="${esc(u.uid)}" data-email="${esc(u.email)}"${disabled ? ' disabled' : ''}>
+            <span class="grow"><span class="title mono">${esc(u.email)}</span><br>
+              <span class="meta">uid ${esc(u.uid)} · ${disabled ? (role === 'admin' ? '已是项目管理员' : '已在登录名单') : esc(ROLE_LABEL[u.role] || u.role)}</span></span>
+            ${disabled ? '<span class="badge plain">已在项目</span>' : ''}
+          </label>`);
+        const cb = row.querySelector('input');
+        if (!disabled) cb.addEventListener('change', () => {
+          if (cb.checked) picker.selected.set(String(u.uid), { uid: u.uid, email: u.email });
+          else picker.selected.delete(String(u.uid));
+          updateAddBtn();
+        });
+        box.appendChild(row);
+      });
+    } catch (err) {
+      showErr('#member-error', err.message);
+    }
+  }
+
+  $('#member-query').addEventListener('input', () => {
+    if (!picker) return;
+    clearTimeout(picker.timer);
+    picker.timer = setTimeout(searchCandidates, 250);
+  });
+  $('#member-query').addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    if (!picker) return;
+    clearTimeout(picker.timer);
+    searchCandidates();
+  });
+  $('#member-cancel').addEventListener('click', () => { picker = null; closeDialog($('#member-dlg')); });
+  $('#member-add').addEventListener('click', async () => {
+    if (!picker || !picker.selected.size) return;
+    const p = picker.p;
+    const role = $('#member-role').value;
+    const people = [...picker.selected.values()];
+    const btn = $('#member-add');
+    setBusy(btn, true);
+    let ok = 0;
+    const failed = [];
+    for (const u of people) {
+      try {
+        if (role === 'admin') {
+          await api(`/admin/roles/${u.uid}/scope`, { method: 'POST', body: { app: p.app, op: 'grant' } });
+        } else {
+          await api(`/admin/projects/${encodeURIComponent(p.app)}/access`, { method: 'POST', body: { email: u.email } });
+        }
+        ok += 1;
+      } catch (err) {
+        failed.push(`${u.email}：${err.message}`);
+      }
+    }
+    await load();
+    if (failed.length) {
+      showErr('#member-error', `已添加 ${ok} 人，${failed.length} 人失败：${failed.join('；')}`);
+    } else {
+      closeDialog($('#member-dlg'));
+      picker = null;
+      toast(`已添加 ${ok} 名成员`);
+    }
+    setBusy(btn, false);
+    updateAddBtn();
+  });
 
   load();
 }

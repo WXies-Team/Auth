@@ -521,6 +521,18 @@ func registerAdminRoutes(mux *http.ServeMux, svc *auth.Service) {
 			Projects []auth.AdminProject `json:"projects"`
 		}{Projects: list})
 	}))
+	// 项目成员选择器：只给有该项目管理权的人搜已注册用户（app-admin 不拿全站
+	// 用户目录），返回 uid/email/role 三项，前端负责排除已在项目内的人。
+	mux.Handle("GET /admin/projects/{app}/candidates", admin("admin-projects", func(ac adminCtx, w http.ResponseWriter, r *http.Request) {
+		list, err := svc.AdminProjectCandidates(adminScope(ac), r.PathValue("app"), r.URL.Query().Get("query"))
+		if err != nil {
+			writeResult(w, nil, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, struct {
+			Items []auth.AdminUserCandidate `json:"items"`
+		}{Items: list})
+	}))
 	mux.Handle("POST /admin/projects/{app}/access", admin("admin-projects-write", func(ac adminCtx, w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Email string `json:"email"`

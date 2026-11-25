@@ -814,6 +814,10 @@ td.wrap-cell { white-space: normal; overflow-wrap: anywhere; word-break: normal;
 
 /* ================= ⑩ 列表行与头像 ================= */
 .list { display: grid; gap: 10px; }
+/* 成员选择器：整行是 label，勾选框不参与 flex 拉伸；已在本项目的人降透明度并禁用 */
+.pick-row { cursor: pointer; }
+.pick-row > input[type="checkbox"] { flex: none; width: 18px; height: 18px; margin: 0; accent-color: var(--primary); }
+.pick-row.is-disabled { cursor: default; opacity: .62; }
 /* .item：行形态（min-height 56 / title17 + summary 13）——它不是卡片，
    独立成组时由 .group 给面，卡内平铺时无面（避免卡片套卡片） */
 .item {
