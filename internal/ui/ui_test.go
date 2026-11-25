@@ -301,6 +301,10 @@ func TestTopbarAccountAndAdminEntry(t *testing.T) {
 	for _, want := range []string{
 		`{{if .IsAdmin}}<a class="btn small admin-entry" href="{{if .InAdmin}}/web/console{{else if .IsSuper}}/web/admin{{else}}/web/admin/sessions{{end}}" id="admin-entry">`,
 		`{{if .InAdmin}}返回控制台{{else}}管理后台{{end}}`,
+		// ≥900px 顶栏被 CSS 隐藏，管理入口与账号胶囊必须在 rail 底部另出一份，
+		// 否则桌面端只剩导航项、没有进入管理后台的按钮。
+		`<div class="rail-foot">`,
+		`id="rail-admin-entry"`,
 		// B5：顶栏账号胶囊升级为头像（图/色块+首字）+ 昵称（回退邮箱前缀，完整邮箱在 title）
 		`id="topbar-email" title="{{.Email}}"`,
 		`id="me-avatar"`,
@@ -314,6 +318,29 @@ func TestTopbarAccountAndAdminEntry(t *testing.T) {
 	// 登录页（Minimal）没有顶栏：管理入口与账号胶囊都包在 not Minimal 里
 	if !strings.Contains(head, "{{if not .Minimal}}\n<!-- 顶栏常驻") {
 		t.Error("顶栏应整体由 not Minimal 门控（登录页无顶栏）")
+	}
+	// 渲染级钉子：管理员的概览页在窄屏顶栏和宽屏 rail 各有一个入口；
+	// 普通用户的 HTML 里两个都没有（按钮由服务端 role 门控，不是前端隐藏）。
+	adminRec := httptest.NewRecorder()
+	if err := Render(adminRec, "console", Data{
+		Title: "概览", Email: "admin@example.com", IsAdmin: true, IsSuper: true,
+	}); err != nil {
+		t.Fatalf("渲染管理员概览页: %v", err)
+	}
+	adminHTML := adminRec.Body.String()
+	for _, id := range []string{`id="admin-entry"`, `id="rail-admin-entry"`, `class="rail-foot"`} {
+		if !strings.Contains(adminHTML, id) {
+			t.Errorf("管理员概览页缺 %s（宽屏顶栏被隐藏时必须由 rail 兜底）", id)
+		}
+	}
+	userRec := httptest.NewRecorder()
+	if err := Render(userRec, "console", Data{Title: "概览", Email: "user@example.com"}); err != nil {
+		t.Fatalf("渲染普通用户概览页: %v", err)
+	}
+	for _, id := range []string{`id="admin-entry"`, `id="rail-admin-entry"`} {
+		if strings.Contains(userRec.Body.String(), id) {
+			t.Errorf("普通用户 HTML 不该有 %s", id)
+		}
 	}
 	// 全站零页脚（2026-10 定案）：页脚只承载固定说明，属于各页上下文而非全站导航，
 	// miuix 的 Scaffold 也从不渲染页脚。layout 里**连容器都不许出现**。

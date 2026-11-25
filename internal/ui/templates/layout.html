@@ -51,6 +51,16 @@
   <nav class="rail" aria-label="主导航">
     <p class="rail-label">{{if .InAdmin}}管理后台{{else}}控制台{{end}}</p>
     {{template "nav-items" .Nav}}
+    <!-- 宽屏 rail 底部：管理入口 + 账号胶囊。顶栏在 ≥900px 被隐藏，若只把
+         入口放在顶栏，桌面端就完全没有「管理后台」按钮（账号胶囊同理会消失）。
+         这里复用同一份 Data，不新增后端字段；id 加 rail- 前缀避免与顶栏重复。 -->
+    <div class="rail-foot">
+      {{if .IsAdmin}}<a class="btn small admin-entry" href="{{if .InAdmin}}/web/console{{else if .IsSuper}}/web/admin{{else}}/web/admin/sessions{{end}}" id="rail-admin-entry">{{icon "shield-check"}} {{if .InAdmin}}返回控制台{{else}}管理后台{{end}}</a>{{end}}
+      <span class="acct">
+        <span class="avatar" aria-hidden="true"{{if not .AvatarSrc}} style="background:{{.AvatarColorHex}};color:{{.AvatarInkHex}}"{{end}}>{{if .AvatarSrc}}<img src="{{.AvatarSrc}}" alt="">{{else}}{{.Initial}}{{end}}</span>
+        <span class="acct-name" title="{{.Email}}">{{.AcctName}}</span>
+      </span>
+    </div>
   </nav>
   {{end}}
   <main id="main" class="content">
