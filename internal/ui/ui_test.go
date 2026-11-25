@@ -1987,7 +1987,7 @@ func TestAdminSessionsOverviewAggregation(t *testing.T) {
 	}
 }
 
-// 用户页：服务端跨页筛选 chips（角色/封禁，写入 URL）、登录豁免列与豁免语义文案、
+// 用户页：服务端跨页筛选 chips（角色/封禁，写入 URL）、项目权限列与项目管理员语义、
 // 详情面板把高风险操作收进 danger-zone。
 func TestAdminUsersExemptionAndDangerZone(t *testing.T) {
 	raw, err := files.ReadFile("templates/admin-users.html")
@@ -2001,8 +2001,8 @@ func TestAdminUsersExemptionAndDangerZone(t *testing.T) {
 		`data-status-facet="banned"`, // 封禁中筛选
 		`id="users-facet-note"`,      // 当前筛选口径提示
 		`id="users-denied"`,          // 拒绝态面板容器
-		"登录豁免",                       // 列名（原「项目授权」）
-		"授予项目即让该账号豁免这个项目的登录限制", // 豁免语义写进页首说明
+		"项目权限",                       // 列名
+		"把项目授予账号，就是让 TA 成为该项目的项目管理员", // 角色语义写进页首说明
 	} {
 		if !strings.Contains(tpl, want) {
 			t.Errorf("admin-users.html 缺 %q", want)
@@ -2015,10 +2015,10 @@ func TestAdminUsersExemptionAndDangerZone(t *testing.T) {
 	}
 	js := string(jsBytes)
 	for _, want := range []string{
-		"return '豁免全部项目'",                                 // scopeSummary：super
-		"`豁免 ${n} 个项目`",                                   // scopeSummary：有授权
-		"'未获项目豁免'",                                        // scopeSummary：零授权
-		"已授权 · 豁免本项目登录限制",                                 // 详情面板逐项语义
+		"return '管理全部项目'",                                 // scopeSummary：super
+		"`管理 ${n} 个项目`",                                   // scopeSummary：有授权
+		"'未管理项目'",                                        // scopeSummary：零授权
+		"项目管理员 · 可管理本项目",                                 // 详情面板逐项语义
 		"class=\"danger-zone\"",                           // 高风险操作收进危险区
 		"当前筛选生效",                                          // 筛选如实标注
 		"banned: facet.status === 'banned' ? 'true' : ''", // 封禁筛选写 URL
@@ -2203,7 +2203,7 @@ func TestRoleHierarchyAppointmentGating(t *testing.T) {
 		t.Fatalf("读 admin-access 模板: %v", err)
 	}
 	if !strings.Contains(string(access), "根管理员可任命平台管理员") {
-		t.Error("项目访问页的豁免层级说明应指到任命链路（根 → 平台 → 项目）")
+		t.Error("项目访问页的访问模型说明应指到任命链路（根 → 平台 → 项目）")
 	}
 
 	jsBytes, err := files.ReadFile("app.js")

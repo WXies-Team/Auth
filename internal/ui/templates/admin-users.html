@@ -4,7 +4,7 @@
   <span class="dim" id="users-total" aria-live="polite"></span>
 </div>
 
-<p class="hint">项目管理员只能管理授权范围内的会话、用量与审计；平台管理员可管理全部项目、用户目录与全局配置。仅平台管理员能调整角色与授权——授予项目即让该账号豁免这个项目的登录限制。</p>
+<p class="hint">项目管理员只能管理授权范围内的会话、用量与审计；平台管理员可管理全部项目、用户目录与全局配置。仅平台管理员能调整角色与授权——把项目授予账号，就是让 TA 成为该项目的项目管理员。</p>
 
 <!-- 角色层级图例：任命能力的边界（谁能任命谁）与各层职责——与后端能力矩阵同源
      （root 唯一 → 只有 root 任命平台管理员 → 平台管理员任命项目管理员 →
@@ -76,7 +76,7 @@
   <table>
     <caption class="sr-only">用户列表</caption>
     <thead>
-      <tr><th style="width:42px"><input type="checkbox" id="users-selall" aria-label="选择本页全部用户"></th><th>用户</th><th>uid</th><th>角色</th><th>登录豁免</th><th>安全</th><th style="width:1%"></th></tr>
+      <tr><th style="width:42px"><input type="checkbox" id="users-selall" aria-label="选择本页全部用户"></th><th>用户</th><th>uid</th><th>角色</th><th>项目权限</th><th>安全</th><th style="width:1%"></th></tr>
     </thead>
     <tbody id="users-body">
       <tr><td colspan="7"><span class="skeleton sk-line w60"></span><span class="skeleton sk-line w40"></span></td></tr>
@@ -110,7 +110,7 @@
   </div>
 </details>
 
-<!-- 详情面板：凭证摘要 + 角色与登录豁免 + 会话 + 资料 + 高风险操作（危险区） -->
+<!-- 详情面板：凭证摘要 + 角色与项目权限 + 会话 + 资料 + 高风险操作（危险区） -->
 <section class="card detail hidden" id="user-detail" aria-labelledby="ud-title" aria-live="polite">
   <div class="row between">
     <h2 id="ud-title">用户详情</h2>

@@ -2132,11 +2132,11 @@ function userCell(u, px) {
   return `<span class="user-cell">${avatarHTML(u, px)}
     <span class="grow"><span class="title truncate" title="${esc(u.email)}">${esc(name)}</span>${u.nickname ? `<br><span class="meta truncate" title="${esc(u.email)}">${esc(u.email)}</span>` : ''}</span></span>`;
 }
-/* 登录豁免摘要：角色/授权数 → 「谁对什么豁免」的一句话（与 access 页层级同口径） */
+/* 项目权限摘要：角色/授权数 → 一句话说明 TA 能管理哪些项目（与 access 页同口径） */
 function scopeSummary(u) {
-  if (u.role === 'super') return '豁免全部项目';
+  if (u.role === 'super') return '管理全部项目';
   const n = Number(u.scopeCount || 0);
-  return n > 0 ? `豁免 ${n} 个项目` : '未获项目豁免';
+  return n > 0 ? `管理 ${n} 个项目` : '未管理项目';
 }
 
 /* 封禁范围选项：平台管理员 = 全局 + 注册表全部项目；项目管理员 = 仅自己授权的
@@ -2159,11 +2159,11 @@ function banMinStr() {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-/* ---------- 后台：用户（含角色管理与登录豁免，合并页） ----------
+/* ---------- 后台：用户（含角色管理与项目权限，合并页） ----------
    列表 = 搜索 + 服务端跨页筛选（角色/封禁）+ 分页 + 批量操作；详情 = 身份/角色与
-   登录豁免/会话/资料/
-   高风险操作（danger-zone）。授予项目即让该账号豁免该项目的登录限制——与
-   项目访问页的豁免层级是同一件事的两个入口。 */
+   项目权限/会话/资料/
+   高风险操作（danger-zone）。授予项目即让该账号成为该项目的项目管理员——与
+   项目访问页是同一件事的两个入口。 */
 function initAdminUsers() {
   const body = $('#users-body');
   if (!body) return;
@@ -2480,7 +2480,7 @@ function initAdminUsers() {
           ? '<span class="badge on" title="唯一的平台管理员任命者">根管理员</span>'
           : u.role === 'user' ? `<span class="badge plain">${ROLE_LABEL.user}</span>`
             : `<span class="badge on">${esc(ROLE_LABEL[u.role] || u.role)}</span>`}${banBadge(u.ban)}</span>`)}
-        ${td('登录豁免', esc(scopeSummary(u)), 'wrap-cell')}
+        ${td('项目权限', esc(scopeSummary(u)), 'wrap-cell')}
         ${td('安全', `<span class="row-inline">${u.totpEnabled
           ? '<span class="badge on">两步验证</span>'
           : '<span class="badge off">无两步验证</span>'}<span class="badge${u.passkeyCount ? '' : ' off'}">${u.passkeyCount} 个 Passkey</span></span>`)}
@@ -2579,16 +2579,16 @@ function initAdminUsers() {
           </select>
         </label>
         <button type="button" class="btn small primary" id="ud-save-role" ${targetLocked ? 'disabled' : ''}>保存角色</button>`;
-      // 应用授权开关：选项来自服务端注册表；每项的语义 = 登录豁免（与访问页同口径）
+      // 应用授权开关：选项来自服务端注册表；每项的语义 = 该项目管理员（与访问页同口径）
       const scopeList = d.role === 'super'
-        ? '<div class="empty">平台管理员豁免全部项目的登录要求，无需逐项授权。</div>'
+        ? '<div class="empty">平台管理员管理全部项目，无需逐项授权。</div>'
         : APPS.map(app => {
             const granted = scopes.indexOf(app.key) >= 0;
             return `<div class="item">
               <span class="grow"><span class="title">${esc(app.label)}</span><br>
-              <span class="meta">${granted ? '已授权 · 豁免本项目登录限制' : '未授权 · 受本项目登录限制约束'}</span></span>
+              <span class="meta">${granted ? '项目管理员 · 可管理本项目' : '未授权 · 只是普通用户'}</span></span>
               <button type="button" class="btn small ${granted ? 'danger' : 'primary'}" data-app="${esc(app.key)}" data-op="${granted ? 'revoke' : 'grant'}">
-                ${granted ? '回收' : '授予'}
+                ${granted ? '移除管理员' : '设为管理员'}
               </button>
             </div>`;
           }).join('');
@@ -2600,10 +2600,10 @@ function initAdminUsers() {
           <div><span class="dim">两步验证</span><br>${d.totpEnabled ? '已开启' : '未开启'}</div>
         </div>
 
-        <h3>角色与登录豁免</h3>
+        <h3>角色与项目权限</h3>
         <div class="row" style="gap:8px;flex-wrap:wrap">${roleCtl}</div>
         <p class="hint" id="ud-role-note">${esc(roleNote)}</p>
-        <p class="hint">授予项目即成为该项目的项目管理员：豁免该项目的登录要求、可管理其名单；全部项目都回收后角色自动降回普通用户。平台管理员豁免全部项目，仅平台管理员能调整角色与授权；项目管理员的授权只在单个项目内生效，不跨项目。</p>
+        <p class="hint">授予项目即成为该项目的项目管理员：可管理其成员并可登录该项目；全部项目都回收后角色自动降回普通用户。平台管理员管理全部项目，仅平台管理员能调整角色与授权；项目管理员的授权只在单个项目内生效，不跨项目。</p>
         <div class="list">${scopeList}</div>
 
         <h3>活跃会话</h3>
@@ -2696,11 +2696,11 @@ function initAdminUsers() {
         const app = btn.dataset.app;
         const op = btn.dataset.op;
         confirmAction(
-          op === 'grant' ? '授予项目豁免' : '回收项目豁免',
+          op === 'grant' ? '设为项目管理员' : '移除项目管理员',
           op === 'grant'
-            ? `将「${appLabel(app)}」的管理权授予该用户：TA 豁免该项目的登录限制（角色自动提为项目管理员）。`
-            : `回收「${appLabel(app)}」的管理权；该账号不再豁免该项目的登录限制，全部项目都回收后角色会降回普通用户。`,
-          op === 'grant' ? `已授予「${appLabel(app)}」豁免` : `已回收「${appLabel(app)}」的豁免`,
+            ? `将「${appLabel(app)}」的管理权授予该用户：TA 成为该项目的项目管理员（角色自动提为项目管理员）。`
+            : `移除「${appLabel(app)}」的管理权；全部项目都移除后角色会降回普通用户。`,
+          op === 'grant' ? `已将「${appLabel(app)}」设为项目管理员` : `已移除「${appLabel(app)}」的项目管理员`,
           () => api(`/admin/roles/${uid}/scope`, { method: 'POST', body: { app, op } }),
           op === 'revoke');
       }));
@@ -2712,8 +2712,8 @@ function initAdminUsers() {
           role === 'super'
             ? '将该用户设为平台管理员：可管理全部项目、用户目录与全局配置，并可任命项目管理员。此操作只有根管理员能执行。'
             : role === 'admin'
-              ? '将该用户设为项目管理员：需再授予至少一个项目才有实际管理范围与豁免；其授权不跨项目。'
-              : '将该用户降为普通用户：项目授权与豁免会一并收回。',
+              ? '将该用户设为项目管理员：需再授予至少一个项目才有实际管理范围；其授权不跨项目。'
+              : '将该用户降为普通用户：项目授权会一并收回。',
           role === 'super' ? '已设为平台管理员'
             : role === 'admin' ? '已设为项目管理员' : '已降为普通用户',
           () => api(`/admin/users/${uid}/role`, { method: 'POST', body: { role } }),
