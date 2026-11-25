@@ -306,6 +306,21 @@ func TestAdminConfigRequiresFullEndpoint(t *testing.T) {
 	}
 }
 
+// 卡内列表按 Miuix 分组：16dp 卡片内边距 + 行间分隔线，不把每行做成独立小卡片。
+func TestCardGroupedListGeometry(t *testing.T) {
+	css := mustCSS(t)
+	for _, want := range []string{
+		"padding: var(--sp-4);",
+		".card > .list {",
+		"margin-inline: calc(var(--sp-4) * -1);",
+		".card > .list > .item + .item { border-top: 1px solid var(--line); }",
+	} {
+		if !strings.Contains(css, want) {
+			t.Errorf("卡内分组几何缺 %q", want)
+		}
+	}
+}
+
 // 触屏按压/焦点不能画出不跟随圆角的整块方框：关掉浏览器 tap highlight，
 // hover 样式只在有 hover 的设备生效，焦点环只画在真正的交互控件上。
 func TestTouchFeedbackAndScopedFocusRing(t *testing.T) {

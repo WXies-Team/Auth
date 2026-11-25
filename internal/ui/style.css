@@ -484,12 +484,27 @@ p.hint { margin: 6px 0; }
 .card {
   background: var(--card);
   border-radius: var(--radius-card);
-  padding: var(--sp-5);
+  /* Miuix Card 内容内边距 16：与 16dp 圆角、56dp 行高同一套几何。 */
+  padding: var(--sp-4);
   position: relative;
 }
 .card h2 { font-size: 17px; font-weight: 500; margin: 0 0 var(--sp-1); }
 .card h3 { font-size: var(--font-title4); font-weight: 500; margin: var(--sp-4) 0 var(--sp-2); }
 .card p { margin: var(--sp-2) 0; }
+
+/* 卡内列表 = 一个 Miuix 分组：行与行用分隔线，不靠 10px 间距把每行做成小卡片。
+   直接子列表负边距铺到卡片内边缘，行自身 16px 内边距——标题与行内容对齐。 */
+.card .list { gap: 0; }
+.card > .list {
+  margin-inline: calc(var(--sp-4) * -1);
+}
+.card > .list > .item {
+  border-radius: 0;
+  padding-inline: var(--sp-4);
+}
+.card > .list > .item + .item { border-top: 1px solid var(--line); }
+.card > .list > .item:first-child { border-top: 0; }
+.card .list > .item + .item { border-top: 1px solid var(--line); }
 
 /* 分组（SettingsPage 标准结构：section-title + group + item 行） */
 .group {
