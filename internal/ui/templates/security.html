@@ -33,28 +33,27 @@
       </div>
     </div>
   </div>
-
 </section>
 
-<!-- 恢复码面板：**独立 section，不能嵌在 #totp-off 里**。
-     旧位置在 <section id="totp-off"> 内部，而 refresh() 用 $('#totp-off').hidden
-     整段控制显隐 —— 开启两步验证时码刚渲染就被随后的 refresh() 藏起来（只闪
-     一帧）；重生成时旧码已作废、新码渲染在隐藏分区，用户**一组码都拿不到**。 -->
+<!-- 恢复码面板：**独立 section，不能嵌在 #totp-off 里**——refresh() 用
+     #totp-off.hidden 整段控制显隐，嵌套会让码刚渲染就被藏起来（只闪一帧）。 -->
 <section class="card hidden" id="codes-panel" aria-labelledby="codes-title">
-  <h2 id="codes-title">恢复码</h2>
-  <p class="hint">10 个一次性恢复码，验证器不可用时用于登录。<strong>关闭本页后无法再查看</strong>，请先保存。</p>
+  <h2 id="codes-title">保存恢复码</h2>
+  <p class="hint">10 个一次性恢复码，验证器不可用时用于登录，每个只能用一次。<strong>关闭本页后无法再查看</strong>，请先保存到密码管理器或离线位置。</p>
   <div class="codes" id="codes-list"></div>
+  <label class="row switch-row" style="margin-top:10px;cursor:pointer">
+    <input type="checkbox" id="codes-ack">
+    <span>我已把这些恢复码保存到安全的位置</span>
+  </label>
   <div class="row" style="margin-top:10px">
-    <button type="button" class="btn" id="print-codes">{{icon "scroll-text"}} 打印</button>
     <button type="button" class="btn" id="download-codes">{{icon "download"}} 下载 txt</button>
     <button type="button" class="btn" id="copy-codes">{{icon "copy"}} 复制全部</button>
-    <button type="button" class="btn primary" id="saved-codes">我已保存</button>
+    <button type="button" class="btn" id="print-codes">{{icon "scroll-text"}} 打印</button>
+    <button type="button" class="btn primary" id="saved-codes" disabled>完成</button>
   </div>
 </section>
 
 <!-- 已开启 -->
-<!-- 重试钮：refresh() 失败时才出现（app.js 的 catch 里取消 .hidden），
-     否则整页空白且用户无从重来。 -->
 <button type="button" class="btn hidden" id="totp-retry" style="margin-bottom:12px">重新加载</button>
 <section class="card" id="totp-on" hidden aria-labelledby="on-title">
   <h2 id="on-title">两步验证已开启</h2>
@@ -68,7 +67,7 @@
   <p class="hint">关闭后验证器绑定与全部恢复码失效，登录只需密码，其它设备保持登录；需验证当前两步验证码或恢复码。</p>
 </section>
 
-<!-- 通用：要一个码（GitHub 式单输入，「使用恢复码」切换语义） -->
+<!-- 通用「要一个码」弹框（GitHub 式单输入，「使用恢复码」原地切换语义） -->
 <dialog class="dlg" id="code-dialog" aria-labelledby="code-title">
   <form method="dialog" id="code-form">
     <h2 id="code-title">验证身份</h2>
@@ -78,7 +77,7 @@
     </label>
     <button type="button" class="btn ghost small toggle-recovery" id="code-toggle-recovery">使用恢复码</button>
     <p class="err" id="code-error" role="alert" hidden></p>
-    <div class="row end">
+    <div class="dlg-actions">
       <button type="button" class="btn" id="code-cancel">取消</button>
       <button type="submit" class="btn primary">确定</button>
     </div>

@@ -1,17 +1,44 @@
 {{define "content"}}
-<div class="card" style="max-width:520px;margin:48px auto;text-align:center">
-  <h1>无权访问</h1>
-  <p class="dim" style="margin-top:8px">{{if .DeniedApp}}项目「{{.DeniedApp}}」不在你的管理范围内；你只能管理已获授权的项目数据。{{else}}你只能管理已获授权的项目数据。{{end}}</p>
-  <!-- NIST 的 redress 要求：求助渠道要「容易被找到」。给出具体路径，而不是
-       「请联系管理员」这种找不到人的空话；时间戳让报障时能与服务端日志对齐。 -->
-  <p class="hint" style="margin-top:10px">
-    需要开通：回复开通邀请邮件，或发邮件到 support@horatio.cn 说明所需权限。
-  </p>
-  <p class="hint">报障请附时间：<span class="mono" id="denied-at">—</span></p>
-  <script>document.getElementById('denied-at').textContent = new Date().toLocaleString('zh-CN');</script>
-  <div class="row" style="justify-content:center;margin-top:16px">
-    <a class="btn primary" href="/web/admin/sessions">回到会话总览</a>
-    <a class="btn ghost" href="/web/console">回到概览</a>
+{{$reason := .DeniedReason}}
+<div class="auth-shell">
+  <!-- 403 页：拒绝原因分级呈现（未登录 / 策略拒绝 / 权限不足），当前命中的级别
+       高亮并给下一步；其余级别也列出——用户能对号入座，不用猜自己撞了哪堵墙。
+       命中级别优先取服务端 reason（policy/permission），空值按策略拒绝的旧形态兜底。 -->
+  <div class="card denied-card" id="denied-card">
+    <div class="denied-head">
+      <span class="badge {{if eq $reason "permission"}}on{{else}}warn{{end}}">{{if eq $reason "permission"}}权限不足{{else}}策略拒绝{{end}}</span>
+      <h1>无权访问</h1>
+    </div>
+    <p class="dim" style="margin-top:8px">{{if .DeniedApp}}项目「{{.DeniedApp}}」不在你的管理范围内；你只能管理已获授权的项目数据。{{else}}你只能管理已获授权的项目数据。{{end}}</p>
+    {{if .DeniedReason}}<p class="hint" id="denied-reason">拒绝原因：<span class="mono">{{.DeniedReason}}</span>{{if eq .DeniedReason "policy"}}（账号/项目策略拦截）{{else if eq .DeniedReason "permission"}}（授权不足）{{end}}</p>{{end}}
+
+    <ul class="denied-tiers" id="denied-tiers">
+      <li class="denied-tier">
+        <span class="badge off">未登录</span>
+        <span>会话失效时会自动带你去登录页，登录后回到原处——这一级不需要申诉。</span>
+      </li>
+      <li class="denied-tier{{if or (not $reason) (eq $reason "policy")}} on{{end}}">
+        <span class="badge warn">策略拒绝{{if or (not $reason) (eq $reason "policy")}} · 当前{{end}}</span>
+        <span>你命中的是这一级：账号或项目的登录策略拦下了访问（封禁、项目白名单等）。申请解除对应的策略限制即可。</span>
+      </li>
+      <li class="denied-tier{{if eq $reason "permission"}} on{{end}}">
+        <span class="badge {{if eq $reason "permission"}}warn{{else}}off{{end}}">权限不足{{if eq $reason "permission"}} · 当前{{end}}</span>
+        <span>操作超出当前角色的授权范围（如普通账号进管理后台、越出已授权的项目范围），由平台管理员调整角色或项目授权解除。</span>
+      </li>
+    </ul>
+
+    <!-- NIST 的 redress 要求：求助渠道要「容易被找到」。给出具体路径，而不是
+         「请联系管理员」这种找不到人的空话；时间戳让报障时能与服务端日志对齐。 -->
+    <p class="hint">
+      需要开通：回复开通邀请邮件，或发邮件到 <a href="mailto:support@horatio.cn">support@horatio.cn</a> 说明所需权限。
+    </p>
+    <p class="hint">报障请附时间：<span class="mono" id="denied-at">—</span></p>
+
+    <div class="denied-actions">
+      <button type="button" class="btn primary" id="denied-retry">重试</button>
+      <a class="btn" href="/web/admin/sessions">回到会话总览</a>
+      <a class="btn ghost" href="/web/console">回到概览</a>
+    </div>
   </div>
 </div>
 {{end}}

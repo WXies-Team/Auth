@@ -1,7 +1,10 @@
 {{define "content"}}
 <div class="page-head">
   <h1>登录会话</h1>
-  <button type="button" class="btn danger" id="revoke-others">退出其它所有会话</button>
+  <div class="page-actions">
+    <button type="button" class="btn small" id="sessions-refresh">{{icon "refresh-cw"}} 刷新</button>
+    <button type="button" class="btn danger" id="revoke-others">退出其它所有会话</button>
+  </div>
 </div>
 
 <!-- 行结构自解释（设备名 + 项目 + 最近活跃 + IP），这里只留必须说清的口径与后果。 -->
@@ -11,16 +14,16 @@
 
 <div class="list" id="session-list" aria-live="polite">
   <div class="sk-row"><span class="skeleton sk-avatar"></span><span class="sk-grow"><span class="skeleton sk-line w60"></span><span class="skeleton sk-line w40"></span></span></div>
-<div class="sk-row"><span class="skeleton sk-avatar"></span><span class="sk-grow"><span class="skeleton sk-line w60"></span><span class="skeleton sk-line w40"></span></span></div>
-<div class="sk-row"><span class="skeleton sk-avatar"></span><span class="sk-grow"><span class="skeleton sk-line w60"></span><span class="skeleton sk-line w40"></span></span></div>
+  <div class="sk-row"><span class="skeleton sk-avatar"></span><span class="sk-grow"><span class="skeleton sk-line w60"></span><span class="skeleton sk-line w40"></span></span></div>
+  <div class="sk-row"><span class="skeleton sk-avatar"></span><span class="sk-grow"><span class="skeleton sk-line w60"></span><span class="skeleton sk-line w40"></span></span></div>
 </div>
 
 <dialog class="dlg" id="kick-dialog" aria-labelledby="kick-title">
   <h2 id="kick-title">退出会话</h2>
   <p id="kick-desc" class="dim"></p>
-  <form method="dialog" class="row end" style="margin-top:12px">
+  <div class="dlg-actions">
     <button type="button" class="btn" id="kick-cancel">取消</button>
     <button type="button" class="btn danger" id="kick-ok">确认退出</button>
-  </form>
+  </div>
 </dialog>
 {{end}}

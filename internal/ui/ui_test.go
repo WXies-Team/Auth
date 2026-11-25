@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"bytes"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -23,9 +24,9 @@ func TestLayoutHeadHasIconLinks(t *testing.T) {
 		`<link rel="icon" href="/favicon.ico" sizes="48x48">`,
 		`<link rel="apple-touch-icon" href="/apple-touch-icon.png">`,
 		`<meta name="theme-color" content="#3482FF" media="(prefers-color-scheme: light)">`,
-		`<meta name="theme-color" content="#242424" media="(prefers-color-scheme: dark)">`,
+		`<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">`,
 		`<img src="/favicon.svg" alt="" width="28" height="28">`,
-		`name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"`,
+		`name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"`,
 	} {
 		if !strings.Contains(head, want) {
 			t.Errorf("layout <head> 缺 %s", want)
@@ -82,6 +83,50 @@ func mustCSS(t *testing.T) string {
 		t.Fatalf("读 style.css: %v", err)
 	}
 	return string(b)
+}
+
+func mustJS(t *testing.T) string {
+	t.Helper()
+	b, err := files.ReadFile("app.js")
+	if err != nil {
+		t.Fatalf("读 app.js: %v", err)
+	}
+	return string(b)
+}
+
+// jsBlock 截 app.js 的 [start,end) 一段。机制断言要看「某个函数体内真的这么
+// 做」，全文 Contains 会把别处的同名字符串误算成命中。
+func jsBlock(t *testing.T, js, start, end string) string {
+	t.Helper()
+	i := strings.Index(js, start)
+	if i < 0 {
+		t.Fatalf("app.js 缺起点 %q", start)
+	}
+	j := strings.Index(js[i:], end)
+	if j < 0 {
+		t.Fatalf("app.js 缺终点 %q", end)
+	}
+	return js[i : i+j]
+}
+
+// jsBlockAfter 从 anchor 之后再找起点：app.js 里 openDetail/load 各有多处同名
+// 实现，直接用 jsBlock 会把用户页的块错当成会话页的块。
+func jsBlockAfter(t *testing.T, js, anchor, start, end string) string {
+	t.Helper()
+	k := strings.Index(js, anchor)
+	if k < 0 {
+		t.Fatalf("app.js 缺锚点 %q", anchor)
+	}
+	i := strings.Index(js[k+len(anchor):], start)
+	if i < 0 {
+		t.Fatalf("app.js 锚点 %q 后缺起点 %q", anchor, start)
+	}
+	i += k + len(anchor)
+	j := strings.Index(js[i:], end)
+	if j < 0 {
+		t.Fatalf("app.js 缺终点 %q", end)
+	}
+	return js[i : i+j]
 }
 
 // stripCSSComments 去掉 /* ... */，让「规则里有什么声明」的断言只看真声明。
@@ -294,7 +339,9 @@ func TestTopbarAccountAndAdminEntry(t *testing.T) {
 // 403 页模板齐备、导航按 super 分叉（角色管理已并入用户页；W4 加「项目访问」，
 // super 六项 / app-admin 四项）。
 func TestAppSwitchAndRolesPage(t *testing.T) {
-	// 1. layout 带切换器容器（在 admin-entry 与 acct 之间）
+	// 1. layout 带切换器容器；重写后切换器从顶栏移进**内容区**（筛选贴着它过滤
+	// 的数据，也不再跟顶栏抢窄屏空间）：admin-entry（顶栏）与 acct（顶栏）在前，
+	// app-switch 必须出现在 </header> 之后的 main 内。
 	raw, err := files.ReadFile("templates/layout.html")
 	if err != nil {
 		t.Fatalf("读 layout: %v", err)
@@ -303,17 +350,25 @@ func TestAppSwitchAndRolesPage(t *testing.T) {
 	sw := strings.Index(head, `id="app-switch"`)
 	ae := strings.Index(head, `id="admin-entry"`)
 	ac := strings.Index(head, `class="acct"`)
+	headerEnd := strings.Index(head, "</header>")
 	if sw < 0 {
 		t.Fatal("layout 缺项目切换器容器 id=app-switch")
 	}
-	if ae > 0 && !(ae < sw && sw < ac) {
-		t.Errorf("切换器应在 admin-entry 与 acct 之间，得到 ae=%d sw=%d ac=%d", ae, sw, ac)
+	if ae < 0 || ac < 0 || headerEnd < 0 {
+		t.Fatalf("layout 缺顶栏结构 ae=%d ac=%d headerEnd=%d", ae, ac, headerEnd)
+	}
+	if !(ae < ac && ac < headerEnd && headerEnd < sw) {
+		t.Errorf("切换器应整体在 </header> 之后的 main 内（ae<ac<headerEnd<sw），得到 ae=%d ac=%d headerEnd=%d sw=%d",
+			ae, ac, headerEnd, sw)
 	}
 
-	// 2. SwitchApps：super 三选项（全部高亮当 currentApp 空）；app-admin 只回授权项
+	// 2. SwitchApps：super = 「全部」+ knownApps 全量（当前 4 个，高亮「全部」）；app-admin 只回授权项
 	super := SwitchApps(true, nil, "")
-	if len(super) != 3 || super[0].Key != "" || super[0].Label != "全部" || !super[0].Active {
-		t.Errorf("super 切换器应三项且「全部」默认高亮，得到 %+v", super)
+	if len(super) != 5 || super[0].Key != "" || super[0].Label != "全部" || !super[0].Active {
+		t.Errorf("super 切换器应为「全部」+4 个项目且「全部」默认高亮，得到 %+v", super)
+	}
+	if super[3].Label != "奇奇岛护照" || super[4].Label != "屑涵短链" {
+		t.Errorf("切换器应带上两个外部项目，得到 %+v", super)
 	}
 	superCal := SwitchApps(true, nil, "CalorieDiary")
 	if superCal[0].Active || !superCal[1].Active {
@@ -439,6 +494,26 @@ func TestDeniedPageRedressAndTimestamp(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("403 页渲染缺 %q", want)
 		}
+	}
+	// 空 reason 的旧形态兜底：策略拒绝仍标「当前」
+	if !strings.Contains(body, "策略拒绝 · 当前") {
+		t.Error("403 页未给 reason 时应按策略拒绝的旧形态兜底")
+	}
+	// 带 reason=permission 时：高亮权限不足一级并展示原始 reason
+	rec = httptest.NewRecorder()
+	if err := Render(rec, "denied", Data{Title: "无权访问", Minimal: true,
+		DeniedApp: "EPassportForMikey", DeniedReason: "permission"}); err != nil {
+		t.Fatalf("渲染带 reason 的 403 页: %v", err)
+	}
+	body = rec.Body.String()
+	for _, want := range []string{`id="denied-reason"`, `>permission<`, "权限不足 · 当前",
+		`<li class="denied-tier on">`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("403 页（reason=permission）缺 %q", want)
+		}
+	}
+	if strings.Contains(body, "策略拒绝 · 当前") {
+		t.Error("reason=permission 时不该再把策略拒绝标成当前")
 	}
 }
 
@@ -656,21 +731,27 @@ func TestMotionSystem(t *testing.T) {
 		}
 	}
 
-	// 5. reduced-motion 一刀切：动画与过渡都关，且 delay 归零（否则错峰会让内容迟到）
+	// 5. reduced-motion 分级降级（依据 Chrome Modern Web Guidance · Motion：
+	//    不全局掐 transition-duration——只处理空间运动，保留颜色过渡与必要进度）
 	rms := reducedMotionBlock(css)
 	if rms == "" {
 		t.Fatal("style.css 缺 prefers-reduced-motion 媒体查询")
 	}
 	for _, frag := range []string{
-		"transition-duration: 0.001ms !important",
 		"animation-duration: 0.001ms !important",
 		"animation-delay: 0ms !important",
 		".btn:active, .tab:active, .app-chip:active, .select-btn:active",
 		"input[type=checkbox]:active, input[type=radio]:active { transform: none; }",
+		// 必要反馈不冻结：加载转圈在 reduce 下放慢而不是停
+		"animation-iteration-count: infinite !important",
 	} {
 		if !strings.Contains(rms, frag) {
 			t.Errorf("reduced-motion 块缺 %q", frag)
 		}
+	}
+	// 全局掐 transition-duration 的旧配方不许回潮（Chrome 官方建议的反例）
+	if strings.Contains(rms, "transition-duration: 0.001ms") {
+		t.Error("reduced-motion 不应全局掐 transition-duration（颜色过渡会被闪断，见 Chrome Motion 指南）")
 	}
 
 	// 6. JS 侧同一套 easing，且动画入口都尊重用户设置
@@ -685,6 +766,7 @@ func TestMotionSystem(t *testing.T) {
 		"function swapIn(el)",
 		"function popIn(el)",
 		"function fadeOutRow(el, done)",
+		"function flowSwap(", // 流程步连续过渡（登录↔两步验证↔强制改密不瞬变）
 	} {
 		if !strings.Contains(js, want) {
 			t.Errorf("app.js 缺动效设施 %q", want)
@@ -1060,28 +1142,27 @@ func TestMinimalPagesRenderNoFooter(t *testing.T) {
 // 窄屏底栏（miuix FloatingNavigationBar）：居中**不许依赖 transform**。
 // 旧写法 left:50% + translateX(-50%) 会被入场动画 rise-in 的关键帧
 // （transform: translateY(...)）整个覆盖 —— 动画期间胶囊没有水平位移、停在
-// 右半边，动画一结束再瞬间弹回正中（实测中心从 352px 跳到 195px，位移 157px），
-// 用户看到的就是「底栏乱飞」。
-func TestTabnavCenteringNeverUsesTransform(t *testing.T) {
+// 右半边，动画一结束再瞬间弹回正中。居中用 left/right:0 + margin-inline:auto。
+// （2026-11 重写后底栏类名 tabnav → dock，断言同步迁移。）
+func TestDockCenteringNeverUsesTransform(t *testing.T) {
 	css := stripCSSComments(mustCSS(t))
-	rule, ok := cssRule(css, ".tabnav")
+	rule, ok := cssRule(css, ".dock")
 	if !ok {
-		t.Fatal("缺 .tabnav 规则")
+		t.Fatal("缺 .dock 规则")
 	}
 	if strings.Contains(rule, "transform:") {
-		t.Error(".tabnav 自身不许写 transform（会被入场动画覆盖导致横向跳动），居中请用 left/right:0 + margin-inline:auto")
+		t.Error(".dock 自身不许写 transform（会被入场动画覆盖导致横向跳动），居中请用 left/right:0 + margin-inline:auto")
 	}
 	if !strings.Contains(rule, "margin-inline: auto") || !strings.Contains(rule, "left: 0; right: 0") {
-		t.Error(".tabnav 应以 left/right:0 + margin-inline:auto 居中")
+		t.Error(".dock 应以 left/right:0 + margin-inline:auto 居中")
 	}
 	// miuix FloatingToolbarDefaults.CornerRadius = 50dp → 药丸
 	if !strings.Contains(rule, "border-radius: 50px") {
-		t.Error(".tabnav 圆角应为 50px（miuix FloatingToolbarDefaults.CornerRadius=50dp，药丸形态）")
+		t.Error(".dock 圆角应为 50px（miuix FloatingToolbarDefaults.CornerRadius=50dp，药丸形态）")
 	}
-	// 未选中项 = 同色 ×40% alpha、选中全不透明（UnselectedAlpha 0.4）。
-	// .tabnav .nav-item 有两条规则（尺寸一条、颜色一条），得把全部拼起来看。
+	// 未选中项 = 同色 ×40% alpha、选中全不透明（UnselectedAlpha 0.4）
 	var navRules strings.Builder
-	for _, seg := range strings.Split(css, ".tabnav .nav-item") {
+	for _, seg := range strings.Split(css, ".dock .nav-item") {
 		if i := strings.Index(seg, "}"); i > 0 {
 			navRules.WriteString(seg[:i])
 		}
@@ -1395,19 +1476,20 @@ func TestDesignTokensPresent(t *testing.T) {
 		}
 	}
 	// 暗色对：画布/变体/玻璃都要有暗值，否则跟随系统时材质与层级会塌掉
-	for _, frag := range []string{"--background: #000000", "--surface-variant: #2D2D2D", "--glass-bg: rgba(0, 0, 0, .6)"} {
+	for _, frag := range []string{"--background: #000000", "--surface-variant: #2D2D2D", "--glass-bg: rgba(0, 0, 0, .66)"} {
 		if !strings.Contains(css, frag) {
 			t.Errorf("暗色缺表面/玻璃令牌 %q", frag)
 		}
 	}
 }
 
-// 玻璃材质（Miuix Console web port 的材质语言）：顶栏与窄屏底栏都上
-// backdrop-filter blur(24px) saturate(1.6)，且 @supports not 时**两处**都退实底。
+// 玻璃材质只给浮动 chrome（顶栏/窄屏底栏）：都上 backdrop-filter
+// blur(24px) saturate(1.6)，且 @supports not 时**两处**都退实底。
 // 顶栏若漏兜底会在老浏览器变全透明，读不清——可读性优先于质感。
-func TestGlassTopbarAndTabnavFallback(t *testing.T) {
+// （2026-11 重写：底栏类名 tabnav → dock；卡片/工具条改纯实底，玻璃收窄到 chrome。）
+func TestGlassTopbarAndDockFallback(t *testing.T) {
 	css := stripCSSComments(mustCSS(t))
-	for _, sel := range []string{".topbar", ".tabnav"} {
+	for _, sel := range []string{".topbar", ".dock"} {
 		rule, ok := cssRule(css, sel)
 		if !ok {
 			t.Fatalf("style.css 缺 %s 规则", sel)
@@ -1425,7 +1507,7 @@ func TestGlassTopbarAndTabnavFallback(t *testing.T) {
 	if sup == "" {
 		t.Fatal("style.css 缺 @supports not 玻璃兜底块")
 	}
-	for _, frag := range []string{".topbar", "var(--canvas)", ".tabnav", "var(--card)"} {
+	for _, frag := range []string{".topbar", "var(--canvas)", ".dock", "var(--card)"} {
 		if !strings.Contains(sup, frag) {
 			t.Errorf("@supports not 兜底缺 %q（顶栏/底栏都要退实底）", frag)
 		}
@@ -1503,8 +1585,10 @@ func TestSwitchPatternAndA11y(t *testing.T) {
 	}
 }
 
-// Phase 4 玻璃组件模式：卡片/工具条/对话框/抽屉/菜单/提示条都用分层玻璃令牌
-// （越高越不透明），且 @supports not 分支逐个退回实底——不能出现「有模糊才看得见」。
+// 玻璃组件模式（2026-11 重写后口径）：**玻璃只给浮动 chrome**（顶栏/底栏/
+// 对话框/菜单/Toast），内容面（卡片/工具条/详情面板）一律纯实底——Apple HIG
+// 「never stack a light translucent surface on another」+ 文字对比优先；
+// @supports not 分支逐个退回实底——不能出现「有模糊才看得见」。
 func TestGlassComponentSurfaces(t *testing.T) {
 	css := stripCSSComments(mustCSS(t))
 	root, ok := cssRule(css, ":root")
@@ -1512,16 +1596,16 @@ func TestGlassComponentSurfaces(t *testing.T) {
 		t.Fatal("style.css 缺 :root")
 	}
 	for _, tok := range []string{
-		"--glass-card-bg:", "--glass-menu-bg:", "--glass-dialog-bg:",
-		"--glass-card-blur:", "--glass-card-saturate:",
+		"--glass-bg:", "--glass-float-bg:", "--glass-menu-bg:", "--glass-dialog-bg:",
+		"--glass-stroke:", "--glass-bar-blur:", "--glass-bar-saturate:",
 		"--badge-bg:", "--progress-track:", "--progress-fill:", "--empty-bg:",
 		"--toast-bg:", "--toast-bad-bg:", "--toast-bad-ink:",
 	} {
 		if !strings.Contains(root, tok) {
-			t.Errorf(":root 缺 Phase 4 玻璃/语义令牌 %q", tok)
+			t.Errorf(":root 缺玻璃/语义令牌 %q", tok)
 		}
 	}
-	for _, sel := range []string{".card", ".toolbar", ".dlg", ".select-menu", ".toast", ".detail"} {
+	for _, sel := range []string{".topbar", ".dock", ".dlg", ".select-menu", ".toast"} {
 		rule, ok := cssRule(css, sel)
 		if !ok {
 			t.Fatalf("style.css 缺 %s 规则", sel)
@@ -1530,13 +1614,23 @@ func TestGlassComponentSurfaces(t *testing.T) {
 			t.Errorf("%s 缺玻璃模糊声明（含 -webkit- 前缀）", sel)
 		}
 	}
+	// 内容面必须是实底（不叠半透明——叠在玻璃 chrome 下文字对比会塌）
+	for _, sel := range []string{".card", ".toolbar", ".detail"} {
+		rule, ok := cssRule(css, sel)
+		if !ok {
+			t.Fatalf("style.css 缺 %s 规则", sel)
+		}
+		if strings.Contains(rule, "backdrop-filter:") {
+			t.Errorf("%s 应是纯实底内容面（玻璃只给浮动 chrome，见 HIG 材质分层）", sel)
+		}
+	}
 	sup := cssAtRuleBlock(css, "@supports not ((backdrop-filter: blur(1px))")
 	if sup == "" {
 		t.Fatal("缺 @supports not 兜底块")
 	}
-	for _, frag := range []string{".card", ".toolbar", ".detail", ".select-menu", ".dlg", ".toast"} {
+	for _, frag := range []string{".topbar", ".dock", ".select-menu", ".dlg", ".toast"} {
 		if !strings.Contains(sup, frag) {
-			t.Errorf("@supports not 兜底缺 %s（玻璃组件都要退实底）", frag)
+			t.Errorf("@supports not 兜底缺 %s（玻璃 chrome 都要退实底）", frag)
 		}
 	}
 	// 语义色真的被组件用上了（不是只定义不引用）
@@ -1551,7 +1645,7 @@ func TestGlassComponentSurfaces(t *testing.T) {
 	}
 }
 
-// 玻璃顶栏的 backdrop-filter 会成为固定定位的包含块：.tabnav 若留在 <header> 内，
+// 玻璃顶栏的 backdrop-filter 会成为固定定位的包含块：.dock 若留在 <header> 内，
 // position:fixed 就相对顶栏而非视口，窄屏底栏会被钉到页面顶部。钉住「nav 在 header 之后」。
 func TestBottomNavOutsideGlassTopbar(t *testing.T) {
 	raw, err := files.ReadFile("templates/layout.html")
@@ -1560,23 +1654,30 @@ func TestBottomNavOutsideGlassTopbar(t *testing.T) {
 	}
 	head := string(raw)
 	end := strings.Index(head, "</header>")
-	nav := strings.Index(head, `<nav class="tabnav"`)
+	nav := strings.Index(head, `<nav class="dock"`)
 	if end < 0 || nav < 0 || nav < end {
 		t.Errorf("窄屏底栏必须在 </header> 之后（否则被玻璃顶栏的 backdrop-filter 钉到顶部），end=%d nav=%d", end, nav)
 	}
 }
 
-// 窄屏两处响应式实测回归：顶栏横滚必须 flex-start（flex-end 会把最左按钮裁到容器外），
-// toast 的抬升媒体查询必须写在基础规则**之后**（同特异性下后写的才生效）。
+// 窄屏响应式实测回归：顶栏横滚必须 flex-start（flex-end 会把最左按钮裁到容器外），
+// 触控目标块与底栏项 ≥44，toast 的抬升媒体查询必须写在基础规则**之后**。
+// （2026-11 重写：pointer:coarse 现在有两块——键盘让路 + 触控目标——按内容定位。）
 func TestNarrowScreenResponsiveFixes(t *testing.T) {
 	css := stripCSSComments(mustCSS(t))
 	mobile := cssAtRuleBlock(css, "@media (max-width: 640px)")
 	if mobile == "" || !strings.Contains(mobile, "justify-content: flex-start") {
-		t.Error("窄屏 .topnav 应 justify-content:flex-start（防最左按钮被裁且滚不到）")
+		t.Error("窄屏 .topbar-actions 应 justify-content:flex-start（防最左按钮被裁且滚不到）")
 	}
-	coarse := cssAtRuleBlock(css, "@media (pointer: coarse)")
+	coarse := ""
+	for _, block := range coarseBlocks(css) {
+		if strings.Contains(block, "var(--tap)") {
+			coarse = block
+			break
+		}
+	}
 	if coarse == "" {
-		t.Fatal("缺 @media (pointer: coarse) 触控目标块")
+		t.Fatal("缺含 var(--tap) 的 @media (pointer: coarse) 触控目标块")
 	}
 	for _, frag := range []string{
 		".btn.small", ".app-chip", ".brand", ".skip", ".pf-chip", ".nav-item", "var(--tap)",
@@ -1586,14 +1687,85 @@ func TestNarrowScreenResponsiveFixes(t *testing.T) {
 			t.Errorf("触控目标块缺 %q（触屏一律 ≥44px）", frag)
 		}
 	}
-	nav := cssAtRuleBlock(css, ".tabnav .nav-item")
+	nav := cssAtRuleBlock(css, ".dock .nav-item")
 	if !strings.Contains(nav, "min-width: var(--tap)") {
-		t.Error(".tabnav .nav-item 应 min-width:var(--tap)（实测 375px 下有项只有 43px）")
+		t.Error(".dock .nav-item 应 min-width:var(--tap)（实测 375px 下有项只有 43px）")
 	}
 	base := strings.Index(css, "\n.toast {")
-	lift := strings.Index(css, "@media (max-width: 899.98px) {\n  .toast { z-index: 50;")
+	lift := strings.Index(css, "@media (max-width: 899.98px) {\n  .toast { bottom:")
 	if base < 0 || lift < 0 || lift < base {
-		t.Errorf("toast 抬升规则必须写在 .toast 基础规则之后（否则被 z-index:30/bottom:16px 覆盖），base=%d lift=%d", base, lift)
+		t.Errorf("toast 抬升规则必须写在 .toast 基础规则之后（否则被基础规则的 bottom 覆盖），base=%d lift=%d", base, lift)
+	}
+}
+
+// coarseBlocks 返回全部 @media (pointer: coarse) 块（本文件现在有两块）。
+func coarseBlocks(css string) []string {
+	var out []string
+	for i := 0; ; {
+		j := strings.Index(css[i:], "@media (pointer: coarse)")
+		if j < 0 {
+			return out
+		}
+		start := i + j
+		block := cssAtRuleBlock(css[start:], "@media (pointer: coarse)")
+		if block == "" {
+			return out
+		}
+		out = append(out, block)
+		i = start + len(block)
+	}
+}
+
+// 每个模板都要能真的 Execute（parse 通过 ≠ 执行通过：字段引用错误只在执行期爆）。
+// 2026-11 全量重写后 17 个模板逐一渲染，双变体页（authorize/invite/setup-password）
+// 两态都过。
+func TestEveryPageRenders(t *testing.T) {
+	nav := ConsoleNav("console")
+	adminNav := AdminNav("admin-users", true)
+	cases := []struct {
+		file string
+		data Data
+	}{
+		{"login", Data{Title: "登录", Minimal: true}},
+		{"console", Data{Title: "概览", Email: "u@example.com", Nav: nav}},
+		{"sessions", Data{Title: "登录会话", Email: "u@example.com", Nav: nav}},
+		{"passkeys", Data{Title: "Passkey", Email: "u@example.com", Nav: nav}},
+		{"security", Data{Title: "两步验证", Email: "u@example.com", Nav: nav}},
+		{"account", Data{Title: "账号", Email: "u@example.com", Nav: nav}},
+		{"admin-users", Data{Title: "用户", Email: "a@example.com", Nav: adminNav, IsAdmin: true, IsSuper: true, InAdmin: true}},
+		{"admin-access", Data{Title: "项目访问", Email: "a@example.com", Nav: AdminNav("admin-access", false), IsAdmin: true, InAdmin: true}},
+		{"admin-sessions", Data{Title: "会话总览", Email: "a@example.com", Nav: adminNav, IsAdmin: true, IsSuper: true, InAdmin: true,
+			Apps: SwitchApps(true, nil, ""), CurrentApp: ""}},
+		{"admin-audit", Data{Title: "审计日志", Email: "a@example.com", Nav: adminNav, IsAdmin: true, IsSuper: true, InAdmin: true,
+			Apps: SwitchApps(true, nil, "")}},
+		{"admin-config", Data{Title: "配置中心", Email: "a@example.com", Nav: adminNav, IsAdmin: true, IsSuper: true, InAdmin: true}},
+		{"admin-ai", Data{Title: "AI 用量", Email: "a@example.com", Nav: adminNav, IsAdmin: true, IsSuper: true, InAdmin: true,
+			Apps: SwitchApps(true, nil, "")}},
+		{"denied", Data{Title: "无权访问", Minimal: true, DeniedApp: "ExpenseDiary"}},
+		{"authorize", Data{Title: "授权登录", Minimal: true, OAuth: &OAuthView{
+			Tx: "tx-1", App: "CalorieDiary", AppName: "热量日记",
+			RedirectHost: "app.example.com", Email: "u@example.com",
+			Scopes: []string{"你的账号标识（uid）"}}}},
+		{"authorize", Data{Title: "无法发起授权", Minimal: true, Status: http.StatusBadRequest,
+			OAuth: &OAuthView{ErrorTitle: "无法发起授权", ErrorMessage: "应用未登记"}}},
+		{"invite", Data{Title: "接受邀请", Minimal: true,
+			Invite: &InviteView{Token: "t", Email: "a@example.com", App: "CalorieDiary", AppName: "热量日记"}}},
+		{"invite", Data{Title: "无法接受邀请", Minimal: true, Status: http.StatusBadRequest,
+			Invite: &InviteView{ErrorTitle: "无法接受邀请", ErrorMessage: "邀请链接无效"}}},
+		{"setup-password", Data{Title: "设置新密码", Minimal: true,
+			PasswordSetup: &PasswordSetupView{Token: "t", Email: "a@example.com"}}},
+		{"setup-password", Data{Title: "无法设置密码", Minimal: true, Status: http.StatusBadRequest,
+			PasswordSetup: &PasswordSetupView{ErrorTitle: "链接已失效", ErrorMessage: "令牌无效"}}},
+	}
+	for _, c := range cases {
+		rec := httptest.NewRecorder()
+		if err := Render(rec, c.file, c.data); err != nil {
+			t.Errorf("渲染 %s: %v", c.file, err)
+			continue
+		}
+		if rec.Code == 0 || rec.Body.Len() == 0 {
+			t.Errorf("%s 渲染出空响应", c.file)
+		}
 	}
 }
 
@@ -1602,5 +1774,709 @@ func TestSelectOptionFocusVisible(t *testing.T) {
 	css := stripCSSComments(mustCSS(t))
 	if !strings.Contains(css, ".select-opt:focus-visible") {
 		t.Error("缺 .select-opt:focus-visible（自绘下拉项的键盘焦点环）")
+	}
+}
+
+// ================= 2026-11 三模块重写（项目访问/会话总览/用户）+ 拒绝态 =================
+
+// 项目访问页：豁免层级必须「谁对什么豁免」三层齐备（页顶图例 + 每卡一份），
+// 且豁免管理（授予/回收项目管理员授权）有可操作入口与确认弹层。
+func TestAdminAccessExemptionHierarchy(t *testing.T) {
+	raw, err := files.ReadFile("templates/admin-access.html")
+	if err != nil {
+		t.Fatalf("读 admin-access 模板: %v", err)
+	}
+	tpl := string(raw)
+	for _, want := range []string{
+		`id="access-ladder"`, // 页顶豁免层级图例
+		`id="access-stats"`,  // 项目数/受限数统计（aria-live 由下方钉）
+		`id="access-denied"`, // 拒绝态面板容器
+		`id="exempt-dlg"`,    // 豁免管理弹层
+		`id="exempt-email"`,  // 按邮箱查找账号
+		"豁免 · 全部项目",          // 平台管理员层
+		"豁免 · 本项目",           // 项目管理员层
+		"在册 · 本项目",           // 名单成员层
+		"豁免管理",               // 可操作入口
+		`id="access-dlg"`,    // 通用确认弹层（调整范围/移出名单/豁免授予回收）
+	} {
+		if !strings.Contains(tpl, want) {
+			t.Errorf("admin-access.html 缺 %q", want)
+		}
+	}
+	if !strings.Contains(tpl, `id="access-stats" aria-live="polite"`) {
+		t.Error("access-stats 应带 aria-live=polite（计数变化可被读屏感知）")
+	}
+	// 撤下的 Web 接入 Secret 层不许回来（TestReauthStagedAndWebAccessRemoved 同口径）
+	if strings.Contains(tpl, "oauth-secret-dlg") {
+		t.Error("Web 接入的一次性 Secret 层不应随重写回来")
+	}
+
+	jsBytes, err := files.ReadFile("app.js")
+	if err != nil {
+		t.Fatalf("读 app.js: %v", err)
+	}
+	js := string(jsBytes)
+	for _, want := range []string{
+		"data-exempt-manage", // 每卡的豁免管理入口
+		"授予本项目豁免", "回收本项目豁免", // 授予/回收动作文案
+		"body: { app: exemptApp, op:", // 走既有 /admin/roles/{uid}/scope 契约
+		"未启用登录限制 · 全员可登录",             // 开放登录时的生效说明
+		"项目管理员豁免由平台管理员在「用户」页授予",       // 项目管理员（app-admin）的只读口径
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("app.js 缺豁免管理结构 %q", want)
+		}
+	}
+}
+
+// 会话总览：四项服务端聚合 KPI、按用户的项目/归属地聚合列、钻取面板的
+// 服务端归属地分布、每行到期时刻与「全量退出仅平台管理员」的角色门。
+func TestAdminSessionsOverviewAggregation(t *testing.T) {
+	raw, err := files.ReadFile("templates/admin-sessions.html")
+	if err != nil {
+		t.Fatalf("读 admin-sessions 模板: %v", err)
+	}
+	tpl := string(raw)
+	for _, want := range []string{
+		`id="sess-kpi-sessions"`, `id="sess-kpi-users"`, // 服务端总数
+		`id="sess-kpi-projects"`, `id="sess-kpi-regions"`, // 服务端聚合桶数
+		"覆盖项目（当前筛选）", "覆盖归属地（当前筛选）",
+		`id="sd-region"`, // 钻取面板的归属地分布容器
+		`id="sd-region-bars"`,
+		`id="sd-kick-all"`,   // 全量退出（super 专属，JS 按角色显隐）
+		`id="sd-scope-hint"`, // 项目管理员的范围说明
+		`id="sd-all-dialog"`, // 全量退出确认
+		"主要归属地", "覆盖项目",      // 聚合列
+	} {
+		if !strings.Contains(tpl, want) {
+			t.Errorf("admin-sessions.html 缺 %q", want)
+		}
+	}
+	if strings.Count(tpl, `id="sd-kick-all"`) != 1 {
+		t.Error("全量退出按钮应恰有一处")
+	}
+	if strings.Contains(tpl, "本页覆盖") {
+		t.Error("admin-sessions.html 不应再把 KPI 标成「本页覆盖」（服务端已全量聚合）")
+	}
+
+	jsBytes, err := files.ReadFile("app.js")
+	if err != nil {
+		t.Fatalf("读 app.js: %v", err)
+	}
+	js := string(jsBytes)
+	for _, want := range []string{
+		"function regionBreakdown(",          // 归属地聚合
+		"$('#sd-region-bars').innerHTML",     // 分布条渲染
+		"allBtn.dataset.uid = String(uid)",   // 确认文案要带 uid
+		"$('#sd-scope-hint').hidden = false", // 非 super 换成范围说明
+		"/revoke-sessions",                   // 全量退出走既有端点
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("app.js 缺会话总览结构 %q", want)
+		}
+	}
+	// KPI 函数体必须只读回执的 apps/regions；出现本地 Set/regionBreakdown 就是
+	// 又把一页数据当全量（本测试钉的就是这个回归）。做成纯判据以便变异检验。
+	kpiIssues := func(src string) []string {
+		var issues []string
+		kpi := jsBlock(t, src, "function refreshKpis(res)", "async function loadUsers()")
+		for _, want := range []string{
+			"res.apps || []", "res.regions || []",
+			"$('#sess-kpi-projects').textContent", "$('#sess-kpi-regions').textContent",
+		} {
+			if !strings.Contains(kpi, want) {
+				issues = append(issues, "refreshKpis 未消费服务端聚合 "+want)
+			}
+		}
+		for _, bad := range []string{"new Set((items || []).map", "regionBreakdown(items)"} {
+			if strings.Contains(kpi, bad) {
+				issues = append(issues, "refreshKpis 又用本页数据算 KPI："+bad)
+			}
+		}
+		return issues
+	}
+	for _, issue := range kpiIssues(js) {
+		t.Error(issue)
+	}
+	mutated := strings.Replace(js, "String((res.apps || []).length)",
+		"String(new Set((items || []).map(s => s.app)).size)", 1)
+	if len(kpiIssues(mutated)) == 0 {
+		t.Error("变异检验失效：把项目 KPI 改回本页 Set 去重竟没被钉住")
+	}
+	// 每行到期时刻 + 钻取面板分布都来自同一份回执。openDetail 有两处同名实现，
+	// 必须从会话控制器内部开始截。
+	detail := jsBlockAfter(t, js, "async function loadUsers()",
+		"async function openDetail(uid, email)", "$('#sd-close').addEventListener")
+	for _, want := range []string{
+		"s.expiresAt", "s.idleExpiresAt", "res.regions || []", "r.name", "r.count",
+	} {
+		if !strings.Contains(detail, want) {
+			t.Errorf("会话详情未渲染新契约字段 %q", want)
+		}
+	}
+	// 角色门：全量退出按钮的显隐必须按 IS_SUPER 分叉（端点 requireSuper）
+	i := strings.Index(js, "allBtn.classList.remove('hidden')")
+	j := -1
+	if i >= 0 {
+		j = strings.LastIndex(js[:i], "if (IS_SUPER)")
+	}
+	if i < 0 || j < 0 || i-j > 200 {
+		t.Error("全量退出按钮应按 IS_SUPER 显隐（端点仅平台管理员可用）")
+	}
+}
+
+// 用户页：服务端跨页筛选 chips（角色/封禁，写入 URL）、登录豁免列与豁免语义文案、
+// 详情面板把高风险操作收进 danger-zone。
+func TestAdminUsersExemptionAndDangerZone(t *testing.T) {
+	raw, err := files.ReadFile("templates/admin-users.html")
+	if err != nil {
+		t.Fatalf("读 admin-users 模板: %v", err)
+	}
+	tpl := string(raw)
+	for _, want := range []string{
+		`data-role-facet="all"`, `data-role-facet="super"`,
+		`data-role-facet="admin"`, `data-role-facet="user"`,
+		`data-status-facet="banned"`, // 封禁中筛选
+		`id="users-facet-note"`,      // 当前筛选口径提示
+		`id="users-denied"`,          // 拒绝态面板容器
+		"登录豁免",                       // 列名（原「项目授权」）
+		"授予项目即让该账号豁免这个项目的登录限制", // 豁免语义写进页首说明
+	} {
+		if !strings.Contains(tpl, want) {
+			t.Errorf("admin-users.html 缺 %q", want)
+		}
+	}
+
+	jsBytes, err := files.ReadFile("app.js")
+	if err != nil {
+		t.Fatalf("读 app.js: %v", err)
+	}
+	js := string(jsBytes)
+	for _, want := range []string{
+		"return '豁免全部项目'",                                 // scopeSummary：super
+		"`豁免 ${n} 个项目`",                                   // scopeSummary：有授权
+		"'未获项目豁免'",                                        // scopeSummary：零授权
+		"已授权 · 豁免本项目登录限制",                                 // 详情面板逐项语义
+		"class=\"danger-zone\"",                           // 高风险操作收进危险区
+		"当前筛选生效",                                          // 筛选如实标注
+		"banned: facet.status === 'banned' ? 'true' : ''", // 封禁筛选写 URL
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("app.js 缺用户页结构 %q", want)
+		}
+	}
+	if strings.Contains(tpl, "只过滤当前页") || strings.Contains(tpl, "本页筛选") {
+		t.Error("admin-users.html 还在说筛选只作用当前页")
+	}
+	if strings.Contains(js, "只过滤当前页") || strings.Contains(js, "本页筛选生效") {
+		t.Error("app.js 还在说筛选只作用当前页")
+	}
+
+	// 机制：筛选条件必须进 /admin/users 查询串，renderRows 不再本地过滤。
+	list := jsBlock(t, js, "function renderRows()", "async function load()")
+	if strings.Contains(list, "filter(facetMatch)") {
+		t.Error("renderRows 仍在本地过滤；服务端跨页筛选应直接渲染回执")
+	}
+	filterIssues := func(src string) []string {
+		var issues []string
+		// load() 有九处同名实现，用唯一的参数构造行作起点。
+		load := jsBlock(t, src, "const params = new URLSearchParams({", "async function openDetail(uid, email)")
+		for _, want := range []string{
+			"params.set('role', facet.role)", "params.set('banned', 'true')", "params.toString()",
+		} {
+			if !strings.Contains(load, want) {
+				issues = append(issues, "用户列表请求未带服务端筛选参数 "+want)
+			}
+		}
+		return issues
+	}
+	for _, issue := range filterIssues(js) {
+		t.Error(issue)
+	}
+	mutated := strings.Replace(js, "params.set('banned', 'true')", "", 1)
+	if len(filterIssues(mutated)) == 0 {
+		t.Error("变异检验失效：删掉封禁筛选参数竟没被钉住")
+	}
+	chips := jsBlock(t, js, "$$('[data-role-facet]').forEach(chip => chip.addEventListener('click'", "// 审计页的 uid 链接")
+	if strings.Count(chips, "load();") != 2 || !strings.Contains(chips, "pager.state.offset = 0;") {
+		t.Error("两个筛选 chip 都应重置页码并重新请求服务端（不能只重渲染当前页）")
+	}
+	if !strings.Contains(js, "q.get('banned') === 'true' || q.get('status') === 'banned'") {
+		t.Error("筛选 URL 状态未恢复 banned=true")
+	}
+}
+
+// 拒绝态分级：401/403 → 未登录/策略拒绝/权限不足 三档，面板带下一步动作；
+// 403 页原因分级列表 + 重试；登录页与授权错误页接入同一条分级链路。
+func TestDenialTierClassificationAndPanels(t *testing.T) {
+	jsBytes, err := files.ReadFile("app.js")
+	if err != nil {
+		t.Fatalf("读 app.js: %v", err)
+	}
+	js := string(jsBytes)
+	for _, want := range []string{
+		"function denialTier(status, message, reason)",
+		"function denialPanelHTML(err, opts)",
+		"function showDenial(sel, err, opts)",
+		"label: '未登录'", "label: '策略拒绝'", "label: '权限不足'",
+		"reason === 'policy' || reason === 'permission'", // 服务端 reason 优先
+		"err && err.reason",                   // 面板把 reason 透传进分级
+		"if (data && data.reason) err.reason", // api() 把 403 reason 附到错误对象
+		"/封禁|仅限受邀/",                           // 无 reason 时的文案判据（兼容老服务端）
+		"data-denied-retry",                   // 面板里的重试动作
+		"mailto:support@horatio.cn",           // 申诉/求助入口
+		"#login-denied",                       // 登录流程内的拒绝分支
+		"err.status === 403 &&",               // 登录页只把 403 当拒绝态（401 = 密码错）
+		"stampDeniedAt",                       // 报障时间戳（403 页与授权错误页共用）
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("app.js 缺拒绝态结构 %q", want)
+		}
+	}
+
+	// 403 没带 reason 时不再「非策略即权限」：CSRF/Origin、MFA 等拦截按原文
+	// 回落普通报错，不能一律显示「联系平台管理员开通」。400/404 本就不分级。
+	tier := jsBlock(t, js, "function denialTier(", "/* 拒绝面板 HTML")
+	for _, want := range []string{
+		"if (code !== 403) return '';",
+		"if (/封禁|仅限受邀/.test(m)) return 'policy';",
+		"if (/权限|授权|开通|没有该项目的管理/.test(m)) return 'permission';",
+		"return '';",
+	} {
+		if !strings.Contains(tier, want) {
+			t.Errorf("denialTier 缺无 reason 回落分支 %q", want)
+		}
+	}
+	if strings.Contains(tier, "? 'policy' : 'permission'") {
+		t.Error("denialTier 又把无 reason 的 403 硬判成权限不足")
+	}
+
+	login, err := files.ReadFile("templates/login.html")
+	if err != nil {
+		t.Fatalf("读 login 模板: %v", err)
+	}
+	if !strings.Contains(string(login), `id="login-denied"`) {
+		t.Error("登录页应有拒绝态面板容器 id=login-denied")
+	}
+
+	// 403 页：原因分级列表（当前命中高亮）+ 重试 + 求助/报障要素
+	denied, err := files.ReadFile("templates/denied.html")
+	if err != nil {
+		t.Fatalf("读 denied 模板: %v", err)
+	}
+	dtpl := string(denied)
+	for _, want := range []string{
+		`id="denied-tiers"`, " · 当前", "未登录", "权限不足",
+		`{{$reason := .DeniedReason}}`,   // 命中级别由服务端 reason 驱动
+		`{{if eq $reason "permission"}}`, // permission 时高亮权限不足一级
+		`id="denied-reason"`,             // 原始 reason 展示位
+		`id="denied-retry"`, "support@horatio.cn", "开通邀请邮件",
+	} {
+		if !strings.Contains(dtpl, want) {
+			t.Errorf("denied.html 缺 %q", want)
+		}
+	}
+
+	// 授权错误页：按状态码分级徽标 + 分级下一步 + 报障时间戳
+	auth, err := files.ReadFile("templates/authorize.html")
+	if err != nil {
+		t.Fatalf("读 authorize 模板: %v", err)
+	}
+	atpl := string(auth)
+	for _, want := range []string{
+		`{{if eq $status 403}}策略拒绝{{else if eq $status 401}}未登录{{else}}请求无效{{end}}`,
+		`id="auth-back"`, `id="denied-at"`, "回到控制台", "联系支持",
+	} {
+		if !strings.Contains(atpl, want) {
+			t.Errorf("authorize.html 错误变体缺 %q", want)
+		}
+	}
+
+	// 拒绝面板/分级列表的样式走既有令牌（--warn-bg/--radius-card/--ease 动效）
+	css := stripCSSComments(mustCSS(t))
+	for sel, frags := range map[string][]string{
+		".denied-panel":                  {"var(--warn-bg)", "var(--radius-card)"},
+		".denied-tier":                   {"var(--canvas)", "var(--radius-sm)"},
+		".denied-tiers":                  {"display: grid"},
+		".access-exempt":                 {"var(--sub-bg)"},
+		".access-exempt > .item + .item": {"border-top"},
+	} {
+		rule, ok := cssRule(css, sel)
+		if !ok {
+			t.Errorf("style.css 缺 %s 规则", sel)
+			continue
+		}
+		for _, f := range frags {
+			if !strings.Contains(rule, f) {
+				t.Errorf("%s 缺 %q（应复用既有令牌）", sel, f)
+			}
+		}
+	}
+}
+
+// 三层权限的 UI 表达：角色层级图例（root/平台/项目/普通 + 任命边界）、任命入口
+// 按授予者能力禁用并解释（只有根管理员能任命平台管理员）、越权拒绝走拒绝分级
+// 面板（reportDenial），根管理员在列表里有独立徽标。
+func TestRoleHierarchyAppointmentGating(t *testing.T) {
+	raw, err := files.ReadFile("templates/admin-users.html")
+	if err != nil {
+		t.Fatalf("读 admin-users 模板: %v", err)
+	}
+	tpl := string(raw)
+	for _, want := range []string{
+		`id="role-ladder"`, // 角色层级图例
+		"任命平台管理员",          // root 层的任命能力
+		"任命项目管理员",          // 平台管理员层的任命能力
+		"不参与任命",            // 项目管理员层的边界
+		"不能授予高于自己的角色",      // 逐级向下原则
+		"禁用时会说明原因",         // 禁用 + 解释的承诺
+	} {
+		if !strings.Contains(tpl, want) {
+			t.Errorf("admin-users.html 缺角色层级要素 %q", want)
+		}
+	}
+
+	access, err := files.ReadFile("templates/admin-access.html")
+	if err != nil {
+		t.Fatalf("读 admin-access 模板: %v", err)
+	}
+	if !strings.Contains(string(access), "根管理员可任命平台管理员") {
+		t.Error("项目访问页的豁免层级说明应指到任命链路（根 → 平台 → 项目）")
+	}
+
+	jsBytes, err := files.ReadFile("app.js")
+	if err != nil {
+		t.Fatalf("读 app.js: %v", err)
+	}
+	js := string(jsBytes)
+	for _, want := range []string{
+		"function isRootViewer()",  // 根判定读 /web/session.isRoot，不再硬编码 uid
+		"window.__isRoot === true", // 拿不到 isRoot 时按非根保守处理
+		"window.__isRoot = me.isRoot === true",
+		"${u.isRoot",                            // 列表根徽标走服务端逐行 isRoot
+		"const isRootTarget = !!d.isRoot",       // 详情锁定目标走服务端 isRoot
+		"async function viewerUid()",            // 竞态兜底：详情打开前确保拿到当前 uid
+		"function reportDenial(",                // 越权拒绝 → 分级面板的统一出口
+		"reportDenial('#users-denied'",          // 用户页写操作
+		"reportDenial('#access-denied'",         // 项目访问写操作
+		"reportDenial('#sess-denied'",           // 会话退出写操作
+		"平台管理员的角色只有根管理员能任命或回收",                  // 锁死目标的解释
+		"只有根管理员能任命/回收平台管理员",                     // 非根视角的解释
+		"根管理员账号只有本人能调整",                         // 目标是根时的解释
+		`${canAppointSuper ? '' : ' disabled'}`, // 平台管理员选项按能力禁用
+		`title="唯一的平台管理员任命者"`,                   // 列表根徽标
+		"不跨项目",                                  // 项目管理员的授权边界
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("app.js 缺角色任命结构 %q", want)
+		}
+	}
+	if strings.Contains(js, "ROOT_UID") || strings.Contains(js, "5939716") {
+		t.Error("app.js 不该再硬编码根管理员 uid（改读 /web/session.isRoot）")
+	}
+}
+
+// ================= 提交前审计补的钉子（2026-11） =================
+
+// hostile 是「转义漏一处就会执行」的载荷：先闭合当前属性/文本节点，再挂脚本。
+// 它同时充当 URL 载荷（javascript:）与文本载荷。
+const hostilePayload = `"><script>alert(1)</script>`
+const hostileHref = `javascript:alert(1)`
+
+// 用户可控字段进模板的每条路都要过 html/template 的上下文转义：邮箱、昵称、
+// 越权项目名、拒绝原因、授权页的应用名/回跳域/错误文案、邀请页的邮箱与错误、
+// 导航项的 href 与标签、项目切换器的标签。任何一处改回 text/template、包上
+// template.HTML/URL，或者手工拼 HTML，这个用例先红。
+//
+// 断言分三层：
+//  1. 载荷原文不出现（`<script>alert(1)</script>` / `"><script` / javascript: alert）；
+//  2. 文本上下文出现转义形态 `&lt;script&gt;`；
+//  3. URL 上下文出现 #ZgotmplZ（Go 对 javascript: 的过滤标记）——它出现才证明
+//     href 走的是 URL 转义而不是被当成安全串直出。
+func TestPagesEscapeHostileUserData(t *testing.T) {
+	data := Data{
+		Title:        "审计",
+		Email:        hostilePayload + "@example.com",
+		Nickname:     hostilePayload,
+		DeniedApp:    hostilePayload,
+		DeniedReason: hostilePayload,
+		CurrentApp:   hostilePayload,
+		Nav: []NavItem{{
+			Href: hostileHref, Label: hostilePayload, Icon: "shield-check", Active: true,
+		}},
+		Apps: []AppChoice{{Key: "evil", Label: hostilePayload, Active: true}},
+		OAuth: &OAuthView{
+			Tx: hostilePayload, App: hostilePayload, AppName: hostilePayload,
+			RedirectHost: hostilePayload, Email: hostilePayload,
+			Scopes:     []string{hostilePayload},
+			ErrorTitle: hostilePayload, ErrorMessage: hostilePayload,
+		},
+		Invite: &InviteView{
+			Token: hostilePayload, Email: hostilePayload, App: hostilePayload,
+			AppName: hostilePayload, Error: hostilePayload,
+			ErrorTitle: hostilePayload, ErrorMessage: hostilePayload,
+		},
+		PasswordSetup: &PasswordSetupView{
+			Token: hostilePayload, Email: hostilePayload, Error: hostilePayload,
+			ErrorTitle: hostilePayload, ErrorMessage: hostilePayload,
+		},
+	}
+	bad := []string{
+		`<script>alert(1)</script>`,
+		`"><script`,
+		hostileHref,
+	}
+	for name := range pages {
+		rec := httptest.NewRecorder()
+		if err := Render(rec, name, data); err != nil {
+			t.Errorf("渲染 %s: %v", name, err)
+			continue
+		}
+		body := rec.Body.String()
+		for _, b := range bad {
+			if strings.Contains(body, b) {
+				t.Errorf("%s 把未转义的用户数据写进了 HTML：%q", name, b)
+			}
+		}
+		if !strings.Contains(body, "&lt;script&gt;") {
+			t.Errorf("%s 未见任何转义后的文本载荷（&lt;script&gt;）——用户数据没被渲染？", name)
+		}
+		// 导航渲染在非 Minimal 壳里；login/denied/authorize 等 Minimal 页不渲染 nav，
+		// 于是 URL 过滤标记只在有 nav 的页面上要求出现。
+		if !strings.Contains(body, `class="skip"`) || !strings.Contains(body, `class="dock"`) {
+			continue // Minimal 壳：没有导航，也就没有 href 载荷
+		}
+		if !strings.Contains(body, "#ZgotmplZ") {
+			t.Errorf("%s 的 javascript: 导航 href 没被 URL 上下文过滤（缺 #ZgotmplZ）", name)
+		}
+	}
+}
+
+// 品牌 logo 是「新增 app 就得补一份资产」的硬约束：注册表里的每个 slug 都必须
+// 能被 /brand/ 路由真的取到（授权页 <img src> 与邮件 <img src> 都指它），
+// 且扩展名对应的 Content-Type 正确。缺一份的表现是 consent 页与所有邮件裂图，
+// 而且是线上才看得见——这里在编译期资产表上就挡下来。
+func TestEveryKnownAppHasBrandAssets(t *testing.T) {
+	pngMagic := []byte("\x89PNG\r\n\x1a\n")
+	slugs := make([]string, 0, len(knownApps)+1)
+	for _, a := range knownApps {
+		slugs = append(slugs, a.key)
+		if got := appLogoPath(a.key); got != "/brand/"+a.key+"-v1.png" {
+			t.Errorf("appLogoPath(%q) 应为 /brand/%s-v1.png，得到 %q", a.key, a.key, got)
+		}
+	}
+	slugs = append(slugs, "auth") // 账号级邮件（重置/注销/改绑）的中性品牌
+	for _, slug := range slugs {
+		png, ctype, ok := BrandStatic(slug + "-v1.png")
+		if !ok {
+			t.Errorf("缺品牌资产 %s-v1.png（跑 go run ./scripts/genicons 重生）", slug)
+			continue
+		}
+		if ctype != "image/png" {
+			t.Errorf("%s-v1.png 的 Content-Type 应为 image/png，得到 %q", slug, ctype)
+		}
+		if !bytes.HasPrefix(png, pngMagic) {
+			t.Errorf("%s-v1.png 不是 PNG（前 8 字节不是魔数）", slug)
+		}
+		svg, sctype, ok := BrandStatic(slug + ".svg")
+		if !ok {
+			t.Errorf("缺品牌矢量源 %s.svg", slug)
+			continue
+		}
+		if sctype != "image/svg+xml; charset=utf-8" {
+			t.Errorf("%s.svg 的 Content-Type 应为 image/svg+xml; charset=utf-8，得到 %q", slug, sctype)
+		}
+		if !bytes.Contains(svg, []byte("<svg")) {
+			t.Errorf("%s.svg 不是 SVG 文档", slug)
+		}
+	}
+	// 未知名字必须回 false（路由层据此 404，而不是回空 200）
+	if _, _, ok := BrandStatic("../../etc/passwd"); ok {
+		t.Error("BrandStatic 不该接受名单外的文件名")
+	}
+	// 站点静态资产（CSS/JS/图标）逐个可挂载，且 app.css 的内容就是 style.css
+	if css, ctype, ok := Static("app.css"); !ok || ctype != "text/css; charset=utf-8" || len(css) == 0 {
+		t.Errorf("Static(app.css) 应返回样式与 CSS Content-Type，得到 ok=%v type=%q len=%d", ok, ctype, len(css))
+	}
+}
+
+// app.js 里的登录回跳闸门必须以**浏览器解析结果**为准，不能退回字符串前缀判据：
+// `^\/(?![\/\\])` 放得过 `/%09/evil.com` —— URL 解析器会把 TAB 删掉，结果是
+// `//evil.com`（协议相对，直接跳外站）。这里钉住三条不变量：
+//  1. 用 new URL(raw, location.origin) 解析；
+//  2. 与 location.origin 逐字比对；
+//  3. 回传的是解析后的 pathname+search+hash，不是原始串。
+//
+// 注：CI 里没有 JS 运行时，所以这条按「实现机制」而非行为表来钉——机制对了，
+// 所有编码/规范化绕过（TAB、换行、反斜杠、userinfo）都随之关闭。
+func TestLoginNextUsesURLParserNotStringPrefix(t *testing.T) {
+	jsBytes, err := files.ReadFile("app.js")
+	if err != nil {
+		t.Fatalf("读 app.js: %v", err)
+	}
+	js := string(jsBytes)
+	start := strings.Index(js, "function safeNext(raw)")
+	if start < 0 {
+		t.Fatal("app.js 缺 safeNext（登录 next 的开放重定向闸门）")
+	}
+	end := strings.Index(js[start:], "const nextPath")
+	if end < 0 {
+		end = len(js) - start
+	}
+	body := js[start : start+end]
+	for _, want := range []string{
+		"new URL(raw, location.origin)",
+		"u.origin !== location.origin",
+		"u.username || u.password",
+		"return u.pathname + u.search + u.hash",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("safeNext 缺 %q（必须以解析后的 origin 为准）", want)
+		}
+	}
+	if strings.Contains(body, `(?![\/\\])`) || strings.Contains(body, `return raw`) {
+		t.Error("safeNext 退回了字符串前缀判据（漏 TAB/换行规范化绕过，见 CWE-601）")
+	}
+}
+
+// 零 JS 表单的防重复提交会在 submit 时禁用被点的按钮。带 name 的按钮（授权页的
+// decision=allow/deny）必须**先把 name/value 抄进隐藏域**再禁用：表单条目表在
+// submit 事件之后构造，被禁用的按钮不再算成功控件，decision 会整个丢掉，服务端
+// 把「没有 decision」一律当拒绝——点「继续授权」会静默变成 access_denied。
+func TestNamedSubmitButtonValuePreserved(t *testing.T) {
+	raw, err := files.ReadFile("templates/authorize.html")
+	if err != nil {
+		t.Fatalf("读 authorize 模板: %v", err)
+	}
+	tpl := string(raw)
+	if !strings.Contains(tpl, `name="decision" value="allow"`) ||
+		!strings.Contains(tpl, `name="decision" value="deny"`) {
+		t.Fatal("authorize 模板应以 name=decision 的双按钮提交（allow/deny）")
+	}
+
+	jsBytes, err := files.ReadFile("app.js")
+	if err != nil {
+		t.Fatalf("读 app.js: %v", err)
+	}
+	js := string(jsBytes)
+	start := strings.Index(js, `$$('form[method=post]')`)
+	if start < 0 {
+		t.Fatal("app.js 缺零 JS 表单的防重复提交处理器")
+	}
+	end := strings.Index(js[start:], "initAppSwitch()")
+	if end < 0 {
+		t.Fatal("找不到表单处理器的结尾（initAppSwitch 之前）")
+	}
+	body := js[start : start+end]
+	keep := strings.Index(body, "keep.name = b.name")
+	disable := strings.Index(body, "b.disabled = true")
+	if keep < 0 || disable < 0 || keep > disable {
+		t.Errorf("表单处理器必须先把按钮的 name/value 抄进隐藏域再禁用（keep=%d disable=%d）", keep, disable)
+	}
+	for _, want := range []string{
+		"keep.type = 'hidden'", "keep.name = b.name", "keep.value = b.value",
+		"f.appendChild(keep)",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("表单处理器缺 %q（decision 会丢）", want)
+		}
+	}
+}
+
+// ================= 2026-11 契约接线：Web 会话轮换 / 项目 admins =================
+
+func issueHas(issues []string, sub string) bool {
+	for _, s := range issues {
+		if strings.Contains(s, sub) {
+			return true
+		}
+	}
+	return false
+}
+
+// refreshWiringIssues 返回会话轮换接线的缺项。用纯函数是为了能做变异检验：
+// 把 30 分钟改成 1 分钟、删掉单飞后，同一套判据必须报错。
+func refreshWiringIssues(js string) []string {
+	var issues []string
+	add := func(ok bool, why string) {
+		if !ok {
+			issues = append(issues, why)
+		}
+	}
+	i := strings.Index(js, "function rotateWebSession()")
+	j := strings.Index(js, "function stopSessionRefresh()")
+	add(i >= 0 && j > i, "single-flight: rotateWebSession/stopSessionRefresh 缺失")
+	var rotate string
+	if i >= 0 && j > i {
+		rotate = js[i:j]
+	}
+	add(strings.Contains(rotate, "'/web/session/refresh'"), "endpoint: 未打刷新端点")
+	add(strings.Contains(rotate, "noReauth: true"), "401: 不该弹重新验证框，交给 api() 既有登出")
+	add(strings.Contains(rotate, "if (refreshInflight) return refreshInflight;"), "single-flight: 未复用在途请求")
+	add(strings.Contains(rotate, ".finally(() => { refreshInflight = null; });"), "single-flight: 未释放在途槽")
+	add(strings.Contains(rotate, ".catch(() => null)"), "silent: 409/断网失败未静默")
+
+	k := strings.Index(js, "function startSessionRefresh()")
+	l := strings.Index(js, "/* ---------- 应用注册表")
+	add(k >= 0 && l > k, "trigger: startSessionRefresh 缺失")
+	var starter string
+	if k >= 0 && l > k {
+		starter = js[k:l]
+	}
+	add(strings.Contains(starter, "void rotateWebSession();"), "trigger: 缺登录后立即一次")
+	add(strings.Contains(starter, "setInterval(() => void rotateWebSession(), 30 * 60 * 1000)"),
+		"30 分钟: 定时周期被改动或删除")
+	add(strings.Contains(starter, "visibilitychange") && strings.Contains(starter, "if (!document.hidden)"),
+		"trigger: 缺从隐藏变可见时触发")
+	add(strings.Contains(js, "if ($('.topbar')) startSessionRefresh();"), "trigger: 极简壳不该轮换")
+	add(strings.Count(js, "stopSessionRefresh(); await api('/web/logout'") >= 3,
+		"logout: 三处登出都要先停轮换，防 Set-Cookie 回灌")
+	return issues
+}
+
+func TestWebSessionRefreshRotationWiring(t *testing.T) {
+	js := mustJS(t)
+	if issues := refreshWiringIssues(js); len(issues) > 0 {
+		for _, issue := range issues {
+			t.Error(issue)
+		}
+	}
+	// 变异检验：判据必须能咬住「周期改短」和「去掉单飞」两种回归。
+	mutated := strings.Replace(js, "30 * 60 * 1000", "60 * 1000", 1)
+	if !issueHas(refreshWiringIssues(mutated), "30 分钟") {
+		t.Error("变异检验失效：把轮换周期改成 1 分钟竟没被钉住")
+	}
+	mutated = strings.Replace(js, "if (refreshInflight) return refreshInflight;", "", 1)
+	if !issueHas(refreshWiringIssues(mutated), "single-flight") {
+		t.Error("变异检验失效：删掉单飞竟没被钉住")
+	}
+}
+
+// 项目卡要直接列出 /admin/projects.admins（恒数组），并在卡内回收豁免；
+// 回收继续走既有 /admin/roles/{uid}/scope，不发明新端点，也不给 app-admin 出按钮。
+func TestAdminProjectAdminsInlineRevoke(t *testing.T) {
+	js := mustJS(t)
+	card := jsBlock(t, js, "function cardOf(p)", "/* ---- 豁免管理")
+	for _, want := range []string{
+		`data-admins`, `adminsEmpty.hidden = adminsEl.children.length > 0`,
+		`(p.admins || []).forEach`, `data-revoke-admin`,
+		"/admin/roles/${a.uid}/scope", `op: 'revoke'`,
+		`fadeOutRow(row, () => load())`,
+	} {
+		if !strings.Contains(card, want) {
+			t.Errorf("项目卡 admins 内联/回收缺 %q", want)
+		}
+	}
+	if strings.Count(card, "IS_SUPER") < 2 {
+		t.Error("回收豁免按钮应像豁免管理入口一样只对平台管理员渲染")
+	}
+	// 只钉回收这一条路径：卡里本来就有 /admin/projects/{app}/access|restrict，
+	// 不能把旧端点算成「新造」；admins 回收必须走 /admin/roles/{uid}/scope。
+	revokeRow := jsBlock(t, js, "function adminRow(a)", "function memberRow(email)")
+	if strings.Contains(revokeRow, "/admin/projects/") {
+		t.Error("admins 回收不该新造项目端点")
+	}
+	if strings.Count(revokeRow, "/admin/roles/${a.uid}/scope") != 1 {
+		t.Error("回收豁免应恰走一次 /admin/roles/{uid}/scope")
 	}
 }

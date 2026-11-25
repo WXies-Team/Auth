@@ -1,21 +1,27 @@
 {{define "content"}}
-<div class="login-shell">
+<h1 class="sr-only">登录 Auth</h1>
+<div class="auth-shell">
   <div class="brand-lg"><img class="ico" src="/favicon.svg" alt="" width="28" height="28"><span class="name">Auth</span></div>
 
   <div class="card" id="login-card">
+    <!-- 登录方式分段标签（WAI-ARIA tabs：方向键切换，自动激活） -->
     <div class="tabs" role="tablist" aria-label="登录方式" id="login-tabs">
-      <button type="button" class="tab" role="tab" id="tab-password" aria-selected="true" aria-controls="pane-password">用密码登录</button>
+      <button type="button" class="tab" role="tab" id="tab-password" aria-selected="true" aria-controls="pane-password">密码</button>
       <button type="button" class="tab" role="tab" id="tab-code" aria-selected="false" aria-controls="pane-code">邮箱验证码</button>
       <button type="button" class="tab" role="tab" id="tab-reset" aria-selected="false" aria-controls="pane-reset">找回密码</button>
     </div>
 
+    <!-- 拒绝态面板：登录被 403 拦下（封禁/项目策略）时按分级呈现原因与下一步，
+         由 app.js 注入；其余错误仍走各表单下方的行内 .err -->
+    <div class="denied-slot" id="login-denied" hidden></div>
+
     <!-- 密码登录（两步验证时原地换成单输入验证码——GitHub 式，「使用恢复码」
          链接原地切换语义，不摆第二个输入框） -->
-    <form id="pane-password" role="tabpanel" aria-labelledby="tab-password">
+    <form id="pane-password" role="tabpanel" aria-labelledby="tab-password" novalidate>
       <div id="step-password">
         <label class="field"><span>邮箱</span>
-          <!-- autocomplete 里的 webauthn 即「条件式 UI」的挂载点：浏览器把本机的
-         passkey 直接列进邮箱框的自动填充建议里，用户零点击选中即登录。 -->
+          <!-- autocomplete 里的 webauthn 即「条件式 UI」挂载点：浏览器把本机 passkey
+              直接列进邮箱框的自动填充建议，零点击选中即登录。 -->
           <input type="email" id="login-email" autocomplete="username webauthn" required>
         </label>
         <label class="field"><span>密码</span>
@@ -24,8 +30,6 @@
       </div>
       <div id="step-totp" class="hidden">
         <p class="hint" id="totp-intro">输入验证器上的 6 位验证码。</p>
-        <!-- W5：发码按钮内联到验证码框右侧（同一行 flex），不再独占一行；
-             隐藏显隐一律走 .hidden 类（.btn 是 author 级 inline-flex，hidden 属性盖不住） -->
         <div class="field">
           <label for="login-code-2fa" id="totp-label">两步验证码（6 位）</label>
           <div class="code-line">
@@ -33,7 +37,6 @@
             <button type="button" class="btn hidden" id="send-2fa-code">获取验证码</button>
           </div>
         </div>
-        <!-- 邮箱码模式专属：发码按钮随模式显隐 + 已发送提示 -->
         <p class="hint" id="totp-email-hint" hidden>查收邮箱，验证码 5 分钟内有效</p>
         <div class="row" style="gap:4px">
           <button type="button" class="btn ghost small" id="toggle-email">没带验证器？用邮箱验证码</button>
@@ -45,8 +48,8 @@
       <button type="submit" class="btn primary" id="login-submit" style="width:100%">登录</button>
     </form>
 
-    <!-- 邮箱验证码登录（W5：发码按钮内联到验证码框右侧） -->
-    <form id="pane-code" role="tabpanel" aria-labelledby="tab-code" class="hidden">
+    <!-- 邮箱验证码登录 -->
+    <form id="pane-code" role="tabpanel" aria-labelledby="tab-code" class="hidden" novalidate>
       <label class="field"><span>邮箱</span>
         <input type="email" id="code-email" autocomplete="username" required>
       </label>
@@ -62,8 +65,8 @@
       <button type="submit" class="btn primary" style="width:100%">登录</button>
     </form>
 
-    <!-- 找回密码（走已有的验证码重置端点；发码按钮同样内联） -->
-    <form id="pane-reset" role="tabpanel" aria-labelledby="tab-reset" class="hidden">
+    <!-- 找回密码（走已有的验证码重置端点） -->
+    <form id="pane-reset" role="tabpanel" aria-labelledby="tab-reset" class="hidden" novalidate>
       <label class="field"><span>注册邮箱</span>
         <input type="email" id="reset-email" autocomplete="username" required>
       </label>
@@ -75,36 +78,35 @@
         </div>
       </div>
       <label class="field"><span>新密码（至少 8 位）</span>
-        <input type="password" id="reset-password" autocomplete="new-password" required>
+        <input type="password" id="reset-password" autocomplete="new-password" minlength="8" required>
       </label>
       <p class="hint">重置后，其它设备全部退出登录。</p>
       <p class="err" id="reset-error" role="alert" hidden></p>
       <button type="submit" class="btn primary" style="width:100%">重置密码</button>
     </form>
 
-    <!-- 强制改密（W1）：登录回执 mustChangePassword=true 时顶替整个卡片——
-         密码登录把这一步输过的密码作为 oldPassword 带上；Passkey/验证码登录
-         没有密码可带，按放宽契约传空串。默认 .hidden（display:none !important） -->
-    <form id="step-force-pw" class="hidden" aria-labelledby="force-pw-title">
+    <!-- 强制改密：登录回执 mustChangePassword=true 时顶替整个卡片——密码登录把
+         这一步输过的密码作为 oldPassword 带上；Passkey/验证码登录没有密码可带，
+         按放宽契约传空串。默认 .hidden -->
+    <form id="step-force-pw" class="hidden" aria-labelledby="force-pw-title" novalidate>
       <h2 id="force-pw-title">请设置新密码</h2>
       <label class="field"><span>新密码（至少 8 位）</span>
-        <input type="password" id="force-pw-new" autocomplete="new-password" required>
+        <input type="password" id="force-pw-new" autocomplete="new-password" minlength="8" required>
       </label>
       <label class="field"><span>确认新密码</span>
-        <input type="password" id="force-pw-confirm" autocomplete="new-password" required>
+        <input type="password" id="force-pw-confirm" autocomplete="new-password" minlength="8" required>
       </label>
       <p class="err" id="force-pw-error" role="alert" hidden></p>
       <button type="submit" class="btn primary" id="force-pw-submit" style="width:100%">设置新密码并继续</button>
     </form>
 
-    <!-- .btn 是 author 级 display:inline-flex，UA 的 [hidden]{display:none} 被它盖掉——
-         Passkey 入口的显隐（含下面的分隔线）一律走 .hidden 类 -->
-    <div class="or hidden" id="passkey-sep">其它登录方式</div>
+    <!-- Passkey 入口显隐（含分隔线）一律走 .hidden 类（.btn 是 inline-flex，
+         UA 的 [hidden] 属性盖不住它） -->
+    <div class="or hidden" id="passkey-sep" style="text-align:center;color:var(--dim);font-size:13px;margin:14px 0 10px">其它登录方式</div>
     <button type="button" class="btn hidden" id="passkey-login" style="width:100%">{{icon "key-round"}} 使用 Passkey 登录</button>
     <p class="err" id="passkey-error" role="alert" hidden></p>
   </div>
 
-  <!-- 登录方式不再用一句居中灰字复述（那是页脚的形态，全站已删页脚）：
-       方式本身就写在上面的 tab 与 Passkey 按钮里，复述反而像页脚。 -->
+  <p class="auth-foot">登录遇到问题？发邮件到 support@horatio.cn</p>
 </div>
 {{end}}

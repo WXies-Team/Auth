@@ -1,47 +1,70 @@
-/* Auth 管理台样式 —— 零外链：无 CDN、无网络字体，字体走 MiSans 起手的系统栈。
-   设计令牌照 miuix 官方默认（与本仓邮件/日记站同一套）：
-     主色 #3482FF；浅色画布 #F7F7F7、卡片 #FFFFFF（圆角 16）、主文 #000（次文 60% 灰）、
-     分割线 #E0E0E0、次按钮 #F0F0F0/#303030、提示容器 #EAF2FF/#3482FF、error #E94634；
-     深色整套（prefers-color-scheme）：#000 / #242424 / #E6FFFFFF / #393939 / #434343 / #2B3B54。
-   字阶照 miuix：页面标题 32px **Normal 字重**（层次靠字号与颜色，不靠加粗）、
-   正文 16、说明 13~14；按钮圆角 16、高 ≥40（触控设备 44+）。
-   动效见文件末「动效系统」段：常规 easing cubic-bezier(.16,1,.3,1)、弹簧
-   cubic-bezier(.34,1.56,.64,1) 只给开关/底栏/侧栏的物理反馈；单段 150~250ms、
-   只动 transform/opacity（绝不碰 layout 属性）；reduced-motion 一刀切全关。 */
+/* Auth 管理台样式（2026-11 全量重写）——零外链：无 CDN、无网络字体，系统字体栈。
+   设计语言 = miuix 视觉规范 × Apple HIG：
+     · miuix：主色 #3482FF、画布 #F7F7F7、卡片纯填充 16 圆角无描边、4/8pt 间距梯度、
+       字阶 title1/2/4 + body2/footnote、克制动效（单一 easing + 时长梯度）、
+       窄屏浮动药丸底栏、分组行 border-top 分隔。
+     · Apple HIG：触控目标 ≥44px（--tap）、按压即时反馈（pointer-down 缩进）、
+       排版随字号调 tracking/leading、危险操作独立红区 + 手输确认、
+       状态不只靠颜色（徽标带文字/圆点）、reduced-motion 分级降级、
+       半透明只给浮动 chrome（顶栏/底栏/对话框），内容面一律实底保对比。
+
+   ================= 断点体系（mobile-first，判据写明） =================
+   出处：Tailwind/业界惯例断点 640/768/1024/1280（breakpoint token 表）；
+   表格→卡片以 768 为界（"below 768px render each row as a card"，Wingo UI /
+   Simon Willison 移动表格模式集）；侧栏 900 沿用本仓既有定案（rail 248px +
+   内容 880 的最小舒适宽度，与旧版测试/文档一致）。
+     · base（320–639px）手机竖屏：单列；顶栏 + 底部药丸 dock；对话框=底部抽屉
+       （bottom sheet，M3 compact 断点口径）；表格=卡片列表；触控目标全 ≥44。
+     · ≥640px（大屏手机横屏/小平板）：内容左右留白加大；工具条字段自动排 2 列
+       （auto-fit minmax）；对话框回到居中 modal。
+     · ≥767.98px 以下维持卡片化；≥768px（平板竖屏）：admin 表格恢复完整表格
+       （min-width 620 + .table-wrap 容器内横滚兜底——记录表选卡片、比较表选横滚，
+        本仓记录逐条读，故窄屏选卡片，理由见 ⑨ 节）。
+     · ≥900px：左侧固定 rail（顶栏/dock 隐藏），内容 880 居中。
+     · ≥1280px（桌面）：内容仍 880 居中不拉伸（max-width 上限，防超宽摊薄）；
+       grid2/工具条按容器宽度自然多列。
+   其它设备口径：横屏手机（短高度）收掉 auth 页顶部大留白；折叠屏展开态落在
+   640–900 区间走单列+顶栏，不出现横向溢出；软键盘由 interactive-widget=
+   resizes-content（viewport meta）+ 粗指针下输入聚焦即藏 dock（:has 规则）
+   + input scroll-margin 三件套兜住。
+
+   分区：
+     ① 令牌  ② 基础/无障碍  ③ 壳（rail/topbar/dock/content）  ④ 排版与通用件
+     ⑤ 卡片/分组行  ⑥ 按钮  ⑦ 表单  ⑧ 徽标/状态  ⑨ 表格与窄屏卡片化
+     ⑩ 列表行/头像  ⑪ 对话框/Toast  ⑫ 页面专属（登录/授权/危险区/二维码…）
+     ⑬ 详情面板/图表  ⑭ 动效系统 */
+
+/* ================= ① 设计令牌 ================= */
 :root {
-  /* ===== 设计令牌单一来源：新样式一律引用，不写裸 px ===== */
   /* 4/8pt 间距梯度 */
   --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
   --sp-5: 20px; --sp-6: 24px; --sp-7: 28px; --sp-8: 32px;
-  /* 圆角梯度（8/12/16/20/28 + 药丸）；--radius-ctl 与卡片同源，兼容既有选择器 */
+  /* 圆角梯度：卡片 16（miuix CardDefaults）、控件 16（miuix Button）、药丸 */
   --radius-xs: 8px;  --radius-sm: 12px; --radius-card: 16px;
   --radius-lg: 20px; --radius-xl: 28px; --radius-pill: 999px;
   --radius-ctl: 16px;
-  /* 五级语义表面（light；dark 对应值在下方媒体查询）：复用已校验明暗令牌，不另起色值 */
-  --background: #F7F7F7;                    /* L0 应用背景 */
-  --surface: var(--canvas);                 /* L1 通用面 */
-  --surface-container: var(--card);         /* L2 卡片 / 浮层面 */
-  --surface-container-high: var(--sub-bg);  /* L3 抬升面（次按钮、行 hover） */
-  --surface-variant: #E8E8E8;               /* L4 变体面（miuix surfaceContainerHigh） */
-  /* 字阶：字号 + 行高成对定义（层次靠字号/颜色，不靠加粗；零字体文件） */
+  /* 五级语义表面（light；dark 对在下方媒体查询） */
+  --background: #F7F7F7;
+  --surface: var(--canvas);
+  --surface-container: var(--card);
+  --surface-container-high: var(--sub-bg);
+  --surface-variant: #E8E8E8;
+  /* 字阶：字号 + 行高成对（层次靠字号/颜色，不靠加粗） */
   --font-title1: 32px;   --lh-title1: 1.2;
   --font-title2: 24px;   --lh-title2: 1.3;
   --font-title4: 15px;   --lh-title4: 1.4;
   --font-body2: 14px;    --lh-body2: 1.6;
   --font-footnote: 12px; --lh-footnote: 1.5;
-  /* 玻璃材质：顶栏 / 底栏 / 卡片 / 菜单 / 对话框 / 提示条分层，越高越不透明以保住文字对比。
-     所有 @supports not 分支统一退实底令牌，质感可以丢、可读性不能丢。 */
-  --glass-bg: rgba(247, 247, 247, .72);
-  --glass-float-bg: rgba(255, 255, 255, .62);
-  --glass-card-bg: rgba(255, 255, 255, .78);
-  --glass-menu-bg: rgba(255, 255, 255, .9);
-  --glass-dialog-bg: rgba(255, 255, 255, .94);
-  --glass-stroke: rgba(255, 255, 255, .45);
+  /* 玻璃材质：只给浮动 chrome（顶栏/底栏/对话框/菜单）。越高越不透明；
+     @supports not 分支统一退实底——质感可丢、可读性不丢。 */
+  --glass-bg: rgba(247, 247, 247, .78);
+  --glass-float-bg: rgba(255, 255, 255, .72);
+  --glass-menu-bg: rgba(255, 255, 255, .92);
+  --glass-dialog-bg: rgba(255, 255, 255, .96);
+  --glass-stroke: rgba(255, 255, 255, .5);
   --glass-bar-blur: 24px;
   --glass-bar-saturate: 1.6;
-  --glass-card-blur: 16px;
-  --glass-card-saturate: 1.4;
-  /* 语义面 / 反馈色：徽标容器、进度轨道、空态、Toast 全部走语义令牌，不写死色值 */
+  /* 语义面 / 反馈色 */
   --badge-bg: var(--surface-container-high);
   --badge-on-bg: var(--primary-soft);
   --progress-track: var(--surface-variant);
@@ -51,16 +74,13 @@
   --toast-ink: var(--canvas);
   --toast-bad-bg: var(--danger);
   --toast-bad-ink: #ffffff;
-  /* Switch 组件几何（弹簧滑块用） */
+  /* Switch 几何 */
   --switch-h: 26px; --switch-thumb: 20px; --switch-pad: 3px;
 
   --primary: #3482FF;
-  /* 承载文字的主色按「底要深、字要浅」拆成两个 token——一个值兼两职必然顾此失彼
-     （#2563EB 当深色文字压暗底只有 2.19:1）：
-     --primary-strong：按钮白字**底**（#2563EB 白字 5.17:1；miuix 原值 #3482FF
-     配白字仅 3.63:1，色相不变只加深）；
-     --primary-text：主色**文字**（浅 #1363D6 压淡底 #EAF2FF 4.93:1、画布 5.18:1）。
-     图标/描边/焦点环等非文字用途仍用 --primary，保住 miuix 的观感。 */
+  /* 承载文字的主色按「底要深、字要浅」拆两个 token（一个值兼两职必然顾此失彼）：
+     --primary-strong = 按钮白字底（#2563EB 白字 5.17:1）；
+     --primary-text   = 主色文字（压 --primary-soft 4.93:1、画布 5.18:1）。 */
   --primary-strong: #2563EB;
   --primary-text: #1363D6;
   --primary-ink: #ffffff;
@@ -70,26 +90,43 @@
   --outline: #D9D9D9;
   --ink: #000000;
   --dim: rgba(0, 0, 0, .6);
-  --line: #E0E0E0;          /* 装饰性分隔线/容器环（不承载语义，1.32:1 够用） */
-  --control-line: #8C8C8C;  /* 交互控件边框（WCAG 1.4.11 要求 ≥3:1，实测 3.36:1） */
-  --section-title: #5F6785;   /* miuix #8C93B0 只有 3.04:1，加深到 5.58:1 */
+  --line: #E0E0E0;          /* 装饰性分隔线（不承载语义） */
+  --control-line: #8C8C8C;  /* 交互控件边框 ≥3:1（WCAG 1.4.11） */
+  --section-title: #5F6785;
   --sub-bg: #F0F0F0;
   --sub-ink: #303030;
   --danger: #E94634;
   --danger-ink: #C93A2A;
   --danger-bg: rgba(233, 70, 52, .08);
-  --ok: #15803D;   /* 原 #1E9E5A 3.45:1，加深到 5.02:1 */
+  --ok: #15803D;
+  --warn-ink: #8A5A00;
+  --warn-bg: rgba(230, 180, 34, .16);
   --focus: #3482FF;
-  /* 动效令牌：常规过渡统一 easing（克制、收得住），时长梯度见文件末「动效系统」段 */
+  /* 动效令牌（单一来源，类比 miuix AnimSpec——全站动画只从这里取值）：
+     出处与档位依据：
+     · 单一 easing --ease（cubic-bezier(.16,1,.3,1)）= miuix 惯用收尾曲线，
+       起步快、尾部稳，与 M3 Standard set「start fast, settle slow」同向；
+       弹簧 --spring 只给物理反馈（Switch 滑块/导航按压），常规组件绝不回弹。
+     · 时长梯度按「动作面积 × 注意力」分档（Material 3 duration 分档 + NN/g
+       100–300ms 微交互区间 + Adamarant 功能动效清单）：
+       press 100ms —— 按压反馈是「一 session 按 30 次」的动作，必须 <150ms，
+                      且在 pointer-down 即响应（Apple: response kill latency）；
+       150ms      —— 微交互（颜色/焦点环/徽标）；
+       180ms      —— 区块切换、行退场（exit 比 enter 短：M3「退出用更短时长」）；
+       200ms      —— 入场、对话框（组件级状态变化 200–300ms 区间下沿）；
+       流程步 out 90ms + in 180ms（--dur-out/--dur-2）由 app.js flowSwap 串成
+       ≤300ms 的连续过渡——登录↔两步验证↔强制改密不瞬变、不闪。
+     · 只动 transform/opacity（compositor 线程，不触发重排）；动画绝不拦截交互。 */
   --ease: cubic-bezier(.16, 1, .3, 1);
-  /* 弹簧曲线：只给「物理反馈」用（Switch 滑块 / 底栏 / 侧栏按压回弹），其余一律 --ease */
   --spring: cubic-bezier(.34, 1.56, .64, 1);
-  --dur-1: 150ms;   /* 微交互：按压、颜色、焦点环 */
-  --dur-2: 180ms;   /* 区块切换、行退场 */
-  --dur-3: 200ms;   /* 入场、对话框 */
+  --dur-press: 100ms;  /* 按压反馈（pointer-down 即时） */
+  --dur-out: 90ms;     /* 流程步退场（比进场短，M3 exit 口径） */
+  --dur-1: 150ms;      /* 微交互：按压、颜色、焦点环 */
+  --dur-2: 180ms;      /* 区块切换、行退场 */
+  --dur-3: 200ms;      /* 入场、对话框 */
   --shadow-1: 0 1px 2px rgba(0, 0, 0, .04), 0 4px 14px rgba(0, 0, 0, .06);
   --shadow-2: 0 2px 6px rgba(0, 0, 0, .06), 0 10px 28px rgba(0, 0, 0, .08);
-  --tap: 44px;            /* 控件下限：miuix MinHeight 40dp 与网页无障碍 44px 取更严 */
+  --tap: 44px;            /* 触控目标下限（HIG 44pt / WCAG 2.5.5） */
   --gap: 16px;
   --pad-x: max(16px, env(safe-area-inset-left));
   --pad-r: max(16px, env(safe-area-inset-right));
@@ -100,17 +137,17 @@
 @media (prefers-color-scheme: dark) {
   :root {
     --primary: #277AF7;
-    --primary-strong: #2563EB;   /* 按钮底暗色同值：#277AF7 配白字 4.03:1 仍不够 */
-    --primary-text: #7CB0FF;     /* 文字要浅：压 #2B3B54 5.12:1、卡 #242424 7.03:1（同 --focus） */
+    --primary-strong: #2563EB;
+    --primary-text: #7CB0FF;
     --primary-ink: #ffffff;
     --primary-soft: #2B3B54;
     --canvas: #000000;
     --card: #242424;
     --outline: #404040;
-    --ink: #E6FFFFFF;          /* #FFFFFF 90% */
+    --ink: #E6FFFFFF;
     --dim: rgba(255, 255, 255, .6);
     --line: #393939;
-    --control-line: #787878;   /* 暗色下 3.52:1 */
+    --control-line: #787878;
     --section-title: #787E96;
     --sub-bg: #434343;
     --sub-ink: #E6FFFFFF;
@@ -118,23 +155,23 @@
     --danger-ink: #FF8B7C;
     --danger-bg: rgba(233, 70, 52, .16);
     --ok: #7EE0A6;
+    --warn-ink: #FFCF70;
+    --warn-bg: rgba(230, 180, 34, .18);
     --focus: #7CB0FF;
-    /* 五级表面 / 玻璃的暗色对（其余 L0~L3 由 canvas/card/sub-bg 暗值自动继承） */
     --background: #000000;
     --surface-variant: #2D2D2D;
-    --glass-bg: rgba(0, 0, 0, .6);
-    --glass-float-bg: rgba(38, 38, 38, .58);
-    --glass-card-bg: rgba(36, 36, 36, .78);
-    --glass-menu-bg: rgba(32, 32, 32, .9);
-    --glass-dialog-bg: rgba(28, 28, 28, .94);
+    --glass-bg: rgba(0, 0, 0, .66);
+    --glass-float-bg: rgba(38, 38, 38, .66);
+    --glass-menu-bg: rgba(32, 32, 32, .94);
+    --glass-dialog-bg: rgba(28, 28, 28, .97);
     --glass-stroke: rgba(255, 255, 255, .1);
   }
 }
 
+/* ================= ② 基础与无障碍 ================= */
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
-/* sticky 顶栏不遮挡锚点与焦点目标（WCAG 2.4.11）：跳到主要内容 / Tab 聚焦时
-   上方留出一栏高度，标题不会被吸顶栏压住。 */
+/* sticky chrome 不遮锚点与焦点目标（WCAG 2.4.11） */
 html { scroll-padding-top: 72px; }
 body {
   background: var(--canvas);
@@ -144,27 +181,33 @@ body {
   min-height: 100vh;
 }
 .dim { color: var(--dim); }
-.mono { font-family: var(--mono); }
-code { font-family: var(--mono); }
+.mono, code { font-family: var(--mono); }
 
 .skip {
   position: absolute; left: -9999px; top: 0;
   background: var(--primary); color: var(--primary-ink);
-  padding: 8px 12px; border-radius: 0 0 8px 0; z-index: 20;
+  padding: 8px 12px; border-radius: 0 0 8px 0; z-index: 60;
 }
 .skip:focus { left: 0; }
-
 .sr-only {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+a, button, input, select, textarea {
+  transition: outline-color var(--dur-1) var(--ease), outline-offset var(--dur-1) var(--ease);
+}
+.ico { width: 18px; height: 18px; flex: none; vertical-align: middle; }
 
-/* ---- 顶栏（常驻；登录页 Minimal 壳不渲染）---- */
-/* 玻璃材质：系统模糊 + 增饱和；半透明底只作为模糊生效时的叠加，透明度收在
-   28%（亮）/40%（暗）以内以保住顶栏文字对比。不支持 backdrop-filter 的老浏览器
-   由下方 @supports not 退回实底——可读性优先于质感。 */
+/* ================= ③ 壳：rail（宽屏）/ topbar+dock（窄屏） ================= */
+/* mobile-first：默认窄屏形态（顶栏 + 底部药丸导航），≥900px 换左侧 rail。
+   .dock 必须在任何 backdrop-filter 祖先之外——filter 会成为 fixed 的包含块，
+   留在玻璃容器内会被钉到页面顶部。 */
+.app { min-height: 100vh; }
+
+/* —— 窄屏顶栏：玻璃、常驻 —— */
 .topbar {
-  position: sticky; top: 0; z-index: 10;
+  position: sticky; top: 0; z-index: 30;
   background: var(--glass-bg);
   -webkit-backdrop-filter: blur(var(--glass-bar-blur)) saturate(var(--glass-bar-saturate));
   backdrop-filter: blur(var(--glass-bar-blur)) saturate(var(--glass-bar-saturate));
@@ -178,118 +221,96 @@ code { font-family: var(--mono); }
 .brand {
   display: inline-flex; align-items: center; gap: 8px; flex: none;
   text-decoration: none; color: var(--ink); font-size: 17px; font-weight: 500;
-  vertical-align: middle;
+  vertical-align: middle; min-height: var(--tap);
 }
-/* 顶栏品牌区 = favicon.svg 同款裸蓝矢量（无底）。vertical-align 是**兜底**：
-   inline-flex 盒子会按最后一个子项的基线对齐，img 没有文字基线 → 整块下坠 2~4px；
-   两处实际都在 flex 容器里由 align-items:center 兜住，这里再钉一道保险。 */
-.brand-mark { display: inline-flex; align-items: center; width: 28px; height: 28px; color: var(--primary); vertical-align: middle; }
+.brand-mark {
+  display: inline-flex; align-items: center; width: 28px; height: 28px;
+  color: var(--primary); vertical-align: middle;
+}
 .brand-mark img { display: block; width: 28px; height: 28px; }
-.topnav { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; min-width: 0; }
-/* 窄屏顶栏：管理入口 + 项目切换 + 账号胶囊曾被 flex-wrap 拆成**三行**，把首屏
-   顶栏撑得很高。改成单行不折、内部横滚——高度收住，功能一个不丢。 */
+.topbar-actions {
+  display: flex; align-items: center; gap: 8px; flex-wrap: nowrap;
+  min-width: 0;
+}
+/* 窄屏顶栏动作区单行不折、内部横滚（flex-start：溢出时最左项仍可滚到） */
 @media (max-width: 640px) {
-  .topbar-in { flex-wrap: nowrap; }
-  .topnav {
-    flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain;
+  .topbar-actions {
+    overflow-x: auto; overscroll-behavior-x: contain;
     -webkit-overflow-scrolling: touch; scrollbar-width: none;
-    /* 必须 flex-start：保留桌面的 flex-end 时，内容一溢出就往**左**跑，
-       最左的「管理后台」按钮被裁在容器外且滚不到（实测 375px 下 left:-37px）。 */
-    justify-content: flex-start;
-    padding-bottom: 2px;
+    justify-content: flex-start; padding-bottom: 2px;
   }
-  .topnav::-webkit-scrollbar { display: none; }
-  .topnav > * { flex: none; }
-  .acct { max-width: 60%; }
-  .acct-email { max-width: 30vw; }
+  .topbar-actions::-webkit-scrollbar { display: none; }
+  .topbar-actions > * { flex: none; }
 }
 
-/* 账号胶囊：邮箱 + 档案头像色点（无头像时用邮箱首字母占位，JS 可再按档案上色） */
-/* 圆角描边统一走 box-shadow 内环而非 border：border 曲线抗锯齿差是圆角锯齿感
-   的主因，box-shadow 环是平滑的（背景裁进 padding-box，防弧线外漏底色渗边）。
-   border 退役后 border-box 内容区各向大 1px，固定高度的控件用 padding +1px 补偿。 */
+/* —— 账号胶囊（顶栏窄屏 / rail 底部宽屏共用同一份标记） —— */
 .acct {
   display: inline-flex; align-items: center; gap: 8px;
   min-height: 36px; padding: 5px 13px 5px 7px;
   border-radius: 999px; background: var(--card); background-clip: padding-box;
-  border: none; box-shadow: inset 0 0 0 1px var(--line);
+  box-shadow: inset 0 0 0 1px var(--line);
   max-width: 100%; min-width: 0;
 }
 .avatar {
   display: inline-flex; align-items: center; justify-content: center; flex: none;
   width: 24px; height: 24px; border-radius: 50%;
-  /* 底色与首字墨色由各渲染点成对注入（Go ui.avatarInkFor / JS avatarInk，按亮度择
-     黑/白）——这里**不写死白墨**：白墨对 8 色色板实测只有 1.92~4.49:1，全数低于
-     4.5:1 正文线（实测表见 ui.go avatarInkFor 注释）。兜底黑墨：默认底 --primary
-     下黑 5.78:1 > 白 3.63:1，且对 8 色色板黑墨全部 ≥4.5——漏注入也不掉线。 */
+  /* 底色与首字墨色由渲染点成对注入（Go avatarInkFor / JS avatarInk，按亮度择黑/白），
+     这里不写死白墨——白墨对 8 色色板全数 <4.5:1。兜底黑墨全达标。 */
   background: var(--primary); color: #000000;
   font-size: 12px; font-weight: 500; line-height: 1;
-  overflow: hidden;   /* 档案头像图裁进圆圈，不破形 */
+  overflow: hidden;
 }
 .avatar img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.acct-email { font-size: 13px; color: var(--dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acct-name {
+  font-size: 13px; color: var(--dim); overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap;
+}
 
-/* 项目切换器（W2）：后台数据页的 app 过滤器，写 ?app= 进 URL 刷新保持。
-   视觉沿用既有令牌（--card 底 / --radius-ctl 圆角），动效只用 transition
-   （--dur-1 + --ease），不新增 keyframe——不给动效门禁添新扫描面。
-   分段控件形态：选中项 primary-soft 底 + aria-current，未选中 hover 抬到 card 底。 */
-.app-switch {
-  display: inline-flex; align-items: center; gap: 2px; flex: none;
-  padding: 4px; border-radius: var(--radius-ctl);
-  background: var(--card); background-clip: padding-box;
-  border: none; box-shadow: inset 0 0 0 1px var(--line);
-  max-width: 100%; overflow-x: auto;
+/* —— 宽屏左侧 rail —— */
+.rail { display: none; }
+@media (min-width: 900px) {
+  .app {
+    display: grid;
+    grid-template-columns: 248px minmax(0, 1fr);
+    align-items: start;
+  }
+  .topbar { display: none; }
+  .dock { display: none !important; }
+  .rail {
+    display: flex; flex-direction: column; gap: var(--sp-4);
+    position: sticky; top: 0; height: 100vh;
+    padding: var(--sp-5) var(--sp-4) calc(var(--sp-5) + env(safe-area-inset-bottom));
+    border-right: 1px solid var(--line);
+    overflow-y: auto;
+  }
+  .rail-nav { display: grid; gap: 2px; }
+  .rail-label {
+    font-size: var(--font-footnote); font-weight: 700; color: var(--section-title);
+    letter-spacing: .3px; margin: var(--sp-4) 0 var(--sp-1); padding: 0 12px;
+  }
+  .rail-label:first-child { margin-top: 0; }
+  .rail-foot { margin-top: auto; display: grid; gap: var(--sp-2); }
+  .rail .acct { max-width: 100%; }
+  .rail .acct-name { max-width: 150px; }
 }
-.app-chip {
-  display: inline-flex; align-items: center; flex: none;
-  min-height: 28px; padding: 0 10px; border-radius: calc(var(--radius-ctl) - 4px);
-  font-size: 13px; color: var(--dim); text-decoration: none; white-space: nowrap;
-  transition: background-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
-}
-.app-chip:hover { color: var(--ink); }
-.app-chip.on { background: var(--primary-soft); color: var(--primary-text); font-weight: 500; }
-/* W8② 按压反馈统一：分段 chip 与 .btn/.tab 同款「按下轻微缩进」（只 transform，
-   reduced-motion 由文件末尾一刀切撤掉）——之前点它是「无反应」，和全站不一致。 */
-.app-chip:active { transform: scale(.97); }
-/* 分段控件里的按钮形态（项目访问页的范围开关、用户详情的重置方式切换）：
-   沿用 app-chip 同一套令牌，只剥掉 UA 按钮的默认底与边框 */
-button.app-chip { background: transparent; border: 0; font: inherit; cursor: pointer; }
 
-/* ---- 壳：≥900px 左侧分区导航 + 右侧内容（容器 880 居中）；窄屏导航变横向滚动 tab 行 ---- */
-.shell {
-  display: flex; align-items: flex-start; gap: var(--sp-6);
-  width: 100%; padding: 0 var(--pad-r) 0 var(--pad-x);
+/* 导航项：rail 与 dock 复用同一份标记，形态由选择器分叉 */
+.nav-item {
+  display: inline-flex; align-items: center; gap: 10px;
+  min-height: var(--tap); padding: 0 12px; border-radius: var(--radius-ctl);
+  color: var(--dim); text-decoration: none; font-size: 15px;
+  transition: background-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease),
+              transform var(--dur-1) var(--spring);
 }
-.sidenav { display: none; }
-.content {
-  flex: 1 1 auto; min-width: 0;
-  width: 100%; max-width: 880px; margin: 0 auto;
-  padding: var(--sp-5) 0 var(--sp-8);
-  display: grid; gap: var(--gap);
-  align-content: start;
-}
-/* 网格子项默认 min-width:auto——内容（如表格 min-width）会把整页撑横滚。
-   一律压回 0：横滚只许发生在 .table-wrap 这类专职滚动盒里（W8①）。 */
-.content > * { min-width: 0; }
+.nav-item:hover { background: var(--card); color: var(--ink); }
+.nav-item.on { color: var(--primary-text); background: var(--primary-soft); font-weight: 500; }
 
-/* 窄屏：分区导航折叠成顶栏下的横向滚动 tab 行（不依赖 JS，display:none 切换最稳） */
-/* 窄屏底栏 = 悬浮玻璃胶囊（复刻两个日记 App 的液态玻璃底栏；宽屏由
-   min-width:900px 的规则切回侧栏）。backdrop 只糊这一条窄带，代价可忽略；
-   不支持 backdrop-filter 的老浏览器退化成半透明实底，读得清。 */
-/* 窄屏底栏 = miuix FloatingNavigationBar（药丸）。
-   几何逐值取自 miuix 源码 NavigationBar.kt 的 FloatingNavigationBarDefaults：
-     CornerRadius 50dp（药丸）、HorizontalOutSidePadding 36dp、HorizontalPadding 12dp、
-     ItemSpacing 12dp、IconSize 28/26dp、IconPadding 10dp、BottomPadding 8dp、
-     ShadowElevation 1dp；**未选中项 = 同色 × 40% 透明度、选中项全不透明**
-     （UnselectedAlpha 0.4 / SelectedPressedAlpha 0.5），不是给选中项加底色块。
-   背景走玻璃（网页浮层惯例，两个日记 App 同款），不支持 backdrop-filter 时退化实底。 */
-.tabnav {
+/* —— 底部浮动药丸导航（窄屏，miuix FloatingNavigationBar） ——
+   居中**不写 transform**：入场动画的 rise-in 关键帧带 transform:translateY，
+   会整个覆盖 left:50%+translateX 的居中 → 动画结束瞬间横跳。用
+   left/right:0 + margin-inline:auto 让 transform 完全让给动画。 */
+.dock {
   position: fixed; z-index: 40;
-  /* 居中**不用 transform**：旧写法 left:50% + translateX(-50%) 会被入场动画的
-     rise-in 关键帧（transform: translateY(...)）整个覆盖 —— 动画期间胶囊没有
-     水平位移、停在右半边，动画一结束再瞬间弹回正中，实测中心从 352px 跳到
-     195px（位移 157px）。这就是「底栏乱飞」。改成 left/right:0 + margin:auto
-     让 transform 完全让给动画。 */
   left: 0; right: 0; margin-inline: auto;
   width: fit-content; max-width: calc(100vw - 24px);
   bottom: max(10px, env(safe-area-inset-bottom));
@@ -299,129 +320,173 @@ button.app-chip { background: transparent; border: 0; font: inherit; cursor: poi
   background: var(--glass-float-bg);
   -webkit-backdrop-filter: blur(var(--glass-bar-blur)) saturate(var(--glass-bar-saturate));
   backdrop-filter: blur(var(--glass-bar-blur)) saturate(var(--glass-bar-saturate));
-  /* 玻璃边高光（外）+ 轻投影（上浮感）；暗色换成内侧白环（走令牌） */
   box-shadow: 0 6px 22px rgba(0, 0, 0, .14), inset 0 0 0 1px var(--glass-stroke);
   transform-origin: center bottom;
 }
 @media (prefers-color-scheme: dark) {
-  .tabnav {
-    background: var(--glass-float-bg);
-    box-shadow: 0 6px 22px rgba(0, 0, 0, .4), inset 0 0 0 1px var(--glass-stroke);
-  }
+  .dock { box-shadow: 0 6px 22px rgba(0, 0, 0, .4), inset 0 0 0 1px var(--glass-stroke); }
 }
-/* 无玻璃能力时全部退实底：顶栏画布色，其余 surfaceContainer/卡片色。
-   质感可以丢，文字对比与组件边界一点不打折。 */
+.dock::-webkit-scrollbar { display: none; }
+.dock .nav-item {
+  /* 后台 6 项会超 390 视口：项均分宽度而不是溢出横滚（固定浮层上横滚难点难发现）；
+     min-width 钉 44 —— 实测 375px 下内容撑出的项只有 43px，差 1px 不够触控。 */
+  flex: 1 1 auto; min-width: var(--tap);
+  flex-direction: column; justify-content: center; gap: 2px;
+  padding: 6px 10px; border-radius: 20px;
+  font-size: 11px; line-height: 1.1;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.dock .nav-item .ico { width: 26px; height: 26px; }   /* miuix IconSize 26dp */
+/* miuix UnselectedAlpha 0.4：未选中同色 ×40%，选中全不透明（不是加底色块） */
+.dock .nav-item { color: var(--ink); opacity: .4; }
+.dock .nav-item.on { opacity: 1; background: transparent; font-weight: 500; }
+.dock .nav-item:hover { background: transparent; opacity: .7; }
+.dock .nav-item.on:hover { opacity: 1; }
+.dock .nav-item:active { transform: scale(.92); transition-duration: 0s; }
+/* 软键盘弹出时让路：触屏（粗指针）上输入获得焦点即藏底部 dock——软键盘收缩
+   visualViewport 后会盖住 fixed 底栏，被聚焦的字段需要那块空间（visualViewport
+   口径：fixed 元素锚定 layout viewport，键盘只缩 visual viewport）。 */
+@media (pointer: coarse) {
+  body:has(input:focus, textarea:focus) .dock { display: none !important; }
+}
+
+/* —— 内容区 —— */
+.content {
+  width: 100%; max-width: 880px; margin: 0 auto;
+  padding: var(--sp-5) var(--pad-r) 96px var(--pad-x);
+  display: grid; gap: var(--gap);
+  align-content: start;
+}
+/* 网格子项默认 min-width:auto——表格等宽内容会把整页撑横滚，一律压回 0：
+   横滚只许发生在 .table-wrap 这类专职滚动盒里 */
+.content > * { min-width: 0; }
+@media (min-width: 900px) {
+  .content { padding: var(--sp-7) var(--sp-6) var(--sp-8); }
+}
+
+/* 玻璃兜底：无 backdrop-filter 能力时 chrome 退实底（质感可丢，对比不丢） */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .topbar { background: var(--canvas); }
-  .tabnav { background: var(--surface-container); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-2); }
-  .card, .toolbar, .detail { background: var(--card); }
-  .select-menu { background: var(--card); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-2); }
+  .dock { background: var(--surface-container); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-2); }
   .dlg { background: var(--card); }
+  .select-menu { background: var(--card); box-shadow: inset 0 0 0 1px var(--line), var(--shadow-2); }
   .toast { background: var(--ink); }
   .toast.bad { background: var(--danger); }
 }
-.tabnav::-webkit-scrollbar { display: none; }
-.tabnav .nav-item {
-  /* 后台 6 项时整条会超 390 视口：让项**均分宽度**而不是溢出后靠横滚找（横滚在
-     固定浮层上既难点中又难发现）。min-width 钉在 44——实测 375px 下内容撑出的项
-     只有 43px 宽，差 1px 就够不着「触控目标 ≥44」；文案不换行、超长才截断。 */
-  flex: 1 1 auto; min-width: var(--tap);
-  flex-direction: column; justify-content: center; gap: 2px;
-  padding: 6px 10px;
-  border-radius: 20px; font-size: 11px; line-height: 1.1;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.tabnav .nav-item .ico { width: 26px; height: 26px; }   /* miuix IconSize 26dp */
-/* miuix：未选中项是同色 ×40% alpha，选中项恢复全不透明（不是加底色块） */
-.tabnav .nav-item { color: var(--ink); opacity: .4; }
-.tabnav .nav-item.on { opacity: 1; background: transparent; font-weight: 500; }
-.tabnav .nav-item:hover { background: transparent; opacity: .7; }
-.tabnav .nav-item.on:hover { opacity: 1; }
-.tabnav .nav-item:active { transform: scale(.92); transition-duration: 0s; }
-/* 内容给底栏让位：最后一张卡不被胶囊压住 */
-@media (max-width: 899.98px) { main.content { padding-bottom: 88px; } }
 
-.nav-item {
-  display: inline-flex; align-items: center; gap: 6px;
-  min-height: var(--tap); padding: 0 12px; border-radius: var(--radius-ctl);
-  color: var(--dim); text-decoration: none; font-size: 15px;
-  transition: background-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease),
-              transform var(--dur-1) var(--spring);
+/* 项目切换器：放进内容区（筛选贴着它过滤的数据，不跟顶栏抢位置） */
+.scope-bar { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+.app-switch {
+  display: inline-flex; align-items: center; gap: 2px; flex: none;
+  padding: 4px; border-radius: var(--radius-ctl);
+  background: var(--card); background-clip: padding-box;
+  box-shadow: inset 0 0 0 1px var(--line);
+  max-width: 100%; overflow-x: auto;
 }
-.nav-item:hover { background: var(--card); color: var(--ink); }
-.nav-item.on { color: var(--primary-text); background: var(--primary-soft); font-weight: 500; }
+.app-chip {
+  display: inline-flex; align-items: center; flex: none;
+  min-height: 32px; padding: 0 12px; border-radius: calc(var(--radius-ctl) - 4px);
+  font-size: 13px; color: var(--dim); text-decoration: none; white-space: nowrap;
+  transition: background-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease);
+}
+.app-chip:hover { color: var(--ink); }
+.app-chip.on { background: var(--primary-soft); color: var(--primary-text); font-weight: 500; }
+.app-chip:active { transform: scale(.97); }
+button.app-chip { background: transparent; border: 0; font: inherit; cursor: pointer; }
 
-@media (min-width: 900px) {
-  .tabnav { display: none; }
-  .sidenav {
-    display: grid; gap: 2px; flex: 0 0 220px; width: 220px;
-    position: sticky; top: calc(56px + env(safe-area-inset-top));
-    padding: 20px 0;
-  }
-  .content { padding-top: 24px; }
+/* ================= ④ 排版与通用件 ================= */
+.page-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: var(--sp-3); flex-wrap: wrap;
 }
-
-/* ---- 结构 ---- */
-/* 页面头 = miuix TopAppBar 的「大标题」态：title1 32 **Normal 字重**（层次靠字号，
-   不靠加粗），副标 body2 14 走 onSurfaceVariantSummary 60% 墨。折叠到 20（title3）
-   是滚动时的形态，网页无折叠行为，固定用大标题。 */
-.page-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-.page-head h1 { font-size: var(--font-title1); font-weight: 400; margin: 0; letter-spacing: .2px; line-height: var(--lh-title1); }
-.page-head .sub { flex-basis: 100%; margin: var(--sp-1) 0 0; font-size: var(--font-body2); line-height: var(--lh-body2); color: var(--dim); }
-
-/* 折叠区（后台用户页的邀请记录）：卡片同款白面 + 内环，summary 即折叠把手。
-   不给 .card 加 details——.card 带 hover 抬升与自身 padding，语义混在一起。 */
-details.section {
-  background: var(--card);
-  border-radius: var(--radius-card); padding: 14px 16px; margin-top: 16px;
+.page-head h1 {
+  font-size: var(--font-title1); font-weight: 400; margin: 0;
+  letter-spacing: -.01em; line-height: var(--lh-title1);
 }
-details.section > summary { cursor: pointer; font-weight: 500; }
-/* ---- 卡片（miuix：白卡 + 16 圆角，落在 #F7F7F7 画布上）---- */
-.card {
-  /* miuix Card（CardDefaults）：surfaceContainer 纯填充 + 16 圆角，**没有描边**。
-     卡片与画布靠 color 差分离（#FFF 卡 / #F7F7F7 画布）——此前用 box-shadow:inset
-     画环是全站圆角异常与「行选中变黑后描边消失」的总根因：inset 阴影画在**子元素
-     背景之下**，任何触到卡片边缘的背景（表格行 hover、选中 chip、按钮）都会把它
-     盖掉，圆角那条线随之断裂。改成纯填充后没有环可被盖，圆角恒完整。 */
-  background: var(--glass-card-bg);
-  border-radius: var(--radius-card);
-  padding: var(--sp-5);
-  /* 0.9.5 GlassPage：卡片面 = 五级表面里的 surfaceContainer 半透明玻璃。
-     backdrop-filter 会造层叠上下文，故 hover/focus-within 抬 z-index，
-     保证卡内的下拉菜单盖得住后续卡片（不靠 clip-path 裁圆角，阴影/焦点环不破）。 */
-  position: relative;
-  -webkit-backdrop-filter: blur(var(--glass-card-blur)) saturate(var(--glass-card-saturate));
-  backdrop-filter: blur(var(--glass-card-blur)) saturate(var(--glass-card-saturate));
+.page-head .sub {
+  flex-basis: 100%; margin: var(--sp-1) 0 0;
+  font-size: var(--font-body2); line-height: var(--lh-body2); color: var(--dim);
 }
-.card:hover, .card:focus-within { z-index: 2; }
-.card h2 { font-size: 17px; font-weight: 500; margin: 0 0 var(--sp-1); }
-.card h3 { font-size: var(--font-title4); font-weight: 500; margin: var(--sp-4) 0 var(--sp-2); }
-.card p { margin: var(--sp-2) 0; }
-.card .hint, .hint { color: var(--dim); font-size: 13px; }
+.page-actions { display: flex; gap: var(--sp-2); flex-wrap: wrap; align-items: center; }
+@media (max-width: 640px) {
+  .page-head h1 { font-size: 26px; }
+}
+.section-title {
+  font-size: var(--font-body2); font-weight: 700; color: var(--section-title);
+  margin: var(--sp-5) 0 var(--sp-2); padding: 0 12px; letter-spacing: .2px;
+}
+.section-title:first-child { margin-top: 0; }
+.hint, .card .hint { color: var(--dim); font-size: 13px; }
 p.hint { margin: 6px 0; }
+.err { color: var(--danger-ink); font-size: 13px; margin: 6px 0; }
+/* Caps Lock 提示：警示色但非错误色（状态提示，不是报错）。
+   选择器要压过 `.field > span`（0,1,1）——两个类的 (0,2,0) 才拿得到颜色。 */
+.hint.caps-hint { color: var(--warn-ink); }
+/* 错误出现即带一段 4px 上浮（hidden→显示的瞬变会「跳一下」）；消失仍由 hidden
+   直接收起——错误离场不需要读，快即是礼貌（M3：exit 比 enter 短）。 */
+.err:not([hidden]) { animation: rise-in-sm var(--dur-2) var(--ease); }
+.ok-note { color: var(--ok); font-size: 13px; margin: 6px 0; }
+.row { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }
+.row.end { justify-content: flex-end; }
+.row.between { justify-content: space-between; }
+.grow { flex: 1 1 auto; min-width: 0; }
+.stack { display: grid; gap: var(--sp-3); }
+.grid2 {
+  display: grid; gap: var(--sp-3);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+}
 
-/* 提示容器（验证码/信息卡同款：浅蓝底 + 主色字） */
+/* 提示容器（浅蓝底 + 主色字） */
 .hint-box {
   background: var(--primary-soft); color: var(--primary-text);
   border-radius: var(--radius-card); padding: 14px 16px;
   font-size: var(--font-body2); margin: 0;
 }
 .hint-box a { color: inherit; }
-/* 授权同意页的权限清单：逐条列出，不用逗号串成一行（可被逐项核对） */
-.scope-list { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 4px; }
-.scope-list li { font-size: var(--font-body2); }
-/* 授权页「谁在请求」：请求方品牌与 Auth 身份外壳分开，避免把授权误认成登录 */
-.req-app { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
-.req-app img { border-radius: 8px; }
-.req-app-label { display: block; font-size: 12px; color: var(--dim); }
-.req-app strong { font-size: 17px; font-weight: 500; }
 @media (prefers-color-scheme: dark) { .hint-box { color: var(--ink); } }
 
-/* 危险操作区（注销账号）：error 描边 + 淡底，与常规设置视觉隔离 */
+/* ================= ⑤ 卡片与分组行 ================= */
+/* miuix Card：surfaceContainer 纯填充 + 16 圆角，**无描边无阴影**——卡片与画布靠
+   color 差分离。inset 阴影画在子元素背景之下，行 hover/选中一触就盖掉圆角线，
+   故分隔一律用 border（画在自身背景之上）。 */
+.card {
+  background: var(--card);
+  border-radius: var(--radius-card);
+  padding: var(--sp-5);
+  position: relative;
+}
+.card h2 { font-size: 17px; font-weight: 500; margin: 0 0 var(--sp-1); }
+.card h3 { font-size: var(--font-title4); font-weight: 500; margin: var(--sp-4) 0 var(--sp-2); }
+.card p { margin: var(--sp-2) 0; }
+
+/* 分组（SettingsPage 标准结构：section-title + group + item 行） */
+.group {
+  background: var(--card);
+  border-radius: var(--radius-card);
+  overflow: hidden;            /* 行 hover 背景裁进圆角 */
+}
+.group > .item + .item { border-top: 1px solid var(--line); }
+.sep { border: 0; border-top: 1px solid var(--line); margin: 0 16px; }
+
+details.section {
+  background: var(--card);
+  border-radius: var(--radius-card); padding: 14px 16px;
+}
+details.section > summary {
+  cursor: pointer; font-weight: 500; list-style: none;
+  display: flex; align-items: center; gap: 8px; min-height: 32px;
+}
+details.section > summary::-webkit-details-marker { display: none; }
+details.section > summary::after {
+  content: ""; width: 8px; height: 8px; margin-left: auto;
+  border-right: 2px solid var(--dim); border-bottom: 2px solid var(--dim);
+  transform: rotate(45deg); transition: transform var(--dur-2) var(--ease);
+}
+details.section[open] > summary::after { transform: rotate(225deg); }
+
+/* 危险操作区（注销账号）：error 描边 + 淡底，与常规设置视觉隔离。
+   用真 border 而非 inset 阴影：border 画在自身背景之上，区内按钮盖不掉它。 */
 .danger-zone {
-  /* 危险区与常规卡片**必须视觉隔离**（危险操作不能看起来像普通设置）。卡片已无环，
-     这里保留一圈 error 描边——但用真 border 而非 inset 阴影：border 画在自身背景
-     之上，区内的按钮背景盖不掉它。 */
   background: var(--danger-bg);
   border: 1px solid var(--danger);
   border-radius: var(--radius-card); padding: 20px;
@@ -429,24 +494,55 @@ p.hint { margin: 6px 0; }
 .danger-zone h2 { font-size: 17px; font-weight: 500; margin: 0 0 4px; color: var(--danger-ink); }
 .danger-zone .hint { color: var(--ink); opacity: .72; }
 
-.row { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; }
-.row.end { justify-content: flex-end; }
-.row.between { justify-content: space-between; }
-/* .grow 在 .item 之外也要成立（W8①）：搜索行的 label.field.grow 过去没有规则，
-   输入框按内容宽缩成一小截、和右侧按钮挤在一起——这里给它统一的 flex 伸展
-  （.item 的同名规则特异性更高，220px 基准不受影响）。 */
-.grow { flex: 1 1 auto; min-width: 0; }
-.stack { display: grid; gap: var(--sp-3); }
-.grid2 { display: grid; gap: var(--sp-3); grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+/* ================= ⑥ 按钮 ================= */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: var(--tap); padding: 0 19px;
+  border: none; border-radius: var(--radius-ctl);
+  background: var(--surface-container-high); background-clip: padding-box;
+  color: var(--sub-ink); font: inherit; font-weight: 400;
+  cursor: pointer; text-decoration: none; white-space: nowrap;
+  transition: background-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease),
+              transform var(--dur-press) var(--ease), opacity var(--dur-1) var(--ease),
+              filter var(--dur-1) var(--ease);
+}
+/* 即时反馈：按下即缩（pointer-down，不等 click） */
+.btn:active { transform: scale(.97); }
+.btn:hover { filter: brightness(.97); }
+@media (prefers-color-scheme: dark) { .btn:hover { filter: brightness(1.12); } }
+.btn.primary { background: var(--primary-strong); color: var(--primary-ink); font-weight: 500; }
+.btn.primary:hover { filter: brightness(1.06); }
+.btn.danger {
+  background: var(--danger-bg); background-clip: padding-box;
+  color: var(--danger-ink); box-shadow: inset 0 0 0 1px var(--danger);
+}
+.btn.danger:hover { background: rgba(233, 70, 52, .16); }
+.btn.ghost { background: transparent; color: var(--dim); }
+.btn.ghost:hover { background: var(--card); color: var(--ink); filter: none; }
+.btn.small { min-height: 34px; padding: 0 13px; font-size: 13px; }
+.btn[aria-busy=true] { opacity: .75; pointer-events: none; }
+.btn:disabled, .btn[aria-disabled=true] {
+  opacity: .45; cursor: not-allowed; pointer-events: none;
+  background: var(--sub-bg); color: var(--dim); box-shadow: none; filter: none;
+}
+.btn.primary:disabled { background: var(--sub-bg); color: var(--dim); }
+.btn.danger:disabled { background: var(--danger-bg); opacity: .35; }
+/* 加载态：文字后跟转圈（纯 opacity+transform）；setBusy 只切 aria-busy，样式在此 */
+.btn[aria-busy=true]::after {
+  content: ""; flex: none;
+  width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid currentColor; border-top-color: transparent;
+  animation: spin 900ms linear infinite;
+}
+.btn .ico { width: 16px; height: 16px; }
+.btn .ico-wrap { display: inline-flex; color: currentColor; }
+.ico-wrap { display: inline-flex; align-items: center; color: var(--primary); flex: none; }
 
-/* ---- 表单 ---- */
-/* .field 兼作**定位锚**（W6）：密码管理器/OTP 的徽章与下拉是浏览器（或扩展）层
-   绘制的 UI，位置按包含块解析——包装层全是 position:static 时会一路解析到很远的
-   祖先甚至初始包含块，徽章就「飘出输入框一大截」。把锚定收到字段自身。 */
+/* ================= ⑦ 表单 ================= */
+/* .field 兼作定位锚：密码管理器/OTP 徽章是浏览器层绘制，位置按包含块解析，
+   包装层全 static 时会飘出输入框——锚定收到字段自身。 */
 .field { display: grid; gap: 6px; margin: 12px 0; position: relative; }
-.field > span, .field > label { font-size: 13px; color: var(--dim); }
-/* input[type=date] 必须在名单里：漏了它，审计页的起始/结束日期会掉回 UA 原生
-   形态（白底细边框 + mm/dd/yyyy），与站内控件两种观感（W8③ 的直接根因）。 */
+.field > span, .field > label, label.field > span { font-size: 13px; color: var(--dim); }
 input[type=text], input[type=email], input[type=password], input[type=date],
 input[type=datetime-local], input[type=search], select, textarea {
   width: 100%; min-height: var(--tap); padding: 9px 15px;
@@ -455,44 +551,52 @@ input[type=datetime-local], input[type=search], select, textarea {
   box-shadow: inset 0 0 0 1px var(--control-line);
   transition: box-shadow var(--dur-1) var(--ease);
 }
-/* W6 ①：凭据/OTP 字段右侧预留徽章位（Chrome 密码管理器钥匙图标、OTP 下拉锚标
-   画在输入框右缘内侧）——不预留时徽章与内环/文字挤在一起。只给这类字段加：
-   普通输入框（autocomplete=off）不长徽章，右 padding 保持原样。 */
+input::placeholder, textarea::placeholder { color: var(--dim); opacity: .8; }
+/* 聚焦滚动余量：sticky 顶栏 + 底部 dock 不遮住被聚焦的输入（浏览器把字段滚进
+   视口时会留出这段头部空间）。 */
+input, select, textarea { scroll-margin-block: 84px 96px; }
+/* 凭据/OTP 字段右侧预留徽章位（密码管理器钥匙图标、OTP 下拉锚标） */
 input[autocomplete="username"], input[autocomplete="one-time-code"], input[type=password] {
   padding-right: 44px;
 }
-/* W6 ②：:-webkit-autofill 归一。Chrome 自动填充的底色是浏览器层绘制，会盖掉
-   站点背景与 FX3 内环、并强制浅色文本。用 1000px inset 卡片底接管底色（背景裁进
-   padding-box，圆角不破），内环与文本色/插入符显式回到站点令牌；超长 transition
-   让 autofill 的高亮色渐变永远播不完（标准配方）。 */
+/* :-webkit-autofill 归一：浏览器填充底色会盖掉站点内环，用 1000px inset 接管 */
 input:-webkit-autofill {
   -webkit-box-shadow: 0 0 0 1000px var(--card) inset, inset 0 0 0 1px var(--control-line);
   -webkit-text-fill-color: var(--ink);
   caret-color: var(--ink);
   transition: background-color 99999s ease-out, box-shadow var(--dur-1) var(--ease);
 }
-/* ---- 密码行：输入框 + 「显示密码」行内按钮（NIST SP 800-63B §3.1.1.2）----
-   按钮放在输入框**外面**而不是叠在右缘：那一带是浏览器密码管理器徽章的保留区
-   （.field 的 position:relative + 输入框 44px 右内边距就是为它留的），叠上去会
-   和徽章打架。行内布局同 .code-line 的发码钮，交互观感一致。 */
+input:disabled { opacity: .6; }
+textarea { min-height: auto; resize: vertical; line-height: 1.6; }
+
+/* 密码行：输入 + 行内「显示密码」（NIST SP 800-63B §3.1.1.2）。
+   按钮在输入框**外面**——右缘 44px 是密码管理器徽章保留区，叠上去会打架。 */
 .pw-row { display: flex; align-items: center; gap: 8px; }
 .pw-row > input { flex: 1 1 auto; min-width: 0; }
 .pw-row > .pw-toggle { flex: none; width: 44px; padding: 0; }
 .pw-row > .pw-toggle .ico { width: 18px; height: 18px; }
 
-/* ---- 验证码行（W5）：输入框 + 发码按钮同一行 ----
-   输入 flex 收缩（min-width:0 允许压窄），按钮 flex:none 不换行不溢出；
-   按钮沿用站内次级钮（.btn 默认 sub-bg 底），倒计时态由 cooldown() 改文案。 */
+/* 验证码行：输入 + 发码按钮同一行（输入可收缩、按钮不换行） */
 .code-line { display: flex; align-items: center; gap: 8px; position: relative; }
 .code-line > input { flex: 1 1 auto; min-width: 0; }
 .code-line > .btn { flex: none; white-space: nowrap; }
 
-/* ---- 原生控件 miuix 化（W9）----
-   ① 下拉：原生 <select> 退为**隐藏的值载体**（.hidden），站内形态是
-      「按钮 + 浮层菜单」（fade-scale 进场，aria-haspopup/aria-expanded +
-      键盘上下键/Enter/Esc，见 app.js decorateSelects）；
-   ② 勾选/单选：appearance:none 自绘，语义与键盘行为仍走原生 input；
-   ③ 披露行：<details> 保留原生开合，summary 变整行把手 + 箭头旋转。 */
+/* 分段标签（改密码两条路 / 登录三入口） */
+.tabs {
+  display: flex; gap: 6px; border-bottom: 1px solid var(--line);
+  margin-bottom: 4px; overflow-x: auto;
+}
+.tab {
+  min-height: var(--tap); padding: 0 12px; border: 0; background: none;
+  color: var(--dim); font: inherit; cursor: pointer;
+  border-bottom: 2px solid transparent; white-space: nowrap;
+  transition: color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease),
+              transform var(--dur-1) var(--ease);
+}
+.tab[aria-selected=true] { color: var(--primary-text); border-bottom-color: var(--primary); font-weight: 500; }
+.tab:active { transform: scale(.97); }
+
+/* 站内下拉（原生 select 退为隐藏值载体） */
 .select-drop { display: block; position: relative; flex: 0 1 auto; min-width: 130px; }
 .select-btn {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
@@ -508,10 +612,10 @@ input:-webkit-autofill {
 .select-btn[aria-expanded=true] .ico { transform: rotate(180deg); }
 .select-menu {
   position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 25;
-  margin: 0; padding: var(--sp-2); list-style: none; max-height: 280px; overflow: auto;
-  /* Popover：比卡片更不透明的玻璃 + 大圆角，浮在内容之上不靠纯色硬块 */
+  margin: 0; padding: var(--sp-2); list-style: none;
+  max-height: 280px; overflow: auto;
   background: var(--glass-menu-bg); background-clip: padding-box;
-  border: none; box-shadow: inset 0 0 0 1px var(--glass-stroke), var(--shadow-2);
+  box-shadow: inset 0 0 0 1px var(--glass-stroke), var(--shadow-2);
   border-radius: var(--radius-lg);
   -webkit-backdrop-filter: blur(var(--glass-bar-blur)) saturate(var(--glass-bar-saturate));
   backdrop-filter: blur(var(--glass-bar-blur)) saturate(var(--glass-bar-saturate));
@@ -528,12 +632,12 @@ input:-webkit-autofill {
 .select-opt[aria-selected=true] { color: var(--primary-text); font-weight: 500; }
 .select-opt[aria-selected=true]::after { content: "✓"; font-size: 13px; }
 
-/* 勾选/单选自绘：原生 input 保留（语义/键盘/表单值全不动），只换外观 */
+/* 勾选/单选自绘：原生 input 保留（语义/键盘/表单值不动），只换外观 */
 input[type=checkbox], input[type=radio] {
   appearance: none; -webkit-appearance: none; flex: none;
   width: 20px; height: 20px; margin: 0; cursor: pointer; position: relative;
   background: var(--card); background-clip: padding-box;
-  border: none; box-shadow: inset 0 0 0 1px var(--control-line);
+  box-shadow: inset 0 0 0 1px var(--control-line);
   transition: box-shadow var(--dur-1) var(--ease), background-color var(--dur-1) var(--ease),
               transform var(--dur-1) var(--ease);
 }
@@ -556,11 +660,8 @@ input[type=checkbox]:focus-visible, input[type=radio]:focus-visible {
 }
 input[type=checkbox]:disabled, input[type=radio]:disabled { opacity: .5; cursor: default; }
 
-/* ---- Switch（Miuix Switch / Material 3）：即时生效型开关，不是勾选框 ----
-   语义仍走原生 checkbox（Space 切换、表单值、<label> 关联全不动），role="switch"
-   由模板注入给读屏。外观上：轨道宽 = --tap(44)，与触控目标同宽；滑块位移沿用
-   弹簧 --spring（与窄屏底栏 / 侧栏项的按压回弹同属物理反馈），轨道/焦点走克制
-   --ease。开/关不只靠颜色：滑块位置本身即状态。 */
+/* Switch（Material 3 形态、原生 checkbox 语义）：轨道宽 = --tap，滑块弹簧位移，
+   状态不只靠颜色（滑块位置本身即状态） */
 input[type=checkbox].switch {
   width: var(--tap); height: var(--switch-h);
   border-radius: var(--radius-pill);
@@ -568,7 +669,6 @@ input[type=checkbox].switch {
   transition: background-color var(--dur-1) var(--ease);
 }
 input[type=checkbox].switch::after {
-  /* 覆盖通用勾选框的对勾：Switch 只要一枚投影滑块 */
   content: ""; position: absolute; left: var(--switch-pad); top: var(--switch-pad);
   width: var(--switch-thumb); height: var(--switch-thumb);
   border: 0; border-radius: 50%; background: #ffffff;
@@ -577,388 +677,42 @@ input[type=checkbox].switch::after {
 }
 input[type=checkbox].switch:checked { background: var(--primary); }
 input[type=checkbox].switch:checked::after {
-  /* 位移 = 轨道宽 - 滑块宽 - 两侧留白 */
   transform: translateX(calc(var(--tap) - var(--switch-thumb) - 2 * var(--switch-pad)));
 }
-/* 开关整行 ≥44px：触屏点标签任意处都能切（WCAG 2.5.5 / Apple HIG 44pt） */
 .switch-row { min-height: var(--tap); cursor: pointer; }
 
-/* 披露行：<details> 语义原生保留；summary 变整行把手，箭头随开合旋转（动效走
-   既有 --dur-2/--ease 令牌族，无新关键帧） */
-details.section > summary {
-  list-style: none; display: flex; align-items: center; gap: 8px;
-  min-height: 32px; cursor: pointer;
-}
-details.section > summary::-webkit-details-marker { display: none; }
-details.section > summary::after {
-  content: ""; width: 8px; height: 8px; margin-left: auto;
-  border-right: 2px solid var(--dim); border-bottom: 2px solid var(--dim);
-  transform: rotate(45deg); transition: transform var(--dur-2) var(--ease);
-}
-details.section[open] > summary::after { transform: rotate(225deg); }
-/* 多行输入（Web 接入的回跳地址）：min-height 是单行下限不是强制高——内容多了自己长 */
-textarea { min-height: auto; resize: vertical; line-height: 1.6; }
-input:focus-visible, select:focus-visible, a:focus-visible, button:focus-visible {
-  outline: 2px solid var(--focus); outline-offset: 2px;
-}
-/* 焦点环本身也带过渡：Tab 移动时环是滑过去的，不是瞬跳 */
-a, button, .tab, .nav-item, input, select {
-  transition: outline-color var(--dur-1) var(--ease), outline-offset var(--dur-1) var(--ease);
-}
-input:disabled { opacity: .6; }
-.err { color: var(--danger-ink); font-size: 13px; margin: 6px 0; }
-.ok-note { color: var(--ok); font-size: 13px; margin: 6px 0; }
-.or { text-align: center; color: var(--dim); font-size: 13px; margin: 10px 0; position: relative; }
-
-/* ---- 按钮（miuix：圆角 16、高 ≥40，触控设备抬到 44）---- */
-.btn {
-  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  min-height: var(--tap); padding: 0 19px;
-  border: none; border-radius: var(--radius-ctl);
-  background: var(--surface-container-high); background-clip: padding-box; color: var(--sub-ink); font: inherit; font-weight: 400;
-  cursor: pointer; text-decoration: none; white-space: nowrap;
-  transition: background-color var(--dur-1) var(--ease), color var(--dur-1) var(--ease),
-              transform var(--dur-1) var(--ease),
-              opacity var(--dur-1) var(--ease), filter var(--dur-1) var(--ease),
-              box-shadow var(--dur-1) var(--ease);
-}
-.btn:hover { filter: brightness(.97); }
-@media (prefers-color-scheme: dark) { .btn:hover { filter: brightness(1.12); } }
-/* 微反馈：按下轻微缩进（只 transform，不碰 layout） */
-.btn:active { transform: scale(.97); }
-/* primary 的旧 border-color 与底色同色（无可见描边），border 退役后直接删；
-   danger 是淡底 + error 实线环 → 迁成 box-shadow 内环，环色沿用 --danger。 */
-.btn.primary { background: var(--primary-strong); color: var(--primary-ink); font-weight: 500; }
-.btn.primary:hover { filter: brightness(1.06); }
-.btn.danger { background: var(--danger-bg); background-clip: padding-box; color: var(--danger-ink); box-shadow: inset 0 0 0 1px var(--danger); }
-.btn.danger:hover { background: rgba(233, 70, 52, .16); }
-/* 按钮三档层级（Miuix）：primary（主行动，一屏一个）/ secondary（默认填充面）/
-   plain（文字幽灵态，原 .ghost 的语义命名）。别名不改视觉与行为，只把层级固定下来。 */
-.btn.ghost { background: transparent; color: var(--dim); }
-.btn.ghost:hover { background: var(--card); color: var(--ink); }
-.btn.small { min-height: 34px; padding: 0 13px; font-size: 13px; }
-.btn[aria-busy=true] { opacity: .75; pointer-events: none; }
-/* disabled 态必须与可用态**一眼可分**：分页在首页的「上一页」、批量弹层输「确认」
-   前的主钮、未修改时的「保存」此前都与可用态同观感且仍是 pointer，点了没反应
-   就像坏了。opacity + not-allowed + 去掉按压缩进。 */
-.btn:disabled, .btn[aria-disabled=true] {
-  opacity: .45; cursor: not-allowed; pointer-events: none;
-  background: var(--sub-bg); color: var(--dim); box-shadow: none;
-}
-.btn.primary:disabled { background: var(--sub-bg); color: var(--dim); }
-.btn.danger:disabled { background: var(--danger-bg); opacity: .35; }
-/* 加载态：按钮文字后跟一圈转圈（900ms/圈，纯 opacity+transform；不用扫光）。
-   setBusy() 只切 aria-busy，样式全在这里——所有按钮的加载态天然一致。 */
-.btn[aria-busy=true]::after {
-  content: ""; flex: none;
-  width: 14px; height: 14px; border-radius: 50%;
-  border: 2px solid currentColor; border-top-color: transparent;
-  animation: spin 900ms linear infinite;
-}
-.btn .ico { width: 16px; height: 16px; }
-/* 触屏目标 ≥44px（WCAG 2.5.5 / Apple HIG 44pt）：触控设备上所有可点元素都要够大。
-   此前 .btn.small 只有 38px、.app-chip 28px、复选框 20px —— 在手机上是难点中的难点。 */
-@media (pointer: coarse) {
-  .btn, input[type=text], input[type=email], input[type=password], input[type=date],
-  input[type=datetime-local], input[type=search], select, textarea { min-height: var(--tap); }
-  /* 触屏上一律抬到 44 的硬下限：小按钮/分段/色板/品牌/跳转链接此前分别只有
-     40/36/32/28/42，手机上都是难点中的难点（WCAG 2.5.5 / Apple HIG 44pt）。 */
-  .btn.small, .app-chip, .select-btn, .select-opt, .tab, .nav-item,
-  .brand, .skip, .acct { min-height: var(--tap); }
-  input[type=checkbox], input[type=radio] { width: 24px; height: 24px; }
-  /* 勾选框视觉保持 24（表格列放得下），但用透明伪元素把**命中区**撑到 44×44：
-     伪元素不占布局、不改变对勾 ::after，点标签外的空白也能切（WCAG 2.5.5）。 */
-  input[type=checkbox]::before, input[type=radio]::before {
-    content: ""; position: absolute; left: 50%; top: 50%;
-    width: var(--tap); height: var(--tap); transform: translate(-50%, -50%);
-  }
-  .pf-chip { width: var(--tap); height: var(--tap); }
-  /* 「自动」是文字胶囊，宽度随内容，不能压成 44 方片 */
-  .pf-chip.auto { width: auto; min-width: var(--tap); min-height: var(--tap); }
-}
-
-.ico { width: 18px; height: 18px; flex: none; vertical-align: middle; }
-.ico-wrap { display: inline-flex; align-items: center; color: var(--primary); flex: none; }
-
-/* ---- 列表行（设备 / Passkey / 配置）---- */
-.list { display: grid; gap: 10px; }
-/* .item：miuix BasicComponent 的行形态（min-height 56 / 内边距 16 / title17 + summary14
-   / 行间 8）。它**不是**卡片——独立成组时由 .group 外壳给面，卡内平铺时无面。
-   此前每行自带白面+环，嵌进 .card 就成了「卡片套卡片、圆角叠圆角」的畸形。 */
-.item {
-  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-  background: transparent;
-  border-radius: calc(var(--radius-card) - 4px);
-  padding: 14px 16px; min-height: 56px;
-  transition: opacity var(--dur-2) var(--ease), background-color var(--dur-1) var(--ease);
-}
-/* 退场：淡出 + 轻微下沉（transform，不碰 height/margin —— 不做折叠高度动画防抖动）。 */
-.leaving { opacity: 0; transform: translateY(-4px); }
-/* 行的悬停/选中反馈一律用**背景**，不用描边也不用抬升：
-   抬升阴影（translateY）是网页惯用法而非 miuix 手感；描边则会被行自身背景盖掉
-   （就是「点黑后圆角线消失」那类断裂）。miuix 的 BasicComponent 按下态只压背景。 */
-@media (hover: hover) {
-  .item:hover { background: var(--canvas); }
-  .group .item:hover { background: var(--sub-bg); }
-}
-.item:focus-within { background: var(--canvas); }
-.item .grow { flex: 1 1 220px; min-width: 0; }
-.item .title { font-weight: 500; }
-.item .meta { color: var(--dim); font-size: 13px; }
-/* 当前会话：主色淡底（不是描边——描边会被行背景盖掉） */
-.item.current { background: var(--primary-soft); }
-@media (hover: hover) {
-  .item.current:hover { background: var(--primary-soft); }
-}
-
-/* =====================================================================
-   miuix 分组卡片（SettingsPage 的标准结构：SmallTitle + Card + BasicComponent 行）
-   ---------------------------------------------------------------------
-   这是 HyperOS 设置页的骨架，也是本站列表页的统一形态：
-     <h2 class="section-title">分区标题</h2>          ← SmallTitle（14 Bold，onBackgroundVariant）
-     <div class="group">                             ← Card（surfaceContainer 纯填充 16 圆角）
-       <div class="item">…title17 + summary14…</div>  ← BasicComponent（min-height 56，内边距 16）
-       <div class="item">…</div>                     ← 行间 0.75 dividerLine
-     </div>
-   此前每行自带白面+环，嵌进 .card 就成了「卡片套卡片、圆角叠圆角」的畸形，
-   且环被行背景盖掉后圆角断裂。现在**行无面、面归组**，圆角永远完整。 */
-.group {
-  background: var(--card);
-  border-radius: var(--radius-card);
-  overflow: hidden;            /* 把行的 hover 背景裁进圆角，末行四角自然圆 */
-}
-/* 行间分隔线用 border-top 而非 box-shadow：border 画在**自身背景之上**，
-   行 hover 变色时线不会被盖掉（box-shadow:inset 就会，见上方注释）。 */
-.group > .item + .item { border-top: 1px solid var(--line); }
-/* 独立分隔线（组内插一段说明/按钮时用）：左右各让出 16（行内边距） */
-.sep { border: 0; border-top: 1px solid var(--line); margin: 0 16px; }
-/* SmallTitle：14 Bold + onBackgroundVariant 蓝灰，上下 8 左右 28（照源码 28,8） */
-.section-title {
-  font-size: var(--font-body2); font-weight: 700; color: var(--section-title);
-  margin: 20px 0 8px; padding: 0 12px; letter-spacing: .2px;
-}
-.section-title:first-child { margin-top: 0; }
-
-/* 筛选/搜索工具条 = 一张卡（miuix 的 Card 内容区），字段走 grid 自适应。
-   此前筛选表单裸放在画布上，字段、快捷档位、按钮各漂各的，与下方表格没有
-   视觉归属关系——收进一张卡后「筛选 → 结果」的因果关系一眼可读。 */
-.toolbar {
-  /* 与 .card 同一套玻璃面；筛选卡里的下拉菜单靠 :focus-within 抬层不被结果卡盖住 */
-  background: var(--glass-card-bg);
-  border-radius: var(--radius-card);
-  padding: var(--sp-4);
-  display: grid; gap: var(--sp-3);
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  align-items: end;
-  position: relative;
-  -webkit-backdrop-filter: blur(var(--glass-card-blur)) saturate(var(--glass-card-saturate));
-  backdrop-filter: blur(var(--glass-card-blur)) saturate(var(--glass-card-saturate));
-}
-.toolbar:hover, .toolbar:focus-within { z-index: 2; }
-.toolbar > .field { margin: 0; }
-/* .toolbar-inline（审计页的时间范围档位、用户页的搜索/批量两行）也独占整行：
-   它没写 grid-column 时只落进**一个** auto-fit 列（1280 视口下 203px），而它的
-   内容按整行设计——时间范围四颗 chip 实测被裁到只剩三颗（第 4 颗 x=548 已越出
-   容器右缘 539）。整行铺开后 chip 不裁、用户页的批量条也不再挤在半栏里。 */
-.toolbar > .toolbar-inline { grid-column: 1 / -1; }
-.toolbar .toolbar-row { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-/* 行内字段按栅格同款拉伸：flex 默认按内容宽左挤、右侧留一段空白，与 .toolbar
-   直接子项的 1fr 拉伸不一致（IP 筛选并进来独占一行时最明显）。 */
-.toolbar .toolbar-row > .field { flex: 1 1 190px; }
-/* 工具条里的按钮排右侧；窄屏自动落到下一行 */
-.toolbar .toolbar-actions { grid-column: 1 / -1; display: flex; gap: 8px; justify-content: flex-end; }
-
+/* ================= ⑧ 徽标与状态 ================= */
 .badge {
-  display: inline-flex; align-items: center; gap: 4px;
-  font-size: var(--font-footnote); line-height: var(--lh-footnote); padding: 3px 11px; border-radius: var(--radius-pill);
-  background: var(--badge-bg); background-clip: padding-box; border: none; color: var(--dim);
-  vertical-align: middle;
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: var(--font-footnote); line-height: var(--lh-footnote);
+  padding: 3px 11px; border-radius: var(--radius-pill);
+  background: var(--badge-bg); background-clip: padding-box;
+  color: var(--dim); vertical-align: middle;
 }
+/* 状态点：状态不只靠颜色（WCAG 1.4.1），点 + 文字双通道 */
+.badge::before {
+  content: ""; width: 6px; height: 6px; border-radius: 50%;
+  background: currentColor; opacity: .7; flex: none;
+}
+.badge.plain::before { display: none; }
 .badge.on { color: var(--primary-text); background: var(--badge-on-bg); }
 .badge.off { color: var(--dim); }
 .badge.warn { color: var(--danger-ink); background: var(--danger-bg); }
-/* 邀请四态徽标的绿色档（accepted）：与 .ok-note 同一 --ok 取色 */
 .badge.ok { color: var(--ok); }
+.badge.through { text-decoration: line-through; }
 
-/* ---- 表格（窄屏在容器内横滚，不破版）---- */
-/* 1px padding 复刻旧 border 占掉的内容盒：滚动/粘性表头的实底不会盖到内环
-   （overflow 裁切发生在 padding 边缘，内容画不进环区）。
-   min-width（W8①）：没有它，窄屏下 wrap-cell 列（用户/邮箱）会被压到每行一个字
-   （word-break:break-all + 列宽塌缩）——给表格一个下限，让它在容器里横滚而不是
-   把内容挤成竖排。 */
-.table-wrap {
-  /* 表格是卡片：纯填充 + 16 圆角，**无环**（环会被 tbody 行 hover/选中背景盖掉，
-     圆角在底角断裂——用户报的「点黑后圆角线消失」就是它）。overflow 同时负责把
-     行背景裁进圆角，末行四角自然圆。 */
-  overflow: auto; -webkit-overflow-scrolling: touch;
-  /* min-width:0：它是 .content 网格的子项，表格 min-width 抬上来的
-     「自动最小尺寸」会让整个页面横滚——压回容器内，横滚只发生在本盒子里 */
-  min-width: 0;
-  background: var(--card);
-  border-radius: var(--radius-card);
+/* 空态：为什么空 + 下一步（Polaris 口径） */
+.empty {
+  text-align: center; color: var(--dim); padding: var(--sp-7) var(--sp-3);
+  background: var(--empty-bg); border-radius: var(--radius-lg);
 }
-table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: var(--font-body2); }
-th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); white-space: nowrap; }
-th { color: var(--dim); font-weight: 500; font-size: 13px; background: var(--card); position: sticky; top: 0; }
-tbody tr:last-child td { border-bottom: 0; }
-tbody tr:hover { background: var(--sub-bg); }
-/* 邮箱/长串的换行：**只在必要处断**。旧的 word-break:break-all 会把
-   e2e-super@example.co + m 这样劈开（审计页「操作者」列实测）。改成
-   overflow-wrap:anywhere——优先按词/标点断，放不下才在字符间断，且不断进
-   @ 符号前的关键位置。 */
-td.wrap-cell { white-space: normal; overflow-wrap: anywhere; word-break: normal; }
-
-/* ---- 标签页（改密码两条路等）---- */
-.tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--line); margin-bottom: 4px; overflow-x: auto; }
-.tab {
-  min-height: var(--tap); padding: 0 12px; border: 0; background: none;
-  color: var(--dim); font: inherit; cursor: pointer; border-bottom: 2px solid transparent;
-  white-space: nowrap;
-  transition: color var(--dur-1) var(--ease), border-color var(--dur-1) var(--ease),
-              transform var(--dur-1) var(--ease);
+.empty-title {
+  display: block; color: var(--ink); font-size: var(--font-title4);
+  font-weight: 500; margin-bottom: var(--sp-1);
 }
-.tab[aria-selected=true] { color: var(--primary-text); border-bottom-color: var(--primary); font-weight: 500; }
-.tab:active { transform: scale(.97); }
+.empty-hint { display: block; font-size: 13px; color: var(--dim); }
 
-/* ---- 对话框（弹入：scale .96→1 + fade，200ms；遮罩淡入）---- */
-/* 原生 dialog 有 UA 默认边框，border:none 必须显式写；内环取代旧的 1px 实线 */
-.dlg {
-  /* Modal：28 大圆角 + 高不透明玻璃 + 柔和双层投影；文字对比靠高不透明度守住，
-     不支持 backdrop-filter 时由 @supports not 退回实底。 */
-  border: none; border-radius: var(--radius-xl);
-  box-shadow: inset 0 0 0 1px var(--glass-stroke), var(--shadow-2);
-  background: var(--glass-dialog-bg); background-clip: padding-box; color: var(--ink);
-  padding: var(--sp-6);
-  -webkit-backdrop-filter: blur(var(--glass-bar-blur)) saturate(var(--glass-bar-saturate));
-  backdrop-filter: blur(var(--glass-bar-blur)) saturate(var(--glass-bar-saturate));
-  max-width: 420px; width: calc(100vw - var(--sp-8));
-}
-.dlg[open] { animation: dlg-in var(--dur-3) var(--ease) backwards; }
-.dlg::backdrop { background: rgba(0, 0, 0, .4); animation: fade-in var(--dur-3) var(--ease) backwards; }
-.dlg h2 { margin: 0 0 4px; font-size: 18px; font-weight: 500; }
-.dlg form { display: grid; gap: 6px; }
-
-/* ---- 提示条（滑入 + 淡入；消失淡出）---- */
-.toast {
-  position: fixed; left: 50%; transform: translate(-50%, 8px);
-  bottom: max(16px, env(safe-area-inset-bottom));
-  /* Snackbar：药丸 + 语义反馈色 + 轻玻璃；成功/失败靠文案与颜色双重表达 */
-  background: var(--toast-bg); color: var(--toast-ink);
-  padding: var(--sp-3) var(--sp-4); border-radius: var(--radius-pill); z-index: 30;
-  font-size: var(--font-body2); opacity: 0;
-  box-shadow: var(--shadow-2);
-  -webkit-backdrop-filter: blur(var(--glass-card-blur)) saturate(var(--glass-card-saturate));
-  backdrop-filter: blur(var(--glass-card-blur)) saturate(var(--glass-card-saturate));
-  transition: opacity var(--dur-2) var(--ease), transform var(--dur-2) var(--ease);
-  max-width: calc(100vw - var(--sp-8));
-}
-.toast.show { opacity: 1; transform: translate(-50%, 0); }
-.toast.bad { background: var(--toast-bad-bg); color: var(--toast-bad-ink); }
-/* 窄屏：toast 抬到玻璃底栏之上并上移——底栏 z-index 40 且同在底部居中，
-   不抬的话踢会话/改密/封禁的成功提示全被底栏压住看不见。
-   注意必须写在 .toast 基础规则**之后**：同特异性下后写的才生效（此前放前面
-   被基础规则的 z-index:30 / bottom:16px 覆盖，实测 toast 被底栏压住）。 */
-@media (max-width: 899.98px) {
-  .toast { z-index: 50; bottom: calc(max(10px, env(safe-area-inset-bottom)) + 72px); }
-}
-
-/* ---- 二维码与恢复码 ---- */
-/* 定宽二维码盒：padding 8→9 补掉退役的 1px border，内容盒仍 198×198 不抖码 */
-.qr { width: 216px; height: 216px; background: #fff; background-clip: padding-box; padding: 9px; border-radius: var(--radius-ctl); border: none; box-shadow: inset 0 0 0 1px var(--line); }
-.codes {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 8px; font-family: var(--mono); font-size: 15px;
-  background: var(--canvas); border: 1px dashed var(--line);
-  border-radius: var(--radius-card); padding: 14px;
-}
-.secret-line { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.secret-line code { font-family: var(--mono); word-break: break-all; }
-
-/* 「使用恢复码」次级切换链接：幽灵小按钮形态，不与主输入抢视觉 */
-.toggle-recovery { align-self: start; margin: -6px 0 10px; padding-left: 0; }
-
-/* ---- 会话页：扁平会话行（.item 外壳 + session-row 行内视觉；一行=一条会话，
-   主标题=设备名，次行=项目 · 最近活跃）---- */
-.session-row:hover { background: var(--canvas); }
-.session-row.current { background: var(--primary-soft); }
-/* 行尾「详情」展开的次级信息（首次登录 + IP）：占满一行换到行下；
-   收起态由 .hidden（display:none !important）完全不占位，行高不变；
-   展开进场走 app.js 的 swapIn（同一套 --ease / --dur-2 时长） */
-
-/* ---- AI 用量：KPI 卡与 7 天 sparkline ---- */
-.kpi-row { display: grid; gap: var(--gap); grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
-.card.kpi { display: grid; gap: 2px; align-content: start; padding: 16px 18px; }
-.card.kpi strong { font-size: var(--font-title2); font-weight: 500; line-height: var(--lh-title2); }
-.card.kpi .hint { font-size: var(--font-footnote); }
-.spark { display: flex; align-items: flex-end; gap: 3px; height: 36px; margin-top: 6px; }
-.spark i {
-  flex: 1; min-width: 4px; border-radius: 3px 3px 0 0;
-  background: var(--progress-fill); opacity: .85;
-  transition: height var(--dur-3) var(--ease);
-}
-.ai-user-row { cursor: pointer; }
-.ai-user-row:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
-
-/* ---- 身份堆叠（B5，后台用户/会话总览）：头像 + 昵称 + 邮箱 ---- */
-.user-cell { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
-.user-cell .avatar { flex: none; }
-.user-cell .grow { min-width: 0; }
-
-/* 两行堆叠的键值单元格：主行是人读的信息（邮箱），次行是技术标识（#uid）。
-   用 grid 竖排而不是空格拼接——拼接会在窄列里被折成 `e2e-super@example.co` + `m`。 */
-/* 行内并排的小徽标（用户表「安全」列等）：不换行、间距统一 */
-.row-inline { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-
-.cell-stack { display: grid; gap: 1px; min-width: 0; }
-/* 邮箱一律截断 + title 看全文：审计/用户表的列宽都放不下完整邮箱，
-   overflow-wrap:anywhere 会把它劈成 `e2e-` + `super@example.com` 两行。 */
-.cell-stack .t {
-  display: block; max-width: 26ch;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.cell-stack .s { font-size: var(--font-footnote); color: var(--dim); }
-
-/* 表格里的邮箱：**截断不折行**。列多的表（用户页 9 列）按 overflow-wrap 折会把
-   e2e-super@example.com 劈成 `e2e- / super@exa / mple.com` 三行——既读不出也占行高。
-   改成单行 + 省略号，全文靠 title 提示与详情面板（GitHub 用户表同款）。
-   max-width 用 ch（字符宽）而不是 px：跟着字号缩放，中英混排不漂。 */
-.truncate {
-  display: block; max-width: 26ch;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-/* 用户列固定一个下限：不让它被旁边 5 个窄列挤扁（表格整体仍可横滚） */
-td .user-cell .truncate { max-width: 24ch; }
-
-/* ---- 审计详情的键值排版 ---- */
-.detail-cell .kv { display: inline-block; margin-right: 10px; white-space: nowrap; }
-
-/* ---- 概览三行安全状态 ---- */
-.stat { display: flex; align-items: center; gap: 12px; }
-.stat .ico { color: var(--primary); }
-.stat .val { font-weight: 500; }
-
-/* ---- AI 用量柱条（纯 div，无图表库）---- */
-.bars { display: grid; gap: 6px; }
-.bar-row { display: grid; grid-template-columns: 84px 1fr 48px; gap: 8px; align-items: center; font-size: 13px; }
-/* 16px 定高轨道：padding:1px 复刻旧 border 的内容盒（填充条仍 14px 高、
-   环区不被填充盖住）；填充条是被圆角裁的子背景层 → 裁切从 overflow:hidden
-   换成 clip-path（子元素的圆角裁切走 clip-path 才有抗锯齿）。 */
-.bar-track { background: var(--progress-track); background-clip: padding-box; border: none; box-shadow: inset 0 0 0 1px var(--line); border-radius: var(--radius-xs); height: 16px; padding: 1px; clip-path: inset(0 round 8px); }
-/* display:block（W9 终检修）：.bar-fill 是行内 span，行内盒不吃 height:100%，
-   填充条一直 0 高不可见——.bar-track 是 grid/flex 子项已是块级盒，填充条补上即可 */
-.bar-fill { display: block; height: 100%; background: var(--progress-fill); transition: width var(--dur-3) var(--ease); }
-.bar-num { text-align: right; font-family: var(--mono); }
-
-/* ---- 登录页 ---- */
-.login-shell { max-width: 420px; margin: 6vh auto 0; }
-.login-shell .card { padding: 24px; }
-.brand-lg { display: flex; align-items: center; gap: 10px; justify-content: center; margin-bottom: 14px; }
-.brand-lg .ico { width: 28px; height: 28px; color: var(--primary); }
-.brand-lg .name { font-size: 22px; font-weight: 500; }
-
-/* ---- 骨架与空态 ---- */
-/* 骨架屏（Material 3 Transitions：skeleton + 内容淡入，脉冲表示进行中）。
-   装载期给**形状**而不是一句「读取中…」——用户能预判内容布局，切换时不跳版。 */
+/* 骨架屏：装载期给形状而非一句「读取中…」；脉冲表达「进行中」 */
 .skeleton {
   display: block; border-radius: 8px; background: var(--sub-bg);
   animation: sk-pulse 1.2s ease-in-out infinite;
@@ -969,39 +723,139 @@ td .user-cell .truncate { max-width: 24ch; }
 .sk-row { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
 .sk-avatar { width: 32px; height: 32px; border-radius: 50%; flex: none; }
 .sk-grow { flex: 1 1 auto; min-width: 0; }
-
-/* 空态：Miuix Empty 的柔和语义面，颜色只表达「中性空」，不误读成错误 */
-.empty {
-  text-align: center; color: var(--dim); padding: var(--sp-7) var(--sp-3);
-  background: var(--empty-bg); border-radius: var(--radius-lg);
-}
-/* 空态标题+说明+主行动（Polaris：解释为什么空 + 给一个下一步）。
-   此前只有一句灰字，用户看不出「是没数据还是坏了」。 */
-.empty-title { display: block; color: var(--ink); font-size: var(--font-title4); font-weight: 500; margin-bottom: var(--sp-1); }
-.empty-hint { display: block; font-size: 13px; color: var(--dim); }
 .hidden { display: none !important; }
 
-/* ---- 账号资料卡（B5）----
-   头像 96px：图/色块+首字，悬停（仅 hover 设备）浮出「更换」钮；焦点进入也浮出
-   （键盘可达）。圆角面遵守 FX3：底色环/选中环都走 inset box-shadow，不用 border。 */
-.pf-avatar-wrap { position: relative; flex: none; }
-.avatar.av96 {
-  width: 96px; height: 96px; font-size: 34px; font-weight: 400;
+/* 进度条 / KPI */
+.bar-track {
+  background: var(--progress-track); border-radius: var(--radius-xs);
+  height: 16px; padding: 1px; clip-path: inset(0 round 8px);
+  box-shadow: inset 0 0 0 1px var(--line);
 }
+.bar-fill {
+  display: block; height: 100%; background: var(--progress-fill);
+  border-radius: 7px; transition: width var(--dur-3) var(--ease);
+}
+.bar-num { text-align: right; font-family: var(--mono); }
+
+/* ================= ⑨ 表格与窄屏卡片化 ================= */
+.table-wrap {
+  overflow: auto; -webkit-overflow-scrolling: touch;
+  min-width: 0;
+  background: var(--card);
+  border-radius: var(--radius-card);
+}
+table {
+  border-collapse: collapse; width: 100%; min-width: 620px;
+  font-size: var(--font-body2);
+}
+th, td {
+  text-align: left; padding: 10px 14px;
+  border-bottom: 1px solid var(--line); white-space: nowrap;
+}
+th {
+  color: var(--dim); font-weight: 500; font-size: 13px;
+  background: var(--card); position: sticky; top: 0;
+}
+tbody tr:last-child td { border-bottom: 0; }
+tbody tr:hover { background: var(--sub-bg); }
+td.wrap-cell { white-space: normal; overflow-wrap: anywhere; word-break: normal; }
+
+/* —— 窄屏降级（<768px）：一行 = 一张卡片 ——
+   选卡片而非横滚的判据：本仓四张 admin 表都是「逐条读的记录表」（用户/审计/
+   会话/用量），横滚会让每条记录都要横向+纵向两个方向滚动、表头滚丢后列义丢失
+   （Wingo UI / Simon Willison 移动表格模式集：记录表→卡片，比较表才留横滚）。
+   thead 隐藏，tr 变卡片，td 变「label: value」两列——label 取自 data-label；
+   display:block 会剥掉 Safari<17 的隐式表格角色，故关键单元格补显式 class
+   （cell-title/cell-action/cell-pick），语义由 caption/aria 承接。 */
+@media (max-width: 767.98px) {
+  .table-wrap {
+    background: transparent; overflow: visible;
+    display: grid; gap: var(--sp-2);
+  }
+  .table-wrap table { min-width: 0; display: block; }
+  .table-wrap thead { display: none; }
+  .table-wrap tbody { display: grid; gap: var(--sp-2); }
+  .table-wrap tr {
+    display: block; background: var(--card);
+    border-radius: var(--radius-card); padding: 6px 14px;
+  }
+  .table-wrap td {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: var(--sp-4); padding: 7px 0;
+    border-bottom: 1px solid var(--line); white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .table-wrap tr td:last-child { border-bottom: 0; }
+  .table-wrap td[data-label]::before {
+    content: attr(data-label); flex: none;
+    font-size: var(--font-footnote); color: var(--dim);
+    font-weight: 500; padding-top: 2px;
+  }
+  /* 标题单元格（身份列）独占整行、不带 label；操作列按钮拉满 */
+  .table-wrap td.cell-title { display: block; padding-top: 10px; }
+  .table-wrap td.cell-title::before { display: none; }
+  .table-wrap td.cell-action { display: block; padding-bottom: 10px; }
+  .table-wrap td.cell-action .btn { width: 100%; }
+  .table-wrap td.cell-pick { justify-content: flex-end; padding-top: 10px; }
+  .table-wrap td.cell-pick::before { display: none; }
+  .table-wrap td.detail-cell .kv { display: block; }
+}
+
+/* ================= ⑩ 列表行与头像 ================= */
+.list { display: grid; gap: 10px; }
+/* .item：行形态（min-height 56 / title17 + summary 13）——它不是卡片，
+   独立成组时由 .group 给面，卡内平铺时无面（避免卡片套卡片） */
+.item {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  background: transparent;
+  border-radius: calc(var(--radius-card) - 4px);
+  padding: 14px 16px; min-height: 56px;
+  transition: opacity var(--dur-2) var(--ease), background-color var(--dur-1) var(--ease);
+}
+.leaving { opacity: 0; transform: translateY(-4px); }
+@media (hover: hover) {
+  .item:hover { background: var(--canvas); }
+  .group .item:hover { background: var(--sub-bg); }
+}
+.item:focus-within { background: var(--canvas); }
+.item .grow { flex: 1 1 220px; min-width: 0; }
+.item .title { font-weight: 500; }
+.item .meta { color: var(--dim); font-size: 13px; }
+.item.current { background: var(--primary-soft); }
+@media (hover: hover) { .item.current:hover { background: var(--primary-soft); } }
+
+/* 身份堆叠（头像 + 昵称 + 邮箱） */
+.user-cell { display: inline-flex; align-items: center; gap: 10px; min-width: 0; }
+.user-cell .avatar { flex: none; }
+.cell-stack { display: grid; gap: 1px; min-width: 0; }
+.cell-stack .t {
+  display: block; max-width: 26ch;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cell-stack .s { font-size: var(--font-footnote); color: var(--dim); }
+.truncate {
+  display: block; max-width: 26ch;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+td .user-cell .truncate { max-width: 24ch; }
+.row-inline { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.detail-cell .kv { display: inline-block; margin-right: 10px; white-space: nowrap; }
+.stat { display: flex; align-items: center; gap: 12px; }
+.stat .val { font-weight: 500; }
+
+/* 账号资料卡（96px 头像） */
+.pf-avatar-wrap { position: relative; flex: none; }
+.avatar.av96 { width: 96px; height: 96px; font-size: 34px; font-weight: 400; }
 .pf-avatar-edit {
   position: absolute; left: 50%; bottom: 6px; transform: translateX(-50%);
-  opacity: 0; pointer-events: none;
-  /* z-index：.avatar 是 static，但它是 96px 实心圆且**覆盖整个按钮区域**，
-     不抬层级时 elementFromPoint 命中的是头像 → 按钮点不动（实测两端都中）。 */
-  z-index: 2;
-  transition: opacity var(--dur-1) var(--ease);
-  white-space: nowrap;
+  opacity: 0; pointer-events: none; z-index: 2;   /* z：96px 实心圆会盖住按钮命中区 */
+  transition: opacity var(--dur-1) var(--ease); white-space: nowrap;
 }
 @media (hover: hover) {
   .pf-avatar-wrap:hover .pf-avatar-edit,
   .pf-avatar-wrap:focus-within .pf-avatar-edit { opacity: 1; pointer-events: auto; }
 }
-/* 触屏没有 hover：编辑钮常显（否则入口不可达） */
+/* 触屏无 hover：编辑钮常显（否则入口不可达） */
 @media (pointer: coarse) {
   .pf-avatar-edit { opacity: 1; pointer-events: auto; position: static; transform: none; margin-top: 8px; }
   .pf-avatar-wrap { display: grid; justify-items: center; }
@@ -1014,47 +868,212 @@ td .user-cell .truncate { max-width: 24ch; }
 }
 .pf-chip:active { transform: scale(.94); }
 .pf-chip.on { box-shadow: inset 0 0 0 2px var(--card), inset 0 0 0 4px var(--ink); }
-/* 「自动」颗：不是色块而是文字胶囊——它代表「按账号派生」这个语义，不是某个颜色 */
 .pf-chip.auto {
   width: auto; min-width: 48px; padding: 0 12px;
   background: var(--sub-bg); color: var(--sub-ink);
   font-size: 12px; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-pill);
 }
 .pf-chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
-/* ---- 详情面板（BottomSheet / Drawer 的页内形态）----
-   后台用户、会话、AI 三处钻取面板共用：玻璃面 + 大圆角 + 上边分隔，
-   进场由 app.js slideIn（克制 easing，不用弹簧）；@supports not 退实底。 */
+/* ================= ⑪ 对话框与 Toast ================= */
+.dlg {
+  border: none; border-radius: var(--radius-xl);
+  box-shadow: inset 0 0 0 1px var(--glass-stroke), var(--shadow-2);
+  background: var(--glass-dialog-bg); background-clip: padding-box; color: var(--ink);
+  padding: var(--sp-6);
+  -webkit-backdrop-filter: blur(var(--glass-bar-blur)) saturate(var(--glass-bar-saturate));
+  backdrop-filter: blur(var(--glass-bar-blur)) saturate(var(--glass-bar-saturate));
+  max-width: 420px; width: calc(100vw - var(--sp-8));
+}
+.dlg[open] { animation: dlg-in var(--dur-3) var(--ease) backwards; }
+.dlg::backdrop { background: rgba(0, 0, 0, .4); animation: fade-in var(--dur-3) var(--ease) backwards; }
+.dlg h2 { margin: 0 0 4px; font-size: 18px; font-weight: 500; }
+.dlg form { display: grid; gap: 6px; }
+.dlg .dim { color: var(--dim); }
+.dlg-actions { display: flex; gap: var(--sp-2); justify-content: flex-end; margin-top: var(--sp-3); }
+
+/* 窄屏（<640px）：对话框变**底部抽屉**——M3 compact 断点口径（bottom sheet
+   铺满屏宽），居中 modal 在 360px 上又窄又把主按钮顶到拇指够不着的位置；
+   ≥640px 回到居中 modal。内容超高时抽屉自身滚动（软键盘弹出也走这条路）。 */
+@media (max-width: 639.98px) {
+  .dlg {
+    margin: auto auto 0;                 /* dialog 默认 margin:auto 居中 → 改贴底 */
+    width: 100%; max-width: none;
+    border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+    max-height: 92vh;                    /* 先写通用值… */
+    max-height: 92dvh;                   /* …dvh 支持时覆盖（跟随浏览器栏收起） */
+    overflow-y: auto;
+    padding-bottom: calc(var(--sp-6) + env(safe-area-inset-bottom));
+  }
+  .dlg[open] { animation: sheet-in var(--dur-3) var(--ease) backwards; }
+}
+@keyframes sheet-in {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.toast {
+  position: fixed; left: 50%; transform: translate(-50%, 8px);
+  bottom: max(16px, env(safe-area-inset-bottom));
+  background: var(--toast-bg); color: var(--toast-ink);
+  padding: var(--sp-3) var(--sp-4); border-radius: var(--radius-pill); z-index: 50;
+  font-size: var(--font-body2); opacity: 0;
+  box-shadow: var(--shadow-2);
+  -webkit-backdrop-filter: blur(var(--glass-bar-blur)) saturate(var(--glass-bar-saturate));
+  backdrop-filter: blur(var(--glass-bar-blur)) saturate(var(--glass-bar-saturate));
+  transition: opacity var(--dur-2) var(--ease), transform var(--dur-2) var(--ease);
+  max-width: calc(100vw - var(--sp-8));
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+.toast.bad { background: var(--toast-bad-bg); color: var(--toast-bad-ink); }
+/* 窄屏 toast 抬到药丸导航之上（dock z-index 40 且同在底部居中）。
+   必须写在 .toast 基础规则之后：同特异性下后写的才生效。 */
+@media (max-width: 899.98px) {
+  .toast { bottom: calc(max(10px, env(safe-area-inset-bottom)) + 76px); }
+}
+
+/* ================= ⑫ 页面专属 ================= */
+/* —— Minimal 壳（登录/授权/邀请等）：居中单列，卡片上限宽 ——
+   宽屏不拆双栏：auth 表单的业界惯例是居中窄卡（448px 上限，login-forms
+   max-w-md 惯例），双栏会让「品牌 vs 表单」抢视线、拉长扫视路径。 */
+.auth-shell { max-width: 440px; margin: 6vh auto 0; }
+/* 横屏手机（短高度）：6vh 大留白在 ~360px 高度下吃掉首屏，收成固定小值 */
+@media (max-height: 560px) {
+  .auth-shell { margin-top: 16px; }
+}
+.auth-shell .card { padding: 24px; }
+.brand-lg {
+  display: flex; align-items: center; gap: 10px;
+  justify-content: center; margin-bottom: 16px;
+}
+.brand-lg .ico { width: 28px; height: 28px; color: var(--primary); }
+.brand-lg .name { font-size: 22px; font-weight: 500; letter-spacing: -.01em; }
+.auth-foot {
+  text-align: center; font-size: 13px; color: var(--dim);
+  margin-top: var(--sp-4);
+}
+.auth-foot a { color: var(--primary-text); }
+
+/* —— 授权（同意）页：信息层级与防仿冒 ——
+   出处：Clerk custom consent page 清单（app 名/logo/公开 URL/每个 scope/
+   redirect 目的地/等权重 Allow+Deny）、Google OAuth branding（logo 120²、
+   app name 是用户可见的安全信息）、Casdoor consent anatomy（app identity /
+   scopes / redirect domain / duration / revocation 五要素）。 */
+.req-app { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+.req-app .req-logo { border-radius: 10px; flex: none; }
+.req-app img { border-radius: 8px; }
+.req-app-label { display: block; font-size: 12px; color: var(--dim); }
+.req-id { min-width: 0; }
+.req-name {
+  display: block; font-size: 20px; font-weight: 500;
+  letter-spacing: -.01em; line-height: 1.3;
+  overflow: hidden; text-overflow: ellipsis;
+}
+/* 签发账号行：邮箱 pill + 换账号（等权重的次要钮，不是幽灵链接） */
+.consent-account {
+  display: flex; align-items: center; gap: 8px;
+  flex-wrap: wrap; padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.consent-acct { flex: 1 1 auto; min-width: 0; }
+.consent-acct .acct-name { font-size: 14px; color: var(--ink); }
+/* 回跳域预览：独立描边块——「将要离开本站」是决策的核心事实，不混在正文里 */
+.redirect-preview {
+  display: grid; gap: 2px; margin-top: 14px;
+  padding: 12px 14px;
+  background: var(--warn-bg); border-radius: var(--radius-sm);
+}
+.redirect-label { font-size: 12px; color: var(--dim); }
+.redirect-host {
+  font-size: 16px; font-weight: 500; color: var(--warn-ink);
+  overflow-wrap: anywhere;
+}
+.redirect-note { font-size: 12px; color: var(--dim); line-height: 1.5; }
+.consent-warn { font-size: 13px; color: var(--dim); margin: 14px 0 10px; line-height: 1.6; }
+/* 双钮：同宽同高纵向堆叠——拒绝与允许视觉权重一致（不是幽灵钮/文字链） */
+.consent-actions { display: grid; gap: 8px; }
+.consent-actions .btn { width: 100%; }
+.scope-list { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 4px; }
+.scope-list li { font-size: var(--font-body2); }
+
+/* 二维码与恢复码 */
+.qr {
+  width: 216px; height: 216px; background: #fff; background-clip: padding-box;
+  padding: 9px; border-radius: var(--radius-ctl);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.codes {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px; font-family: var(--mono); font-size: 15px;
+  background: var(--canvas); border: 1px dashed var(--line);
+  border-radius: var(--radius-card); padding: 14px;
+}
+.secret-line { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.secret-line code { font-family: var(--mono); word-break: break-all; }
+/* 「使用恢复码」次级切换：幽灵小按钮，不与主输入抢视觉 */
+.toggle-recovery { align-self: start; margin: -6px 0 10px; padding-left: 0; }
+
+/* 骨架行内列表占位（sessions/passkeys 初始态） */
+.list .sk-row { background: var(--card); border-radius: calc(var(--radius-card) - 4px); }
+
+/* 工具条（筛选/搜索一张卡） */
+.toolbar {
+  background: var(--card);
+  border-radius: var(--radius-card);
+  padding: var(--sp-4);
+  display: grid; gap: var(--sp-3);
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  align-items: end;
+  position: relative;
+}
+.toolbar > .field { margin: 0; }
+.toolbar > .toolbar-inline { grid-column: 1 / -1; }
+.toolbar .toolbar-row {
+  grid-column: 1 / -1; display: flex; align-items: center;
+  gap: 8px; flex-wrap: wrap;
+}
+.toolbar .toolbar-row > .field { flex: 1 1 190px; }
+.toolbar .toolbar-actions {
+  grid-column: 1 / -1; display: flex; gap: 8px; justify-content: flex-end;
+}
+.toolbar-inline { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+
+/* 分页条 */
+.pager { display: flex; align-items: center; gap: var(--sp-2); justify-content: flex-end; }
+
+/* ================= ⑬ 详情面板与图表 ================= */
+/* 页内钻取面板（用户详情/会话明细/AI 明细） */
 .detail {
   border-top: 1px dashed var(--line); margin-top: var(--sp-3); padding-top: var(--sp-3);
-  border-radius: var(--radius-lg);
-  background: var(--glass-card-bg); background-clip: padding-box;
-  -webkit-backdrop-filter: blur(var(--glass-card-blur)) saturate(var(--glass-card-saturate));
-  backdrop-filter: blur(var(--glass-card-blur)) saturate(var(--glass-card-saturate));
+  border-radius: var(--radius-lg); background: var(--card);
+}
+.kpi-row { display: grid; gap: var(--gap); grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.card.kpi { display: grid; gap: 2px; align-content: start; padding: 16px 18px; }
+.card.kpi strong { font-size: var(--font-title2); font-weight: 500; line-height: var(--lh-title2); }
+.card.kpi .hint { font-size: var(--font-footnote); }
+.spark { display: flex; align-items: flex-end; gap: 3px; height: 36px; margin-top: 6px; }
+.spark i {
+  flex: 1; min-width: 4px; border-radius: 3px 3px 0 0;
+  background: var(--progress-fill); opacity: .85;
+  transition: height var(--dur-3) var(--ease);
+}
+.ai-user-row { cursor: pointer; }
+.ai-user-row:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.bars { display: grid; gap: 6px; }
+.bar-row {
+  display: grid; grid-template-columns: 84px 1fr 48px;
+  gap: 8px; align-items: center; font-size: 13px;
 }
 
-@media (max-width: 640px) {
-  /* 圆角**不随断点变**：--radius-card 全站 16，窄屏另起 18 会与按钮/输入框的
-     16 并存成两种观感（这正是「圆角很奇怪」的来源之一）。窄屏只收字号与内边距。 */
-  .page-head h1 { font-size: 26px; }
-  th, td { padding: 8px 10px; }
-}
+/* 焦点目标不被 sticky chrome 遮挡时的统一滚动兜底已由 scroll-padding 承担 */
 
-/* =====================================================================
-   动效系统（miuix「丝滑统一」口径）
-   ---------------------------------------------------------------------
-   ① 常规 easing = --ease（cubic-bezier(.16,1,.3,1)），弹簧 --spring 只给开关/底栏/侧栏；时长梯度见 :root；
-   ② 只动 transform / opacity —— 绝不碰 width/height/margin/top 等 layout
-      属性（会触发重排 = 抖动），hover 抬升、按压缩进、退场下沉全是位移；
-   ③ 入场交错（顶栏 → 分区导航 → 内容卡片，stagger 70ms），表格行只给
-      首屏前 10 行错峰（长列表不做整表动画）；
-   ④ 所有动画/过渡在 prefers-reduced-motion 下由文件末尾的媒体查询一刀切关
-      （含 animation-delay 清零），交互反馈保留颜色/透明度变化；
-   ⑤ 动画不延迟焦点与点击：入场元素全程可点（opacity 从 0 起但不挡 hit
-      test 之外的交互），对话框/Toast 不做退场动画以免拖慢「关掉」的反馈。
-   ===================================================================== */
-
-/* ---- 关键帧：只声明位移与透明度 ---- */
+/* ================= ⑭ 动效系统 ================= */
+/* ① 常规 easing = --ease，弹簧 --spring 只给 Switch 滑块与导航按压；
+   ② 只动 transform/opacity（不碰 layout 属性，防重排抖动）；
+   ③ 入场错峰（顶栏 → 导航 → 内容），浮层不吃入场；
+   ④ reduced-motion 一刀切（动画+过渡全关、delay 归零）；
+   ⑤ 动画不拦截交互：入场元素全程可点，Toast/对话框不做退场动画。 */
 @keyframes rise-in {
   from { opacity: 0; transform: translateY(12px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -1063,38 +1082,28 @@ td .user-cell .truncate { max-width: 24ch; }
   from { opacity: 0; transform: translateY(4px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-@keyframes fade-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes dlg-in {
   from { opacity: 0; transform: scale(.96); }
   to   { opacity: 1; transform: scale(1); }
 }
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-/* 状态徽标/提示浮现：轻缩放进入（保存成功一类的小反馈） */
+@keyframes spin { to { transform: rotate(360deg); } }
 @keyframes pop-in {
   from { opacity: 0; transform: scale(.94); }
   to   { opacity: 1; transform: scale(1); }
 }
 
-/* ---- ① 入场：顶栏 → 分区导航 → 内容（stagger 70ms；12px 上浮）----
-   .content 自身不再叠加一层淡入（会与子元素的错峰叠成双倍淡入，观感发糊），
-   由下面的直出子元素错峰顶上；#toast 与 dialog 是浮层，不吃入场动画。 */
 .topbar { animation: rise-in var(--dur-3) var(--ease) backwards; }
-.tabnav { animation: rise-in var(--dur-3) var(--ease) 70ms backwards; }
-.sidenav { animation: rise-in var(--dur-3) var(--ease) 70ms backwards; }
+.rail { animation: rise-in var(--dur-3) var(--ease) 70ms backwards; }
+.dock { animation: rise-in var(--dur-3) var(--ease) 70ms backwards; }
 .content > * { animation: rise-in-sm var(--dur-3) var(--ease) 140ms backwards; }
 .content > *:nth-child(2) { animation-delay: 140ms; }
 .content > *:nth-child(3) { animation-delay: 210ms; }
 .content > *:nth-child(4) { animation-delay: 280ms; }
 .content > *:nth-child(5) { animation-delay: 350ms; }
-.content > *:nth-child(n+6) { animation-delay: 400ms; }   /* 再往后不再拖，齐步进 */
+.content > *:nth-child(n+6) { animation-delay: 400ms; }
 .content > #toast, .content > dialog { animation: none; }
 
-/* 表格首屏错峰：只有前 10 行，第 11 行起不做动画（长列表不整表动） */
 tbody tr:nth-child(-n+10) { animation: rise-in-sm var(--dur-2) var(--ease) backwards; }
 tbody tr:nth-child(1) { animation-delay: 60ms; }
 tbody tr:nth-child(2) { animation-delay: 90ms; }
@@ -1107,9 +1116,6 @@ tbody tr:nth-child(8) { animation-delay: 270ms; }
 tbody tr:nth-child(9) { animation-delay: 300ms; }
 tbody tr:nth-child(10) { animation-delay: 330ms; }
 
-/* 列表行（登录会话 / Passkey / 详情面板里的 .list）：这些行是取到数据后才由 JS
-   插进来的，容器的入场动画早已播完——行自身补一段同款错峰，与表格行同一节奏。
-   只给前 8 行（第 9 行起齐步进），时长用 --dur-2，reduced-motion 由文件末一刀切。 */
 .list > .item { animation: rise-in-sm var(--dur-2) var(--ease) backwards; }
 .list > .item:nth-child(1) { animation-delay: 40ms; }
 .list > .item:nth-child(2) { animation-delay: 70ms; }
@@ -1120,7 +1126,6 @@ tbody tr:nth-child(10) { animation-delay: 330ms; }
 .list > .item:nth-child(7) { animation-delay: 220ms; }
 .list > .item:nth-child(n+8) { animation-delay: 250ms; }
 
-/* AI 用量的每日柱行：同样是取数后才出现，前 10 行错峰（与表格行同款封顶） */
 .bars > .bar-row { animation: rise-in-sm var(--dur-2) var(--ease) backwards; }
 .bars > .bar-row:nth-child(1) { animation-delay: 60ms; }
 .bars > .bar-row:nth-child(2) { animation-delay: 90ms; }
@@ -1133,32 +1138,104 @@ tbody tr:nth-child(10) { animation-delay: 330ms; }
 .bars > .bar-row:nth-child(9) { animation-delay: 300ms; }
 .bars > .bar-row:nth-child(10) { animation-delay: 330ms; }
 
-/* ---- ② 区块切换（页内 tab 换面板）：crossfade + 4px 上浮，180ms ----
-   JS 用 WAAPI 给目标面板挂 swapIn()（见 app.js）；这里给无 JS 场景兜底一个 class。 */
 .swap-in { animation: rise-in-sm var(--dur-2) var(--ease) backwards; }
-
-/* ---- ⑥ 状态变化：徽标/提示轻浮现（pop-in，由 JS 加 .pop 触发）---- */
 .pop { animation: pop-in var(--dur-3) var(--ease) backwards; }
 
+/* 触控设备：一切可点目标 ≥44（HIG 44pt / WCAG 2.5.5），复选框命中区用透明伪元素撑开 */
+@media (pointer: coarse) {
+  .btn, input[type=text], input[type=email], input[type=password], input[type=date],
+  input[type=datetime-local], input[type=search], select, textarea { min-height: var(--tap); }
+  .btn.small, .app-chip, .select-btn, .select-opt, .tab, .nav-item,
+  .brand, .skip, .acct { min-height: var(--tap); }
+  .app-chip { min-height: var(--tap); }
+  input[type=checkbox], input[type=radio] { width: 24px; height: 24px; }
+  input[type=checkbox]::before, input[type=radio]::before {
+    content: ""; position: absolute; left: 50%; top: 50%;
+    width: var(--tap); height: var(--tap); transform: translate(-50%, -50%);
+  }
+  .pf-chip { width: var(--tap); height: var(--tap); }
+  .pf-chip.auto { width: auto; min-width: var(--tap); min-height: var(--tap); }
+}
+
+/* prefers-reduced-motion 分级降级（依据 Chrome「Modern Web Guidance · Motion」：
+   不要全局把 transition-duration 打到 0.01ms——颜色过渡被掐断反而更刺眼；
+   只处理**空间运动**，保留颜色/透明度反馈与必要的进度指示）：
+   ① 入场/浮层关键帧归零时长 + 归零 delay（直接停在终态，内容不迟到）；
+   ② 位移/缩放类按压反馈撤掉（transform:none），颜色类过渡照常；
+   ③ 加载转圈是必要反馈：放慢而不是冻结（「status animations should slow
+      rather than freeze」）；骨架停脉冲只留底色。 */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
-    transition-duration: 0.001ms !important;
     animation-duration: 0.001ms !important;
     animation-delay: 0ms !important;
     animation-iteration-count: 1 !important;
   }
-  /* 交互反馈只留颜色/透明度：位移类的按压与悬停抬升一并撤掉。
-     （入场动画时长归零后停在终态即「可见」，无需额外兜底。） */
   .btn:active, .tab:active, .app-chip:active, .select-btn:active,
-  input[type=checkbox]:active, input[type=radio]:active { transform: none; }
-  /* 骨架屏停脉冲，只留底色（仍在表达「占位」，但不闪） */
+  .nav-item:active, input[type=checkbox]:active, input[type=radio]:active { transform: none; }
   .skeleton { animation: none; opacity: .7; }
+  .btn[aria-busy=true]::after {
+    animation-duration: 2.4s !important;
+    animation-iteration-count: infinite !important;
+  }
 }
 @media (prefers-reduced-motion: reduce) and (hover: hover) {
-  /* 行的悬停只留背景变化（无位移可撤） */
   .item:hover { transform: none; }
 }
-/* 打印：动画不跑，backwards 的起始态会把内容钉在 opacity:0 —— 直接撤掉动画 */
+/* ================= ⑮ 拒绝态 / 豁免层级 / 概览指标 ================= */
+/* —— 拒绝态分级面板：徽标 + 服务端原文 + 下一步动作（重试/返回/联系支持）——
+    出处：拒绝页要给「一个主行动 + 一个安全兜底」与可引用的报障信息
+    （AppMaster access-denied 三态：未登录/请求权限/联系管理员；ONS/NHS 错误页
+    口径：说清问题 + 一个 CTA + 联系方式；NN/g 错误文案三段式：发生了什么、
+    为什么、怎么修）。颜色只做辅助，徽标文字才是分级本身（WCAG 1.4.1 双通道）。 */
+.denied-panel {
+  display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap;
+  padding: 12px 14px; margin: 8px 0;
+  background: var(--warn-bg); border-radius: var(--radius-card);
+}
+.denied-panel .badge { flex: none; }
+.denied-panel .title { font-weight: 500; font-size: var(--font-body2); color: var(--ink); }
+.denied-panel .meta { font-size: 13px; color: var(--dim); }
+.denied-panel-actions { margin-left: auto; }
+@media (max-width: 639.98px) {
+  .denied-panel-actions { margin-left: 0; width: 100%; }
+}
+
+/* —— 拒绝原因分级列表（403 页 / 授权错误页）：当前命中的级别高亮 —— */
+.denied-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.denied-head h1 {
+  font-size: var(--font-title2); font-weight: 400; margin: 0;
+  line-height: var(--lh-title2); letter-spacing: -.01em;
+}
+.denied-head h2 { font-size: 18px; font-weight: 500; margin: 0; }
+.denied-tiers { list-style: none; display: grid; gap: 8px; margin: 14px 0; padding: 0; }
+.denied-tier {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  padding: 10px 12px; border-radius: var(--radius-sm);
+  background: var(--canvas); color: var(--dim);
+  font-size: 13px; line-height: 1.5;
+}
+.denied-tier.on { background: var(--warn-bg); color: var(--ink); }
+.denied-tier .badge { flex: none; }
+.denied-actions {
+  display: flex; gap: var(--sp-2); flex-wrap: wrap;
+  justify-content: center; margin-top: 14px;
+}
+
+/* —— 豁免层级井（项目访问页）：白卡内嵌的分层清单，行分隔用 border（画在自身
+    背景之上，不被行 hover 盖掉）；底色取 --sub-bg 让 .item:hover（--canvas）仍可见 —— */
+.access-exempt {
+  background: var(--sub-bg); border-radius: var(--radius-card);
+  padding: 2px 14px; margin-top: 6px;
+}
+.access-exempt > .item + .item { border-top: 1px solid var(--line); }
+.access-card h3 { margin-top: var(--sp-4); }
+
+/* 动态显隐的容器不吃入场错峰：.content > * 的 delay 是为首屏准备的；元素在
+   display:none 之后才出现时，backwards 填充会先把它按住一整段 delay（钻取面板
+   点开后要多等 ~600ms 才可见）。这些容器改由 slideIn/swapIn（WAAPI，无 delay）
+   负责入场——错峰只属于真正随页面一起加载的内容。 */
+.content > .detail, .content > .denied-slot { animation: none; }
+
 @media print {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }

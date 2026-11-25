@@ -38,11 +38,14 @@ type NavItem struct {
 // 非管理员的 HTML 里就没有这个按钮，而不是前端 display:none 藏一下。
 //
 // IsSuper/Apps/CurrentApp 是 W2 项目切换器的渲染依据（同样来自现查的
-// role/admin_scopes）：super 见「全部」+ 两 app，app-admin 只见自己授权的 app。
+// role/admin_scopes）：super 见「全部」+ 全部项目，app-admin 只见自己授权的 app。
 type Data struct {
 	Title   string
 	Nav     []NavItem
 	Minimal bool // 登录页这类无导航的壳
+	// Page 是页面模板名（Render 注入 body[data-page]）：app.js 按它分发到对应页面
+	// 控制器，替代旧版「每个 init 探测自己的锚点元素」的散装入口。
+	Page    string
 	Email   string
 	Initial string // 账号胶囊头像占位首字母（无档案头像时的兜底）
 	// UID 是当前登录者的用户 id（W3 头像底色派生用）：avatarColor 未设（0/越界）时
@@ -76,6 +79,10 @@ type Data struct {
 	CurrentApp string
 	// DeniedApp 是 403 页上点名的越权应用（denied 模板用，其余页面忽略）
 	DeniedApp string
+	// DeniedReason 是 403 页对应的服务端拒绝分级（auth.ReasonPolicy /
+	// auth.ReasonPermission）。模板据此高亮当前命中的一级并展示原始 reason；
+	// 空串 = 未提供，按策略拒绝的旧形态兜底。
+	DeniedReason string
 	// OAuth 是授权页（authorize 模板）的渲染上下文：确认态带项目/回跳域名/事务号，
 	// 错误态带标题与下一步文案（同一张卡片语言，cmd/server/oauth.go 填）。
 	OAuth *OAuthView
@@ -95,8 +102,6 @@ type Data struct {
 	// PaletteJSON 是头像色板的 JSON（B5 账号资料卡的色块 chips 从它取色，
 	// 与 Go avatarPalette / 两 App AvatarPalette 同一份值）。
 	PaletteJSON template.JS
-	Style       template.CSS
-	Script      template.JS
 	// AssetVersion 是 CSS/JS 内容哈希，作为静态资源 URL 的 ?v=；页面模板据此引用
 	// 可长期缓存的 /app.css、/app.js，不再把整份资源内联进每个 HTML 响应。
 	AssetVersion string
@@ -104,8 +109,6 @@ type Data struct {
 
 var (
 	pages        = map[string]*template.Template{}
-	styleCSS     template.CSS
-	appJS        template.JS
 	assetVersion string
 )
 
@@ -142,14 +145,12 @@ func brandContentType(name string) string {
 func init() {
 	css, err := files.ReadFile("style.css")
 	if err != nil {
-		panic(fmt.Errorf("读内联样式: %w", err))
+		panic(fmt.Errorf("读样式: %w", err))
 	}
-	styleCSS = template.CSS(string(css)) //nolint:gosec // 静态自有资源，内容可信
 	js, err := files.ReadFile("app.js")
 	if err != nil {
-		panic(fmt.Errorf("读内联脚本: %w", err))
+		panic(fmt.Errorf("读脚本: %w", err))
 	}
-	appJS = template.JS(string(js)) //nolint:gosec // 静态自有资源，内容可信
 	// CSS/JS 以静态路径复用，URL 带内容哈希做版本；两份内容都进哈希，
 	// 任一份改动都会让所有页面拿到新 URL，避免半新半旧的缓存串味。
 	sum := sha256.Sum256(append(append([]byte{}, css...), js...))
@@ -288,12 +289,14 @@ func AppLabel(key string) string {
 	return key
 }
 
-// knownApps 是项目切换器/应用授权开关的展示名（与 auth.allowedApps 同源的两 app；
+// knownApps 是项目切换器/应用授权开关的展示名（与 auth.allowedApps 同源；
 // 新应用加这里 + allowedApps 两处）。定序即展示序。前端不存第二份清单——
 // Render 把它序列化成 JSON 注进页面（Data.AppsJSON），JS 从那里读。
 var knownApps = []struct{ key, label string }{
 	{"CalorieDiary", "热量日记"},
 	{"ExpenseDiary", "开支日记"},
+	{"EPassportForMikey", "奇奇岛护照"},
+	{"PersonalShortener", "屑涵短链"},
 }
 
 // knownAppsJSON 把注册表序列化成 [{key,label},...]——模板/JS 唯一的 app 清单来源。
@@ -331,7 +334,7 @@ func Registry() []RegistryApp {
 
 // SwitchApps 生成项目切换器的选项：
 //
-//	super     「全部」+ 两 app（currentApp 空 = 「全部」高亮）；
+//	super     「全部」+ knownApps 全量（currentApp 空 = 「全部」高亮）；
 //	app-admin 只回自己授权的 app（无「全部」项——scope 是硬边界，「全部」对它
 //	          没有语义）；currentApp 不在其内时不高亮任何项（页面层已把越权
 //	          ?app= 挡成 403，走到这里只剩空串的默认态）。
@@ -509,8 +512,10 @@ func Render(w http.ResponseWriter, name string, data Data) error {
 	if !ok {
 		return fmt.Errorf("页面模板不存在: %s", name)
 	}
-	data.Style, data.Script = styleCSS, appJS
 	data.AssetVersion = assetVersion
+	if data.Page == "" {
+		data.Page = name // body[data-page]：前端按它分发页面控制器
+	}
 	if data.AppsJSON == "" {
 		data.AppsJSON = knownAppsJSON()
 	}

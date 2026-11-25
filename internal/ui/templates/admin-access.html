@@ -1,25 +1,71 @@
 {{define "content"}}
 <div class="page-head">
   <h1>项目访问</h1>
+  <span class="dim" id="access-stats" aria-live="polite"></span>
 </div>
 
-<p class="hint">登录名单决定哪些邮箱能登录项目；切到「仅限受邀」后，名单外账号无法登录。平台管理员看全部项目，项目管理员只看授权项目。</p>
+<p class="hint">登录名单决定哪些邮箱能登录项目；切到「仅限受邀」后，名单外账号无法登录该项目。平台管理员看全部项目，项目管理员只看授权项目。</p>
+
+<!-- 豁免层级图例：「谁对什么豁免」的全局说明——三层身份 + 各自的豁免范围，
+     与服务端 gate.go 的判定顺序（super ∨ admin_scopes ∨ project_access）一一对应。 -->
+<section class="card" id="access-ladder" aria-labelledby="access-ladder-title">
+  <h2 id="access-ladder-title">登录豁免层级</h2>
+  <p class="hint">项目开启「仅限受邀」后，名单外账号一律被拒；下面三层身份不受名单约束：</p>
+  <div class="access-exempt">
+    <div class="item">
+      <span class="grow"><span class="title">平台管理员</span><br>
+        <span class="meta">无视全部项目的登录要求，随时可登录任何项目</span></span>
+      <span class="badge on">豁免 · 全部项目</span>
+    </div>
+    <div class="item">
+      <span class="grow"><span class="title">项目管理员</span><br>
+        <span class="meta">被授予某个项目的管理权，即豁免该项目的登录要求</span></span>
+      <span class="badge on">豁免 · 本项目</span>
+    </div>
+    <div class="item">
+      <span class="grow"><span class="title">登录名单内成员</span><br>
+        <span class="meta">「仅限受邀」时唯一能登录的普通账号</span></span>
+      <span class="badge plain">在册 · 本项目</span>
+    </div>
+  </div>
+  <p class="hint">豁免只在项目开启「仅限受邀」时起作用；开放登录时全员可登录，豁免不构成门槛。授予/回收项目管理员豁免在「用户」页的详情面板里操作，或用每个项目卡上的「豁免管理」。角色任命也在「用户」页：根管理员可任命平台管理员，平台管理员可任命项目管理员（不跨项目）。</p>
+</section>
 
 <p class="err" id="access-error" role="alert" hidden></p>
+<!-- 拒绝态内联面板（403 分级：策略拒绝/权限不足 + 下一步动作），由 app.js 注入 -->
+<div class="denied-slot" id="access-denied" hidden></div>
 
 <div class="stack" id="access-list" aria-live="polite">
   <div class="sk-row"><span class="skeleton sk-avatar"></span><span class="sk-grow"><span class="skeleton sk-line w60"></span><span class="skeleton sk-line w40"></span></span></div>
-<div class="sk-row"><span class="skeleton sk-avatar"></span><span class="sk-grow"><span class="skeleton sk-line w60"></span><span class="skeleton sk-line w40"></span></span></div>
-<div class="sk-row"><span class="skeleton sk-avatar"></span><span class="sk-grow"><span class="skeleton sk-line w60"></span><span class="skeleton sk-line w40"></span></span></div>
+  <div class="sk-row"><span class="skeleton sk-avatar"></span><span class="sk-grow"><span class="skeleton sk-line w60"></span><span class="skeleton sk-line w40"></span></span></div>
+  <div class="sk-row"><span class="skeleton sk-avatar"></span><span class="sk-grow"><span class="skeleton sk-line w60"></span><span class="skeleton sk-line w40"></span></span></div>
 </div>
 
-<!-- 通用确认弹层：调整登录范围 / 移出名单（点名项目与邮箱） -->
+<!-- 通用确认弹层：调整登录范围 / 移出名单 / 豁免授予与回收（点名项目与邮箱） -->
 <dialog class="dlg" id="access-dlg" aria-labelledby="access-dlg-title">
   <h2 id="access-dlg-title">确认操作</h2>
   <p class="dim" id="access-dlg-desc"></p>
-  <div class="row end" style="margin-top:12px">
+  <div class="dlg-actions">
     <button type="button" class="btn" id="access-dlg-cancel">取消</button>
     <button type="button" class="btn primary" id="access-dlg-ok">确认</button>
+  </div>
+</dialog>
+
+<!-- 豁免管理弹层（仅平台管理员）：按邮箱查找账号 → 查其项目授权 → 授予/回收
+     本项目的项目管理员豁免。走既有 POST /admin/roles/{uid}/scope，契约不变。 -->
+<dialog class="dlg" id="exempt-dlg" aria-labelledby="exempt-dlg-title">
+  <h2 id="exempt-dlg-title">豁免管理</h2>
+  <p class="dim" id="exempt-dlg-desc"></p>
+  <form id="exempt-form" novalidate>
+    <label class="field"><span>账号邮箱</span>
+      <input type="email" id="exempt-email" autocomplete="off" placeholder="输入要调整豁免的账号邮箱">
+    </label>
+    <button type="submit" class="btn primary" id="exempt-find">查找账号</button>
+  </form>
+  <p class="err" id="exempt-error" role="alert" hidden></p>
+  <div id="exempt-result" class="hidden" style="margin-top:10px"></div>
+  <div class="dlg-actions">
+    <button type="button" class="btn" id="exempt-close">关闭</button>
   </div>
 </dialog>
 {{end}}

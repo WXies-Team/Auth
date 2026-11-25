@@ -1,10 +1,10 @@
 {{define "content"}}
-<div class="login-shell">
+<div class="auth-shell">
   <div class="brand-lg"><img class="ico" src="/favicon.svg" alt="" width="28" height="28"><span class="name">Auth</span></div>
 
   {{with .Invite}}
   {{if .ErrorTitle}}
-  <!-- 错误页变体（学 authorize.html 双变体做法）：出错原因 + 一条出路，零 JS -->
+  <!-- 错误页变体：出错原因 + 一条出路，零 JS -->
   <div class="card" id="invite-error">
     <h2>{{.ErrorTitle}}</h2>
     <p class="dim" style="margin-top:8px">{{.ErrorMessage}}</p>
@@ -16,7 +16,7 @@
   <div class="card" id="invite-card">
     <h2>接受邀请</h2>
     <p class="dim" style="margin-top:6px">以 <span class="mono">{{.Email}}</span> 注册{{if .AppName}}，加入「{{.AppName}}」{{end}}。</p>
-    <form method="post" action="/web/invite" style="margin-top:12px">
+    <form method="post" action="/web/invite" style="margin-top:12px" novalidate>
       <input type="hidden" name="token" value="{{.Token}}">
       <label class="field"><span>邮箱</span>
         <input type="email" value="{{.Email}}" readonly autocomplete="username">

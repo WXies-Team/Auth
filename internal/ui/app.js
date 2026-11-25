@@ -1,8 +1,15 @@
-/* Auth 管理台脚本 —— 内联，零外链。
+/* Auth 管理台脚本（2026-11 全量重写）——零外链。
+   架构：
+   - 全局层：工具 / 动效 / 时间 / 反馈 / api（CSRF + 重验 + 401 回跳）/ WebAuthn /
+     控件装饰（tabs、下拉、密码显示）；
+   - 页面层：每页一个控制器，按 body[data-page] 分发（替代旧版「每个 init 探测
+     自己的锚点元素」的散装入口——锚点改名时旧写法会静默不执行，新写法一眼对不上）。
    约定：
    - 所有写请求带 X-CSRF-Token（从可读 cookie 取）+ 同源 credentials；
-   - 401「需要重新验证」→ 弹重新验证框，验过自动重试原请求；401「登录已过期」→ 回登录页；
-   - 动态数据一律走 textContent / 转义后才进 innerHTML（邮箱、设备名来自用户与 UA）。 */
+   - 401「需要重新验证」→ 弹重新验证框，验过自动重试原请求；401「登录已过期」→
+     回登录页并带 ?next=（登录后回原处）；
+   - 动态数据一律 textContent / 转义后才进 innerHTML（邮箱、设备名来自用户与 UA）；
+   - 表格行的 td 带 data-label：窄屏（≤760px）由 CSS 降级为「label: value」卡片。 */
 'use strict';
 
 const $ = (sel, root) => (root || document).querySelector(sel);
@@ -25,17 +32,13 @@ function node(html) {
   return t.content.firstElementChild;
 }
 
-/* ---------- 动效（与 style.css 的动效系统同一套 easing/时长）----------
-   约定：
-   - 只用 transform / opacity（WAAPI 也不许碰 width/height/top 这类 layout 属性）；
-   - 用户开了「减弱动态效果」就全部不播——交互反馈只留颜色/透明度；
-   - 动画绝不拦截交互：不 await 播完再响应点击/焦点，纯装饰。 */
+/* ---------- 动效（与 style.css 同一套 easing/时长）----------
+   只用 transform/opacity；用户开了「减弱动态效果」就不播；动画绝不拦截交互。 */
 const MOTION_EASE = 'cubic-bezier(.16, 1, .3, 1)';
 const reducedMotion = () =>
   !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
-/* 区块切换：crossfade + 4px 上浮，180ms（页内 tab 换面板、详情面板展开都走它）。
-   传入的元素必须此刻可见；播放失败静默忽略——动画是装饰，不是流程。 */
+/* 区块切换：crossfade + 4px 上浮（tab 换面板、详情展开） */
 function swapIn(el) {
   if (!el || reducedMotion() || typeof el.animate !== 'function') return;
   try {
@@ -45,8 +48,42 @@ function swapIn(el) {
   } catch (_) { /* 浏览器不支持就静默 */ }
 }
 
-/* 页内钻取：16px 右侧滑入 + 淡入，200ms（后台详情面板、AI 明细面板的进场）。
-   与 swapIn 同一套 easing/时长梯度，只多一段横移——层级感来自方向，不来自节奏。 */
+/* 流程步连续过渡（登录↔两步验证↔强制改密↔错误态）：先让旧步以 90ms 淡出，
+   再显示新步做 180ms 上浮——总时长 270ms（<300ms 微交互上限），既不瞬变也不
+   让两步同屏叠影。reduced-motion 直接切。快速连点时取消上一段未完的退场，
+   从当前展示态重新起（可中断，Apple: animate from presentation value）。 */
+function flowSwap(hideEl, showEl, after) {
+  let done = false;
+  let timer = null;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    if (timer) clearTimeout(timer);
+    if (hideEl) {
+      if (hideEl.__flow) { hideEl.__flow.onfinish = null; hideEl.__flow.cancel(); hideEl.__flow = null; }
+      hideEl.classList.add('hidden');
+    }
+    if (showEl) {
+      showEl.classList.remove('hidden');
+      swapIn(showEl);
+    }
+    if (after) after();
+  };
+  if (reducedMotion() || typeof Element.prototype.animate !== 'function') { finish(); return; }
+  if (hideEl && !hideEl.classList.contains('hidden')) {
+    if (hideEl.__flow) { hideEl.__flow.onfinish = null; hideEl.__flow.cancel(); hideEl.__flow = null; }
+    const anim = hideEl.animate(
+      [{ opacity: 1, transform: 'translateY(0)' }, { opacity: 0, transform: 'translateY(-4px)' }],
+      { duration: 90, easing: MOTION_EASE, fill: 'forwards' });
+    hideEl.__flow = anim;
+    anim.onfinish = finish;
+    timer = setTimeout(finish, 240);   // 兜底：onfinish 不触发也不卡流程
+  } else {
+    finish();
+  }
+}
+
+/* 页内钻取：16px 右侧滑入 + 淡入（详情面板进场） */
 function slideIn(el) {
   if (!el || reducedMotion() || typeof el.animate !== 'function') return;
   try {
@@ -56,7 +93,7 @@ function slideIn(el) {
   } catch (_) { /* 同上 */ }
 }
 
-/* 状态浮现：徽标/提示轻缩放进场，200ms（保存成功、角色徽标亮起一类） */
+/* 状态浮现：徽标/提示轻缩放进场 */
 function popIn(el) {
   if (!el || reducedMotion() || typeof el.animate !== 'function') return;
   try {
@@ -66,16 +103,15 @@ function popIn(el) {
   } catch (_) { /* 同上 */ }
 }
 
-/* 行退场：挂 .leaving（CSS 用同一套 easing 做淡出 + 下沉），等它播完再回调。
-   服务端已确认成功才走到这里，所以等 180ms 不拖慢任何交互；reduced-motion 直接回调。 */
+/* 行退场：挂 .leaving（CSS 同款淡出），播完再回调。服务端确认成功才走到这里。 */
 function fadeOutRow(el, done) {
   if (!el || reducedMotion()) { done(); return; }
   el.classList.add('leaving');
   setTimeout(done, 180);
 }
 
-/* 时间渲染统一做 0 值防御：0 / 负值 / 字符串 "0" / NaN 一律当「没有时间」，
-   不渲染 1970-01-01 这类纪元日期（服务端对「从未使用/未记录」回 0）。 */
+/* ---------- 时间渲染 ----------
+   0 值防御：0 / 负值 / NaN 一律回「—」，不渲染 1970 纪元日期。 */
 function fmtTime(ms) {
   const n = Number(ms);
   if (!Number.isFinite(n) || n <= 0) return '—';
@@ -105,10 +141,8 @@ function relTime(ms) {
   return fmtTime(ms);
 }
 
-/* remainTime 是 relTime 的未来向镜像（邀请有效期这类「还有多久」）：relTime 按
-   「过去了多久」算，打在未来的毫秒上恒回「刚刚」——不能拿来显示剩余。
-   同一套梯度（分钟/小时/天），向上取整且至少 1 分钟（「1 分钟内有效」比
-   「不足 1 分钟」好读）；>30 天回绝对时间（与 relTime 的长跨度口径一致）。 */
+/* remainTime 是 relTime 的未来向镜像（邀请有效期「还有多久」）：向上取整且
+   至少 1 分钟；>30 天回绝对时间。 */
 function remainTime(ms) {
   const t = Number(ms);
   if (!Number.isFinite(t) || t <= 0) return '—';
@@ -122,6 +156,16 @@ function remainTime(ms) {
   return fmtTime(t);
 }
 
+/* 相对时间时钟：带 data-rel 的节点每 30 秒重算一次——页面开着不动时
+   「1 分钟前」不会永远停在原地（列表整体刷新另有 refresh 按钮与 visibilitychange）。 */
+function startRelClock() {
+  const tick = () => $$('[data-rel]').forEach(el => {
+    el.textContent = relTime(el.dataset.rel);
+  });
+  setInterval(tick, 30000);
+}
+
+/* ---------- 反馈 ---------- */
 let toastTimer = null;
 function toast(msg, bad) {
   const el = $('#toast');
@@ -134,7 +178,7 @@ function toast(msg, bad) {
   toastTimer = setTimeout(() => {
     el.classList.remove('show');
     setTimeout(() => { el.hidden = true; }, 200);
-  }, 2600);
+  }, bad ? 5000 : 3200);
 }
 
 function showErr(sel, msg) {
@@ -144,10 +188,10 @@ function showErr(sel, msg) {
   el.hidden = !msg;
 }
 
-/* 跨页提示：跳转前把提示存进 sessionStorage，目标页 DOMContentLoaded 时 drain 出来
-   （注销撤销 / 强制改密成功 / 注销已提交都要「跳走之后还看得见一句 toast」）。 */
+/* 跨页提示：跳转前存 sessionStorage，目标页启动时 drain（注销撤销 / 强制改密
+   成功 / 注销已提交都要「跳走之后还看得见一句 toast」）。 */
 function flash(msg) {
-  try { sessionStorage.setItem('auth_flash', msg); } catch (_) { /* 隐私模式等存储不可用：放弃提示，不拦流程 */ }
+  try { sessionStorage.setItem('auth_flash', msg); } catch (_) { /* 隐私模式：放弃提示，不拦流程 */ }
 }
 function drainFlash() {
   let msg = '';
@@ -158,9 +202,96 @@ function drainFlash() {
   if (msg) toast(msg);
 }
 
-/* 筛选/分页状态 ↔ URL（可刷新、可分享、可回退）。
-   用 replaceState 而不是 pushState：每敲一次筛选不该在历史里堆一页，
-   后退键仍回上一页而不是上一个筛选组合。 */
+/* ---------- 拒绝态分级（app 登录 / 授权 / 后台操作被拒的统一呈现） ----------
+   三种拒绝的下一步完全不同——重新登录 / 调整策略或加入名单 / 找平台管理员开
+   权限——所以 401/403 不再只是一行红字：分级徽标 + 一句「接下来做什么」+ 可点
+   的动作（重试 / 返回 / 联系支持）。分级只是展示层启发式：判定始终在服务端
+   （gate.go 的封禁→白名单顺序、admin.go 的 scope 收权），文案也原样透传。 */
+const DENIAL_TIERS = {
+  unauth: {
+    label: '未登录', badge: 'off',
+    hint: '登录状态已失效。重新登录后会回到这里继续。',
+  },
+  policy: {
+    label: '策略拒绝', badge: 'warn',
+    hint: '账号或项目的登录策略拦下了这次访问：需要管理员调整策略，或把账号加入名单。',
+  },
+  permission: {
+    label: '权限不足', badge: 'on',
+    hint: '当前账号没有执行该操作的权限，可联系平台管理员开通。',
+  },
+};
+
+/* denialTier：401 → 未登录；403 优先读服务端的 reason（policy/permission，
+   与 internal/auth 的拒绝分级常量同值域）；没有 reason 时按原文判据分级，
+   认不出就回空串——CSRF/Origin、MFA 等拦截不走「联系管理员」面板。
+   400/404 等非 401/403 不是拒绝态，回空串。 */
+function denialTier(status, message, reason) {
+  const code = Number(status);
+  if (code === 401) return 'unauth';
+  if (code !== 403) return '';
+  if (reason === 'policy' || reason === 'permission') return reason;
+  // 403 没带 reason（CSRF/Origin、MFA 拦截等）只按原文分级；认不出来就回落
+  // 普通报错，别一律说成「联系平台管理员开通」。
+  const m = String(message || '');
+  if (/封禁|仅限受邀/.test(m)) return 'policy';
+  if (/权限|授权|开通|没有该项目的管理/.test(m)) return 'permission';
+  return '';
+}
+
+/* 拒绝面板 HTML：徽标 + 服务端原文 + 分级提示 + 动作（可选重试/返回 + 常驻支持入口）。
+   非拒绝态错误回空串，调用方回落到普通行内报错——面板不抢正常错误的位置。 */
+function denialPanelHTML(err, opts) {
+  const o = opts || {};
+  const tier = denialTier(err && err.status, err && err.message, err && err.reason);
+  if (!tier) return '';
+  const t = DENIAL_TIERS[tier];
+  const retry = o.retry ? '<button type="button" class="btn small" data-denied-retry>重试</button>' : '';
+  const back = o.backHref
+    ? `<a class="btn small" href="${esc(o.backHref)}">${esc(o.backLabel || '返回')}</a>` : '';
+  return `<div class="denied-panel swap-in" role="alert" data-tier="${tier}">
+    <span class="badge ${t.badge}">${esc(t.label)}</span>
+    <span class="grow"><span class="title">${esc(err && err.message)}</span><br>
+      <span class="meta">${esc(t.hint)}</span></span>
+    <span class="row denied-panel-actions">${retry}${back}
+      <a class="btn small ghost" href="mailto:support@horatio.cn">联系支持</a></span>
+  </div>`;
+}
+
+/* showDenial：把拒绝面板写进容器（err 为空 = 清空收起）。返回是否命中拒绝态，
+   调用方按 false 走原来的行内报错。 */
+function showDenial(sel, err, opts) {
+  const el = $(sel);
+  if (!el) return false;
+  const html = denialPanelHTML(err, opts);
+  if (!html) { el.innerHTML = ''; el.hidden = true; return false; }
+  el.innerHTML = html;
+  el.hidden = false;
+  const rb = el.querySelector('[data-denied-retry]');
+  if (rb && opts && opts.retry) rb.addEventListener('click', opts.retry);
+  return true;
+}
+
+/* reportDenial：写操作被拒后的统一出口——403 走拒绝分级面板并滚到眼前（弹层
+   已关，toast 会一滚而过，越权原因必须留在视野里）；其余错误维持 toast。 */
+function reportDenial(slotSel, err) {
+  if (showDenial(slotSel, err)) {
+    const el = $(slotSel);
+    if (el && el.scrollIntoView) el.scrollIntoView({ block: 'center' });
+    return true;
+  }
+  toast(err.message, true);
+  return false;
+}
+
+/* 报障时间戳：403 页与授权错误页共用（与服务端日志对齐）。 */
+function stampDeniedAt() {
+  const el = $('#denied-at');
+  if (el) el.textContent = new Date().toLocaleString('zh-CN');
+}
+
+/* 筛选/分页状态 ↔ URL：replaceState 而非 pushState（每敲一次筛选不该在历史里
+   堆一页），刷新/分享/后退都能还原同一份状态。 */
 function syncQuery(pairs) {
   const p = new URLSearchParams();
   Object.keys(pairs).forEach(k => {
@@ -172,11 +303,9 @@ function syncQuery(pairs) {
   if (url !== location.pathname + location.search) history.replaceState(null, '', url);
 }
 
-/* IP + 归属地：服务端用内嵌离线库现算，查不到（内网/无库/IPv6）就不显示这一段——
-   「IP 192.168.1.5 · 江苏 南京」这种把内网地址配上公网归属地的显示比不显示更糟。 */
-// IPv6 最长 39 字符，整串塞进会话行会把「最近活跃 / 首次登录」挤到换行。按
-// Carbon / PatternFly 对长 ID 的通行做法做**中段截断**（前 2 段 … 后 2 段），
-// 全串挂 title——截断必须留一条看全文的路，否则用户分不清两台设备的区别。
+/* ---------- 展示小件 ---------- */
+/* IP + 归属地：服务端离线库现算，查不到就不显示这一段（内网地址配公网归属地
+   比不显示更糟）。IPv6 中段截断（前 2 段 … 后 2 段），全串挂 title。 */
 function shortIP(ip) {
   const s = String(ip || '');
   if (s.length <= 24) return s;
@@ -194,34 +323,37 @@ function ipWithRegion(ip, region) {
   return `<span title="${esc(title)}">${esc(text)}</span>`;
 }
 
-/* 封禁徽标：列表前置状态，避免「点进详情才发现被封」。悬停给出范围与解除时间。 */
+/* 封禁徽标：列表前置状态，悬停给出范围与解除时间 */
 function banBadge(ban) {
   if (!ban) return '';
   const scope = ban.app === '*' ? '全站' : appLabel(ban.app);
-  const until = Number(ban.untilMs) > 0
-    ? '至 ' + fmtTime(ban.untilMs)
-    : '永久';
+  const until = Number(ban.untilMs) > 0 ? '至 ' + fmtTime(ban.untilMs) : '永久';
   const title = [scope + '封禁', until, ban.reason].filter(Boolean).join(' · ');
   return `<span class="badge warn" title="${esc(title)}">封禁</span>`;
 }
 
-/* 空态 = 标题（为什么空）+ 说明（下一步做什么）。此前只有一句灰字，
-   用户分不清「本来就没有」和「加载坏了」。 */
+/* 空态 = 为什么空 + 下一步（Polaris 口径）；表格版嵌在 <tr> 里 */
 function emptyState(title, hint) {
   return `<div class="empty"><span class="empty-title">${esc(title)}</span>${hint ? `<span class="empty-hint">${esc(hint)}</span>` : ''}</div>`;
 }
-
-/* 表格空态单元格：同一套「标题 + 下一步」，只是嵌在 <tr> 里（colspan 调用方给）。
-   此前多数表格空态只有一句灰字，与列表页的双行空态两种观感。 */
 function emptyCell(colspan, title, hint) {
   return `<tr><td colspan="${esc(colspan)}" class="empty"><span class="empty-title">${esc(title)}</span>${hint ? `<span class="empty-hint">${esc(hint)}</span>` : ''}</td></tr>`;
 }
 
-/* 表单提交按钮的忙态：这些表单此前没有 setBusy，双击会发两次请求
-   （验证码/重置类第二次必然失败，还把「验证码已使用」当错误丢给用户）。
-   e.submitter 是真正被点的按钮，取不到就退回表单里的第一个 submit。 */
+/* 表格单元格：窄屏卡片化的 label 来源（data-label），cls 供 cell-title/
+   cell-action/cell-pick 这类结构角色使用。 */
+function td(label, html, cls) {
+  const l = label ? ` data-label="${esc(label)}"` : '';
+  const c = cls ? ` class="${cls}"` : '';
+  return `<td${l}${c}>${html}</td>`;
+}
+
+/* ---------- 按钮与表单 ---------- */
+/* 提交忙态：这些表单没有 setBusy 时双击会发两次请求（验证码/重置类第二次必然
+   失败）。e.submitter 是真正被点的按钮。 */
 function busySubmit(e) {
-  const btn = (e && e.submitter) || (e && e.target && e.target.querySelector && e.target.querySelector('button[type=submit]'));
+  const btn = (e && e.submitter) ||
+    (e && e.target && e.target.querySelector && e.target.querySelector('button[type=submit]'));
   if (btn) setBusy(btn, true);
   return btn;
 }
@@ -233,8 +365,7 @@ function setBusy(btn, busy) {
   btn.disabled = !!busy;
 }
 
-/* ---------- 发码冷却（登录页两处 + 账号页两处共用一份） ----------
-   60 秒倒计时：按钮禁用 + 「N 秒后重发」，归零还原文案重新可用。 */
+/* 发码冷却：60 秒倒计时 + 「N 秒后重发」 */
 function cooldown(btn, seconds) {
   let left = seconds;
   btn.disabled = true;
@@ -248,13 +379,17 @@ function cooldown(btn, seconds) {
   }, 1000);
 }
 
-/* ---------- 分页（用户/审计/后台会话三页共用一份） ---------- */
+/* 列表加载期间给容器 aria-busy（读屏知道「正在读取」而不是静默变化） */
+function setListBusy(el, busy) {
+  if (el) el.setAttribute('aria-busy', busy ? 'true' : 'false');
+}
+
+/* ---------- 分页（用户/审计/后台会话三页共用） ---------- */
 function makePager(opts) {
   const st = { offset: 0, limit: opts.limit || 20, total: 0 };
   const prev = $(opts.prev), next = $(opts.next), label = $(opts.label);
   return {
     state: st,
-    /* set(总数, 本页条数)：刷新页码文案与两端按钮的可用态 */
     set(total, shown) {
       st.total = total;
       if (label) {
@@ -271,14 +406,10 @@ function makePager(opts) {
   };
 }
 
-/* ---------- 单输入原地换语义的 N 态工厂（GitHub 式，重新验证框、安全页「要一个码」
-   弹框、登录第二步三处共用） ----------
-   二态弹框（两步验证码 ↔ 恢复码）与三态登录步（验证器码 / 邮箱码 / 恢复码）的
-   差异全在配置：每态一组 label/placeholder/形态（numeric 收 6 位、否则自由输入）、
-   本态下各切换按钮的文案与显隐、可选的 intro 提示。apply(mode) 统一收口：
-   同步属性 → 值清空（防上一态输的半截被当另一种码提交）→ 刷新按钮/提示 →
-   清掉上一态的报错（换形态即换语义，旧错不再适用）→ crossfade（silent=false）→
-   聚焦（focus 默认取 cfg.autoFocus）。 */
+/* ---------- 单输入原地换语义的 N 态工厂（GitHub 式） ----------
+   二态弹框（两步验证码 ↔ 恢复码）与三态登录步（验证器码 / 邮箱码 / 恢复码）
+   的差异全在配置。apply 收口：同步属性 → 清值（防上一态半截被当另一种码提交）
+   → 刷新按钮/提示 → 清旧报错 → crossfade → 聚焦。 */
 function makeCodeToggle(input, labelEl, cfg) {
   let mode = cfg.initial;
   function apply(opts) {
@@ -302,7 +433,6 @@ function makeCodeToggle(input, labelEl, cfg) {
     (m.hide || []).forEach(sel => { const el = $(sel); if (el) el.classList.add('hidden'); });
     (m.show || []).forEach(sel => { const el = $(sel); if (el) el.classList.remove('hidden'); });
     if (cfg.introSel && m.intro != null) $(cfg.introSel).textContent = m.intro;
-    // 「已发送到你的邮箱」一类只在本态成立的提示，换态即收起
     (cfg.hideAlways || []).forEach(sel => { const el = $(sel); if (el) el.hidden = true; });
     input.value = '';
     if (cfg.errSel) showErr(cfg.errSel, '');
@@ -319,19 +449,17 @@ function makeCodeToggle(input, labelEl, cfg) {
 }
 
 /* ---------- 重新验证弹框（能力自适应 + 单例 in-flight） ----------
-   弹框按账号能力出方案（2026-10 定案，与两个日记 App 同一口径）：
-   - 有 Passkey → 主按钮「使用 Passkey 验证」（/web/reauth/webauthn/* 仪式）；
-   - 开了两步验证 → 码框（恢复码原地切换）；有 Passkey 时两者并列、二选一；
+   - 有 Passkey → 主按钮「使用 Passkey 验证」；
+   - 开了两步验证 → 码框（恢复码原地切换）；有 Passkey 时两者并列二选一；
    - 两者皆无 → 密码框兜底（纯密码账号不能被锁死在改密/改邮之外）。
    单例 in-flight：并发 401 共享同一弹框与结果——旧版单槽 resolver 会被第二次
-   调用覆盖，第一个调用者的 promise 永不结算（区块停在「读取中…」，只能手动
-   刷新页面），这里修掉：弹框在飞时后来者直接等同一份结果。 */
-let reauthInflight = null;   // Promise<boolean> | null
-let reauthResolver = null;   // 收口函数（closeReauth 调）
-let reauthHasCode = false;   // 提交分支：码框在 → 码；否则密码框
+   调用覆盖，第一个调用者的 promise 永不结算（区块停在「读取中…」）。 */
+let reauthInflight = null;
+let reauthResolver = null;
+let reauthHasCode = false;
 
 function promptReauth() {
-  if (reauthInflight) return reauthInflight;   // 单例：并发共享，不许覆盖
+  if (reauthInflight) return reauthInflight;
   reauthInflight = new Promise(resolve => {
     reauthResolver = resolve;
     const dlg = $('#reauth');
@@ -340,7 +468,6 @@ function promptReauth() {
     $('#reauth-password').value = '';
     $('#reauth-code').value = '';
     if (window.__reauthToggle) window.__reauthToggle.reset();
-    // 三块能力区先全藏（防闪上一次的形态），能力到了再亮
     for (const id of ['#reauth-passkey-wrap', '#reauth-code-wrap', '#reauth-password-wrap']) {
       $(id).classList.add('hidden');
     }
@@ -351,15 +478,15 @@ function promptReauth() {
 }
 
 /* 能力探测：/web/session 一次拿 passkeyCount/totpEnabled/passwordSet → 亮对应区。
-   会话查询失败按「无能力」走密码兜底（至少有条路，不卡流程）。 */
+   查询失败按「无能力」走密码兜底（至少有条路，不卡流程）。 */
 async function reauthApplyCapability() {
   let me = null;
   try { me = await api('/web/session', { method: 'POST', body: {}, noReauth: true }); } catch (err) { /* 兜底 */ }
   const dlg = $('#reauth');
-  if (!reauthInflight || !dlg || !dlg.open) return;   // 期间已关窗，结果作废
+  if (!reauthInflight || !dlg || !dlg.open) return;
   const hasPasskey = !!(me && me.passkeyCount > 0) && !!window.PublicKeyCredential;
   const hasTotp = !!(me && me.totpEnabled);
-  const hasPassword = !me || me.passwordSet;   // 拿不到会话 → 至少给密码这条路
+  const hasPassword = !me || me.passwordSet;
   reauthHasCode = hasTotp;
   const showPasskey = hasPasskey;
   const showCode = hasTotp;
@@ -367,15 +494,13 @@ async function reauthApplyCapability() {
   $('#reauth-passkey-wrap').classList.toggle('hidden', !showPasskey);
   $('#reauth-code-wrap').classList.toggle('hidden', !showCode);
   $('#reauth-password-wrap').classList.toggle('hidden', !showPassword);
-  // 「验证」提交钮只服务码/密码两路；Passkey 为主时收起（按钮即主行动）
   $('#reauth-ok').classList.toggle('hidden', !(showCode || showPassword));
   if (showPasskey) { swapIn($('#reauth-passkey-wrap')); $('#reauth-passkey').focus(); }
   else if (showCode) { swapIn($('#reauth-code-wrap')); $('#reauth-code').focus(); }
   else { $('#reauth-password').focus(); }
 }
 
-/* Passkey 路：options → 系统弹框断言 → finish。用户在系统弹框里取消不算失败
-   （留窗重试，与登录路同口径）。 */
+/* Passkey 路：options → 系统弹框断言 → finish。系统弹框里取消不算失败。 */
 async function reauthByPasskey() {
   const btn = $('#reauth-passkey');
   setBusy(btn, true);
@@ -433,7 +558,6 @@ function wireReauth() {
     setBusy(btn, true);
     try {
       if (reauthHasCode) {
-        // 按当前 N 态决定字段（恢复码 ↔ 两步验证码），空输入前端先挡
         const useRecovery = window.__reauthToggle.mode() === 'recovery';
         const totpCode = useRecovery ? '' : $('#reauth-code').value.trim();
         const recoveryCode = useRecovery ? $('#reauth-code').value.trim() : '';
@@ -465,30 +589,40 @@ async function api(path, opts) {
 
   let res;
   try {
-    res = await fetch(path, {
-      method: o.method || 'GET',
-      headers,
-      credentials: 'same-origin',
-      cache: 'no-store',
-      body: o.body === undefined ? undefined : JSON.stringify(o.body),
-    });
-  } catch (_) {
-    // 断网/被拦截：fetch 直接 reject，此前会把 TypeError 原文抛给用户
-    const e = new Error('网络连接中断，请检查网络后重试');
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 15000);   // 15s 超时：慢网不无限等
+    try {
+      res = await fetch(path, {
+        method: o.method || 'GET',
+        headers,
+        credentials: 'same-origin',
+        cache: 'no-store',
+        signal: ctrl.signal,
+        body: o.body === undefined ? undefined : JSON.stringify(o.body),
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch (err) {
+    // 超时与断网分开说：两者的下一步不一样（等一会 vs 查网络）
+    const e = new Error(err && err.name === 'AbortError'
+      ? '请求超时，请检查网络后重试'
+      : '网络连接中断，请检查网络后重试');
     e.status = 0;
     throw e;
   }
 
   let data = null;
   const text = await res.text();
-  if (text) { try { data = JSON.parse(text); } catch (_) { /* 非 JSON（页面被拦截时）留空 */ } }
+  if (text) { try { data = JSON.parse(text); } catch (_) { /* 非 JSON 留空 */ } }
 
   if (!res.ok) {
-    // 兜底文案给「下一步」，不要只丢一个状态码（微软错误文案规范）
+    // 兜底文案给「下一步」，不甩裸状态码
     let msg = (data && data.message)
-      || (res.status === 429 ? '操作过于频繁，请稍后再试'
-        : res.status >= 500 ? '服务暂时不可用，请稍后重试'
-          : `请求未完成（${res.status}），请稍后重试`);
+      || (res.status === 403 ? '没有权限执行该操作，如需权限请联系平台管理员'
+        : res.status === 429 ? '操作过于频繁，请稍后再试'
+          : res.status >= 500 ? '服务暂时不可用，请稍后重试'
+            : `请求未完成（${res.status}），请稍后重试`);
     if (res.status === 401 && msg.indexOf('重新验证') >= 0 && !o.noReauth && !o._retried) {
       if (await promptReauth()) {
         return api(path, Object.assign({}, o, { _retried: true }));
@@ -503,15 +637,48 @@ async function api(path, opts) {
     }
     const err = new Error(msg);
     err.status = res.status;
+    // 服务端 403 的机器可读分级（policy=账号/项目策略，permission=授权不足）；
+    // 老服务端没有这个字段时由 denialTier 回落到文案判据。
+    if (data && data.reason) err.reason = data.reason;
     throw err;
   }
   return data;
 }
 
-/* ---------- 应用注册表（服务端注入，唯一清单来源） ----------
-   layout 里的 <script type="application/json" id="known-apps"> 承载 internal/ui 的
-   knownApps 序列化结果；这里读出来建 appLabel 与应用授权开关的选项。
-   JS 侧不再硬编码 app 清单——新应用只改 Go 注册表一处。 */
+/* ---------- Web 会话轮换 ----------
+   登录态页面加载后立刻换一次、每 30 分钟、从隐藏变可见时再换。新 cookie 由浏览器
+   随 Set-Cookie 落库，后续 api() 自动读到新 CSRF。并发只发一次（409 输家静默），
+   401 交给 api() 既有登出流程，其余失败不打扰用户。 */
+let refreshInflight = null;
+let sessionRefreshTimer = 0;
+let sessionRefreshStopped = false;
+
+function rotateWebSession() {
+  if (sessionRefreshStopped) return Promise.resolve(null);
+  if (refreshInflight) return refreshInflight;
+  refreshInflight = api('/web/session/refresh', { method: 'POST', body: {}, noReauth: true })
+    .catch(() => null)   // 409 / 断网 / 超时不弹错；401 已由 api() 跳登录页
+    .finally(() => { refreshInflight = null; });
+  return refreshInflight;
+}
+
+function stopSessionRefresh() {
+  sessionRefreshStopped = true;
+  clearInterval(sessionRefreshTimer);
+  sessionRefreshTimer = 0;
+}
+
+function startSessionRefresh() {
+  if (sessionRefreshTimer) return;
+  sessionRefreshStopped = false;
+  void rotateWebSession();
+  sessionRefreshTimer = setInterval(() => void rotateWebSession(), 30 * 60 * 1000);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) void rotateWebSession();
+  });
+}
+
+/* ---------- 应用注册表（服务端注入，唯一清单来源） ---------- */
 function knownApps() {
   try {
     const el = document.getElementById('known-apps');
@@ -527,33 +694,49 @@ const APP_LABEL = (() => {
 })();
 const appLabel = v => APP_LABEL[v] || v;
 
-/* 平台管理员标记：layout 按 Data.IsSuper 渲染 body[data-super]（与管理入口同一份
-   模板层门控依据），JS 侧 super 专属控件读它，不再自查角色。 */
+/* 平台管理员标记：layout 按 Data.IsSuper 渲染 body[data-super] */
 const IS_SUPER = document.body.hasAttribute('data-super');
 
-/* 管理页守卫：先确认自己真的是管理员，再让各页发起数据请求；
-   角色不符直接回概览（数据层的 requireAdmin 还会逐请求再挡一次）。
-   W2：admin 与 super 都放行（与 ui.IsAdminRole 同口径），super 标记供角色页等
-   专属 UI 判定。 */
+/* 根管理员（唯一）：任命能力矩阵的锚点。后端口径——root 唯一 → 只有 root 能
+   任命/回收平台管理员 → 平台管理员能任命项目管理员与普通用户 → 不能授予高于
+   自己的角色、项目管理员不跨项目。root 的判定在服务端按 uid 做（RootUID），
+   /web/session 回 isRoot 位，前端不再抄一份 uid；拿不到时按「非根」保守处理
+   （最终判定仍在后端逐请求把关）。 */
+function isRootViewer() { return window.__isRoot === true; }
+
+/* viewerUid：当前登录者的 uid（任命禁用判断要用）。initAdminGuard 在后台页
+   已经取过一次；没取到（竞态/直开）就现取一次并缓存——详情面板打开时才需要，
+   此时通常已有值。顺带缓存 isRoot（与 uid 同源同一次回执）。 */
+async function viewerUid() {
+  if (window.__meUid) return Number(window.__meUid);
+  try {
+    const me = await api('/web/session', { method: 'POST', body: {} });
+    window.__meUid = me.uid;
+    window.__isRoot = me.isRoot === true;
+  } catch (_) { /* 拿不到就按非根保守处理，后端仍会把关 */ }
+  return Number(window.__meUid || 0);
+}
+
+/* 管理页守卫：先确认自己真的是管理员，再让各页发数据请求（数据层另有
+   requireAdmin 逐请求再挡一道）。 */
 async function initAdminGuard() {
   if (location.pathname.indexOf('/web/admin') !== 0) return;
   try {
     const me = await api('/web/session', { method: 'POST', body: {} });
     window.__meUid = me.uid;
+    window.__isRoot = me.isRoot === true;
     if (me.role !== 'admin' && me.role !== 'super') location.href = '/web/console';
   } catch (_) { /* 401 时 api() 已经跳登录页 */ }
 }
 
-/* 当前数据页的 app 过滤器：?app= 空 = 全部（super）/ 全部授权（app-admin）。
-   服务端已把越权 ?app= 挡成 403 页，这里只管把合法取值带上 API。 */
+/* 当前数据页的 app 过滤器：?app= 空 = 全部（super）/ 全部授权（app-admin） */
 function appFilter() {
   const v = new URLSearchParams(location.search).get('app');
   return v ? '&app=' + encodeURIComponent(v) : '';
 }
 
-/* 项目切换器：选中写入 ?app=（刷新保持），切换时用 W1 的 popIn 徽标动效 +
-   swapIn 数据区（不整页刷新——数据页本就走 fetch，重取数据比重新加载壳轻）。
-   未选中项是同页链接，点击即走这里；无 JS 时退化为 ?app= 链接跳转，同样成立。 */
+/* 项目切换器：选中写入 ?app=（刷新保持），切换时重取数据不整页刷新。
+   无人监听 appscopechange 时兜底 reload。 */
 function initAppSwitch() {
   const wrap = $('#app-switch');
   if (!wrap) return;
@@ -569,47 +752,52 @@ function initAppSwitch() {
       if (on) { c.setAttribute('aria-current', 'true'); popIn(c); }
       else c.removeAttribute('aria-current');
     });
-    // 通知当前数据页重取：监听方（会话/审计/AI 三页）preventDefault 即
-    // 「我处理了，别整页刷新」。切换器只在这三页渲染，无人监听时兜底 reload。
     const ev = new CustomEvent('appscopechange', { cancelable: true });
     if (document.dispatchEvent(ev)) location.reload();
   }));
 }
 
-/* ---------- 登录页 ---------- */
+/* ================= 页面控制器 ================= */
+
+/* ---------- 登录 ---------- */
 function initLogin() {
   if (!$('#login-card')) return;
 
   const tabs = { 'tab-password': 'pane-password', 'tab-code': 'pane-code', 'tab-reset': 'pane-reset' };
   Object.keys(tabs).forEach(id => {
     $('#' + id).addEventListener('click', () => {
-      Object.keys(tabs).forEach(other => {
-        const on = other === id;
-        $('#' + other).setAttribute('aria-selected', on ? 'true' : 'false');
-        const pane = $('#' + tabs[other]);
-        pane.classList.toggle('hidden', !on);
-        if (on) swapIn(pane);   // 换面板：crossfade + 4px 上浮
-      });
+      // 流程步切换走 flowSwap：旧面板 90ms 淡出 → 新面板 180ms 上浮（连续过渡，
+      // 不瞬变不叠影）；标签的 aria-selected 立即同步（状态先于动画）
+      const prev = Object.keys(tabs).map(k => $('#' + tabs[k]))
+        .find(p => !p.classList.contains('hidden'));
+      Object.keys(tabs).forEach(other =>
+        $('#' + other).setAttribute('aria-selected', other === id ? 'true' : 'false'));
+      const next = $('#' + tabs[id]);
+      if (prev !== next) flowSwap(prev, next);
       showErr('#login-error', ''); showErr('#code-error', ''); showErr('#reset-error', '');
+      showDenial('#login-denied', null);
     });
   });
 
-  // ---- 登录完成回执（W1）：注销撤销提示 + 强制改密步 ----
-  // 四条登录路（密码 / 两步完成 / 邮箱验证码 / Passkey）都收口到这里：
-  // deletePendingCancelled=true → toast 提示（跳走时改存 flash，下一页 drain）；
-  // mustChangePassword=true → 顶替整个卡片进「请设置新密码」步，oldPassword 带
-  // 这次登录实际用过的密码（Passkey/验证码登录没有，传空串——契约已放宽）。
-  // OAuth 续跑（B4）：?tx= 在场时登录完成回授权确认页而不是控制台（tx 是服务端
-  // 一次性事务号，只回站内 /oauth/resume，无开放重定向面）。
+  // ---- 登录完成回执：注销撤销提示 + 强制改密步 + OAuth 续跑 ----
   const oauthTx = new URLSearchParams(location.search).get('tx');
-  /* 回跳地址只接受**站内绝对路径**：单个 '/' 开头，且不能是 '//host'（协议相对，
-     会跳到外站）或 '/\\host'（浏览器把它当 '//host'）。这是防开放重定向的唯一闸门，
-     登录页是公开页，next 完全由 URL 控制。 */
+  /* 回跳地址只接受**站内绝对路径**。判据是浏览器自己的解析结果，不是字符串前缀：
+     用 WHATWG URL 拿 location.origin 作基准解析一次，origin 逐字相同才放行，
+     并且只回传 pathname+search+hash（永不回传原始串）。
+     字符串判据（`^\/(?![\/\\])`）漏过两类浏览器已经规范化掉的形态：
+       · 制表/换行：`/%09/evil.com` → `/<TAB>/evil.com`，URL 解析器会把 TAB 直接
+         删掉，最终就是 `//evil.com`（协议相对，跳到外站）；
+       · 反斜杠以外的同类变体（`/\evil.com` 只拦住了这一种，制表符没拦）。
+     这两条是 CWE-601 的常规绕过面（OWASP Unvalidated Redirects 清单），
+     所以这里以解析后的 origin 为准。 */
   function safeNext(raw) {
     if (!raw) return '';
-    if (!/^\/(?![\/\\])/.test(raw)) return '';
-    if (raw.indexOf('/web/login') === 0) return '';   // 防自跳循环
-    return raw;
+    let u;
+    try { u = new URL(raw, location.origin); } catch (_) { return ''; }
+    if (u.origin !== location.origin) return '';       // 外站 / 协议相对 / javascript:
+    if (u.username || u.password) return '';           // user:pass@host 混淆
+    if (u.pathname.indexOf('/web/login') === 0) return '';   // 防自跳循环
+    return u.pathname + u.search + u.hash;
   }
   const nextPath = safeNext(new URLSearchParams(location.search).get('next'));
   const loginLanding = () =>
@@ -627,16 +815,15 @@ function initLogin() {
   }
   function showForcePassword(pwd) {
     forceOldPw = pwd || '';
-    // 步切换沿用既有区块动效；残留报错一并清掉（换步即换语义）
+    // 标签/Passkey 入口是 chrome，直接收起；内容区走 flowSwap 连续过渡
     $('#login-tabs').classList.add('hidden');
-    ['#pane-password', '#pane-code', '#pane-reset', '#passkey-sep', '#passkey-login']
-      .forEach(sel => { const el = $(sel); if (el) el.classList.add('hidden'); });
+    ['#passkey-sep', '#passkey-login'].forEach(sel => { const el = $(sel); if (el) el.classList.add('hidden'); });
+    const prev = [$('#pane-password'), $('#pane-code'), $('#pane-reset')]
+      .find(p => p && !p.classList.contains('hidden'));
     const step = $('#step-force-pw');
-    step.classList.remove('hidden');
     showErr('#force-pw-error', '');
     $('#force-pw-new').value = ''; $('#force-pw-confirm').value = '';
-    swapIn(step);
-    $('#force-pw-new').focus();
+    flowSwap(prev, step, () => $('#force-pw-new').focus());
   }
   $('#step-force-pw').addEventListener('submit', async e => {
     e.preventDefault();
@@ -650,16 +837,12 @@ function initLogin() {
       await api('/auth/change-password', {
         method: 'POST', body: { oldPassword: forceOldPw, newPassword: nw },
       });
-      // 服务器已随回执刷新会话 cookie；提示跳走后在控制台 drain 出来。
-      // OAuth 续跑同款：强制改密完成后也回授权确认页（?tx= 在场时）
       flash('密码已更新');
       location.href = loginLanding();
     } catch (err) { showErr('#force-pw-error', err.message); } finally { setBusy(btn, false); }
   });
 
-  // ---- 密码 →（2FA）三模式：验证器码 / 邮箱码 / 恢复码（GitHub 式单输入原地换语义）----
-  // 与两个弹框同一个 makeCodeToggle：三态与二态的差别只是配置（多一组邮箱码态、
-  // 多两个切换按钮、每态一段 intro），apply 收口的属性同步/清值/清旧报错/聚焦一处不变。
+  // ---- 密码 →（2FA）三模式单输入（验证器码 / 邮箱码 / 恢复码）----
   let loginToken = '';
   let enteredPw = '';   // 密码登录这一步用过的密码（服务端确认正确后才记），强制改密时作 oldPassword
   const stepPwd = $('#step-password'), stepTotp = $('#step-totp');
@@ -669,7 +852,7 @@ function initLogin() {
     errSel: '#login-error',
     fadeSel: '#step-totp',
     introSel: '#totp-intro',
-    hideAlways: ['#totp-email-hint'],   // 已发送提示只在真发出一封后亮，切模式即收起
+    hideAlways: ['#totp-email-hint'],
     modes: {
       totp: {
         label: '两步验证码（6 位）', placeholder: '输入验证器上的 6 位验证码', numeric: true,
@@ -691,7 +874,6 @@ function initLogin() {
       },
       recovery: {
         label: '恢复码', placeholder: 'XXXX-XXXX-XXXX-XXXX', numeric: false,
-        // 邮箱码专属的发码按钮收起；toggle-email 藏起来，免得摆一个点了没反应的按钮
         hide: ['#send-2fa-code', '#toggle-email'],
         buttons: { '#toggle-recovery': '改用两步验证码' },
         intro: '输入一个恢复码。',
@@ -699,17 +881,15 @@ function initLogin() {
     },
   });
   function useTotpStep(on) {
-    stepPwd.classList.toggle('hidden', on);
-    stepTotp.classList.toggle('hidden', !on);
+    const show = on ? stepTotp : stepPwd;
+    const hide = on ? stepPwd : stepTotp;
     $('#login-submit').textContent = on ? '完成登录' : '登录';
-    f2.set('totp', { silent: true, focus: false });   // 回验证器形态，防上次切到邮箱码/恢复码的残留
-    swapIn(on ? stepTotp : stepPwd);   // 步骤切换同样是区块切换动效
-    if (on) $('#login-code-2fa').focus();
+    f2.set('totp', { silent: true, focus: false });   // 回验证器形态，防残留
+    flowSwap(hide, show, () => { if (on) $('#login-code-2fa').focus(); });
   }
   $('#back-to-password').addEventListener('click', () => { loginToken = ''; useTotpStep(false); });
   $('#toggle-email').addEventListener('click', () => f2.set(f2.mode() === 'email' ? 'totp' : 'email'));
   $('#toggle-recovery').addEventListener('click', () => f2.set(f2.mode() === 'recovery' ? 'totp' : 'recovery'));
-  // 邮箱码模式发码：purpose=login_2fa（与邮箱验证码登录的 login 码分键），60 秒冷却复用
   $('#send-2fa-code').addEventListener('click', async () => {
     const sent = await sendCode($('#login-email').value.trim(), 'login_2fa', '#login-error', $('#send-2fa-code'));
     if (sent) $('#totp-email-hint').hidden = false;
@@ -718,6 +898,7 @@ function initLogin() {
   $('#pane-password').addEventListener('submit', async e => {
     e.preventDefault();
     showErr('#login-error', '');
+    showDenial('#login-denied', null);
     const btn = $('#login-submit');
     setBusy(btn, true);
     try {
@@ -729,15 +910,14 @@ function initLogin() {
         });
         if (res.status === '2fa_required') {
           loginToken = res.loginToken;
-          enteredPw = pwd;   // 密码已被服务端确认正确：第二步完成后留给强制改密步
+          enteredPw = pwd;
           useTotpStep(true);
           return;
         }
         finishLogin(res, pwd);
         return;
       }
-      // 单输入三选一：按当前模式决定字段（邮箱码 → emailCode，恢复码 → recoveryCode，
-      // 否则 code）；空输入在前端就挡下，免得邮箱码模式吃一句「两步验证码错误」
+      // 单输入三选一：按当前模式决定字段；空输入在前端就挡下
       const v = $('#login-code-2fa').value.trim();
       const fm = f2.mode();
       if (!v) {
@@ -750,11 +930,14 @@ function initLogin() {
       else if (fm === 'recovery') body.recoveryCode = v;
       else body.code = v;
       const done = await api('/web/login/totp', { method: 'POST', body });
-      finishLogin(done, enteredPw);   // 强制改密时把第一步确认过的密码带上
+      finishLogin(done, enteredPw);
     } catch (err) {
-      showErr('#login-error', err.message);
-      // 只有**登录中间态**过期才退回第一步——邮箱码自己的「验证码已过期」不能触发，
-      // 否则用户要重输密码（中间态其实还活着）
+      // 403（封禁/项目登录策略）按拒绝态分级呈现：徽标 + 原因 + 下一步；
+      // 其余错误（密码错等）照旧走行内 .err
+      const denied = err.status === 403 &&
+        showDenial('#login-denied', err, { retry: () => showDenial('#login-denied', null) });
+      if (!denied) showErr('#login-error', err.message);
+      // 只有**登录中间态**过期才退回第一步——邮箱码自己的「验证码已过期」不触发
       if (loginToken && err.message.indexOf('登录请求已过期') >= 0) { loginToken = ''; useTotpStep(false); }
     } finally {
       setBusy(btn, false);
@@ -762,7 +945,6 @@ function initLogin() {
   });
 
   // ---- 发码（验证码登录 / 找回密码 / 两步邮箱码）：共享冷却 ----
-  // 回 true = 信已发出（两步邮箱码模式据此亮「已发送到你的邮箱」提示）
   async function sendCode(email, purpose, errSel, btn) {
     showErr(errSel, '');
     if (!email) { showErr(errSel, '请先填写邮箱'); return false; }
@@ -781,14 +963,19 @@ function initLogin() {
   $('#pane-code').addEventListener('submit', async e => {
     e.preventDefault();
     showErr('#code-error', '');
+    showDenial('#login-denied', null);
     const btn = busySubmit(e);
     try {
       const done = await api('/web/login/email-code', {
         method: 'POST',
         body: { email: $('#code-email').value.trim(), code: $('#code-code').value.trim() },
       });
-      finishLogin(done);   // 验证码登录没有密码可带，强制改密时 oldPassword 传空串
-    } catch (err) { showErr('#code-error', err.message); } finally { idleSubmit(btn); }
+      finishLogin(done);
+    } catch (err) {
+      if (!(err.status === 403 && showDenial('#login-denied', err, { retry: () => showDenial('#login-denied', null) }))) {
+        showErr('#code-error', err.message);
+      }
+    } finally { idleSubmit(btn); }
   });
 
   $('#pane-reset').addEventListener('submit', async e => {
@@ -810,15 +997,11 @@ function initLogin() {
     } catch (err) { showErr('#reset-error', err.message); } finally { idleSubmit(btn); }
   });
 
-  // ---- Passkey 登录（不支持则整个入口隐藏，不摆死按钮）----
-  // 显隐统一走 .hidden 类：.btn 是 author 级 display:inline-flex，hidden **属性**会被
-  // 它盖掉；分隔线与按钮同一套开关，别一处用类一处用属性
+  // ---- Passkey 登录（不支持则整个入口隐藏，不摆死按钮） ----
   const supportsPasskey = !!(window.PublicKeyCredential && navigator.credentials);
   $('#passkey-login').classList.toggle('hidden', !supportsPasskey);
   $('#passkey-sep').classList.toggle('hidden', !supportsPasskey);
-  // ---- 条件式 UI（web.dev 首选做法）：把 passkey 挂进邮箱框的自动填充 ----
-  // 服务端登录已是 discoverable（allowCredentials 留空），所以不需要先知道邮箱。
-  // 密码用户完全无感：只在支持条件式介质的浏览器里、且用户没在输密码时挂着。
+  // ---- 条件式 UI：passkey 挂进邮箱框的自动填充（服务端已是 discoverable） ----
   let condAbort = null;
   (async () => {
     try {
@@ -837,11 +1020,10 @@ function initLogin() {
       });
       finishLogin(done);
     } catch (err) {
-      // 条件式是「增强」不是「必需」：任何失败都静默——AbortError 是我们主动取消，
-      // NotAllowedError 是用户改用密码，其余（不支持/网络）也不能打扰登录主路径。
+      // 条件式是「增强」不是「必需」：任何失败都静默——不打扰登录主路径
     }
   })();
-  // 用户一旦走密码路，立即取消挂着的那次条件式请求，避免两套仪式并存
+  // 用户一旦走密码路，立即取消挂着的条件式请求
   const abortCond = () => { if (condAbort) { condAbort.abort(); condAbort = null; } };
   ['#pane-password', '#pane-code', '#pane-reset'].forEach(sel => {
     const f = $(sel);
@@ -860,7 +1042,7 @@ function initLogin() {
           method: 'POST',
           body: { ceremonyId: opts.ceremonyId, response: assertionJSON(cred) },
         });
-        finishLogin(done);   // Passkey 登录没有密码可带，强制改密时 oldPassword 传空串
+        finishLogin(done);
       } catch (err) {
         if (err && err.name === 'NotAllowedError') return; // 用户取消不报错
         showErr('#passkey-error', (err && err.message) || 'Passkey 验证失败，请重试');
@@ -869,10 +1051,9 @@ function initLogin() {
   }
 }
 
-/* ---------- WebAuthn：把浏览器对象转成服务端库解析的 JSON 形状 ---------- */
-/* 服务端 JSON 里 challenge/user.id/allowCredentials[].id 是 base64url 字符串，
-   浏览器 WebAuthn 只收 ArrayBuffer/视图——进 create/get 前统一解码（App 端把整个
-   JSON 交给 Credential Manager 自行解析，故两端形态不同）。 */
+/* ---------- WebAuthn：浏览器对象 → 服务端库解析的 JSON 形状 ----------
+   服务端 JSON 里 challenge/user.id/allowCredentials[].id 是 base64url 字符串，
+   浏览器只收 ArrayBuffer——进 create/get 前统一解码。 */
 function b64urlToBytes(s) {
   const b = String(s).replace(/-/g, '+').replace(/_/g, '/');
   const pad = b.length % 4 ? '='.repeat(4 - (b.length % 4)) : '';
@@ -929,24 +1110,16 @@ function assertionJSON(cred) {
 /* ---------- 概览 ---------- */
 async function initConsole() {
   if (!$('#me-email')) return;
-  // **先绑登出，再发请求**：旧版把绑定放在 try/catch 之后、catch 里又 return，
-  // 于是任一状态请求失败（网络抖动/429）就三行永远「读取中…」且**退出登录彻底
-  // 失灵**——用户被锁在概览页登不出去。登出是逃生口，必须与请求结果无关。
+  // **先绑登出，再发请求**：登出是逃生口，必须与请求结果无关
   $('#logout').addEventListener('click', async () => {
-    try { await api('/web/logout', { method: 'POST', body: {} }); } catch (_) { /* 已登出也要跳 */ }
+    try { stopSessionRefresh(); await api('/web/logout', { method: 'POST', body: {} }); } catch (_) { /* 已登出也要跳 */ }
     location.href = '/web/login';
   });
-
-  // 三行状态各自独立、互不牵连：一行失败只标红那一行，其余照常显示。
-  const fill = (sel, fn) => fn().then(v => { $(sel).textContent = v; })
-    .catch(err => { if (err.status !== 401) $(sel).textContent = '读取失败（' + err.message + '）'; });
 
   let me = null;
   try {
     me = await api('/web/session', { method: 'POST', body: {} });
   } catch (err) {
-    // 401 由 api() 统一跳登录、不再报错；其余（断网/429/500）仍要提示，
-    // 且**不能**往上抛——initConsole 由 DOMContentLoaded 直接调，抛出即未捕获。
     if (err.status !== 401) toast(err.message, true);
     return;
   }
@@ -955,25 +1128,27 @@ async function initConsole() {
   if (me.role === 'admin' || me.role === 'super') {
     const badge = $('#role-badge');
     badge.textContent = me.role === 'super' ? '平台管理员' : '项目管理员';
-    badge.classList.remove('hidden');   // 徽标 display:inline-flex，hidden 属性盖不住——走 .hidden 类
-    badge.classList.add('on');          // 角色是状态徽标，与用户表「平台管理员」同一档蓝（原先灰着，两处不一致）
-    popIn(badge);   // 徽标浮现
+    badge.classList.remove('hidden');
+    badge.classList.add('on');
+    popIn(badge);
   }
 
+  // 三行状态互不牵连、并行取（一行失败只标红那一行）
+  const fill = (sel, fn) => fn().then(v => { $(sel).textContent = v; })
+    .catch(err => { if (err.status !== 401) $(sel).textContent = '读取失败（' + err.message + '）'; });
   fill('#stat-password', async () => me.passwordSet ? '已设置' : '未设置');
   fill('#stat-totp', async () => (await api('/api/totp')).enabled ? '已开启' : '未开启');
   fill('#stat-passkey', async () => {
     const keys = await api('/api/passkeys');
     return keys.length ? `${keys.length} 个` : '未添加';
   });
-  // 最近登录（服务端已按最近活跃倒序，首条即最近）
+  // 最近登录（服务端按最近活跃倒序，首条即最近）
   api('/api/sessions').then(r => {
     const first = (r.sessions || [])[0];
     const el = $('#me-last-login');
     if (!el) return;
-    el.textContent = first
-      ? `最近登录：${relTime(first.lastSeenAt)} · ${first.device || '未知设备'} · IP ${first.ip || '—'}` +
-        (first.ipRegion ? ` · ${first.ipRegion}` : '')
+    el.innerHTML = first
+      ? `最近登录：<span data-rel="${esc(first.lastSeenAt)}">${esc(relTime(first.lastSeenAt))}</span> · ${esc(first.device || '未知设备')} · IP ${ipWithRegion(first.ip, first.ipRegion)}`
       : '还没有登录记录。';
   }).catch(() => {
     const el = $('#me-last-login');
@@ -982,9 +1157,8 @@ async function initConsole() {
 }
 
 /* ---------- 登录会话（扁平列表：一行=一条会话，行主标题=设备名） ---------- */
-/* 设备类型图标（lucide 同款路径，内联进 app.js 是因为列表行由 JS 拼）：
-   按服务端 UA 解析出的设备标签映射——移动系统出 smartphone、桌面系统出 laptop、
-   认不出的（脚本/残缺 UA）退回通用设备图标，不猜。 */
+/* 设备类型图标（lucide 同款路径，内联进 JS 是因为列表行由 JS 拼）：按服务端
+   UA 解析出的设备标签映射，认不出的退回通用设备图标，不猜。 */
 const DEVICE_ICONS = {
   smartphone: '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect width="14" height="20" x="5" y="2" rx="2" ry="2" /><path d="M12 18h.01" /></svg>',
   laptop: '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 16V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v9m16 0H4m16 0 1.28 2.55a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45L4 16" /></svg>',
@@ -999,12 +1173,6 @@ function deviceIcon(device) {
   return DEVICE_ICONS.device;
 }
 
-/* 会话行：主标题=设备名（同名设备并排各占一行、不做归并——同名完全可能是
-   两台设备，Google 官方文档自己都警告过按名归并的歧义），次行=项目名 + 最近
-   活跃（相对时间）+ IP + 首次登录（2026-10 拍板去展开：区分同名设备的两条
-   线索常驻副行，与两个日记 App 同口径），「本设备」徽标，行尾退出按钮。
-   退出逐行（GitHub/Google 同口径），没有组级批量退出——无分组即无组概念。 */
-
 function initSessions() {
   const list = $('#session-list');
   if (!list) return;
@@ -1012,24 +1180,25 @@ function initSessions() {
   let pending = null;   // {mode:'one'|'others', ids:[], label, count}
 
   async function load() {
+    setListBusy(list, true);
     try {
       const res = await api('/api/sessions');
-      // 契约是 {sessions:[...]}
       rows = res.sessions || [];
-      // 上下文动作只在有意义时出现：没有其它会话就不该有这个按钮
       const others = rows.filter(r => !r.current).length;
       const revokeOthers = $('#revoke-others');
       if (revokeOthers) revokeOthers.classList.toggle('hidden', others === 0);
     } catch (err) {
       list.innerHTML = emptyState('读取失败', err.message);
+      setListBusy(list, false);
       return;
     }
     if (!rows.length) {
       list.innerHTML = emptyState('只有当前设备处于登录状态', '新设备登录后会显示在这里。');
+      setListBusy(list, false);
       return;
     }
     list.innerHTML = '';
-    // 服务端已按最近活跃倒序（ListSessions 的 ORDER BY last_seen_at DESC），直接铺平
+    // 服务端已按最近活跃倒序，直接铺平；区分同名设备的线索（IP/首次登录）常驻副行
     rows.forEach(it => {
       const el = node(`
         <div class="item session-row${it.current ? ' current' : ''}" data-id="${esc(it.id)}">
@@ -1044,7 +1213,6 @@ function initSessions() {
       const kick = el.querySelector('button.danger');
       if (kick) {
         kick.addEventListener('click', () => {
-          // 确认弹窗点名设备与项目：一行=一条会话，两者就是这条会话的全部身份
           pending = { mode: 'one', ids: [el.dataset.id], label: it.device, count: 1 };
           $('#kick-title').textContent = '退出这条会话';
           $('#kick-desc').textContent = `将退出「${it.device}」上的「${appLabel(it.app)}」会话，它下次请求时会退出登录。`;
@@ -1054,7 +1222,18 @@ function initSessions() {
       }
       list.appendChild(el);
     });
+    setListBusy(list, false);
   }
+
+  const refreshBtn = $('#sessions-refresh');
+  if (refreshBtn) refreshBtn.addEventListener('click', () => {
+    setBusy(refreshBtn, true);
+    load().finally(() => setBusy(refreshBtn, false));
+  });
+  // 切回标签页时重取：会话「最近活跃」不该停在离开时的快照
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) load();
+  });
 
   $('#revoke-others').addEventListener('click', () => {
     const others = rows.filter(r => !r.current).length;
@@ -1077,14 +1256,12 @@ function initSessions() {
         await api('/api/sessions/' + pending.ids[0], { method: 'DELETE' });
         closeDialog(dlg);
         toast('已退出该会话');
-        // 行先淡出下沉，播完再整表刷新——视觉上是「这条走了」而不是突然消失
         fadeOutRow(list.querySelector(`.session-row[data-id="${pending.ids[0]}"]`), load);
       } else {
-        // 服务端强制 reauth（2 小时强认证窗 + 敏感操作滑动续期），401 会自动弹「重新验证」框再重试
+        // 服务端强制 reauth（2 小时强认证窗），401 自动弹重验框再重试
         await api('/api/sessions/revoke-others', { method: 'POST', body: {} });
         closeDialog(dlg);
         toast(`已退出其它 ${pending.count} 条会话`);
-        // 其余会话行一起退场，本设备行留着（随后整表刷新重绘）
         const leaving = $$('#session-list .session-row:not(.current)');
         if (!leaving.length || reducedMotion()) { await load(); return; }
         leaving.forEach(el => el.classList.add('leaving'));
@@ -1108,17 +1285,18 @@ function initPasskeys() {
   let pendingDel = 0;
 
   async function load() {
+    setListBusy(list, true);
     try {
       const rows = await api('/api/passkeys');
       if (!rows.length) {
         list.innerHTML = emptyState('还没有 Passkey', '点右上角「添加 Passkey」创建，用指纹或面容登录。');
+        setListBusy(list, false);
         return;
       }
       list.innerHTML = '';
       rows.forEach(it => {
-        // lastUsedAt<=0/缺失 = 从未用过：只说「从未使用」，不渲染 1970 日期
         const lastUsed = Number(it.lastUsedAt || 0) > 0
-          ? `最近使用 ${esc(relTime(it.lastUsedAt))}` : '从未使用';
+          ? `最近使用 <span data-rel="${esc(it.lastUsedAt)}">${esc(relTime(it.lastUsedAt))}</span>` : '从未使用';
         const el = node(`
           <div class="item" data-id="${it.id}">
             <span class="grow">
@@ -1141,10 +1319,13 @@ function initPasskeys() {
       });
     } catch (err) {
       list.innerHTML = emptyState('读取失败', err.message);
+    } finally {
+      setListBusy(list, false);
     }
   }
 
-  // 改名：就地把名字换成输入框（不弹窗，行内操作最省事）
+  // 改名：就地把名字换成输入框（行内操作最省事）。
+  // 值没改不发 PATCH；提交期间不再响应 blur（否则重绘会吞掉同一次 click）。
   function startRename(el, it) {
     const nameEl = el.querySelector('.pk-name');
     if (el.querySelector('input')) return;
@@ -1156,15 +1337,11 @@ function initPasskeys() {
     input.setAttribute('autocomplete', 'off');
     nameEl.replaceWith(input);
     input.focus();
-    // blur 即提交有两个坑：① 值没改也发 PATCH（双 toast）；② commit 里 load()
-    // 整表重绘，用户「改名中顺手点同一行的删除」时 mousedown 触发 blur → 列表重绘
-    // → 删除按钮在 click 到达前已被销毁，**点击被吞**。这里值未变直接跳过，
-    // 且提交期间不再响应 blur（Enter 已提交过一次）。
     let committing = false;
     const original = input.value;
     const commit = async () => {
       if (committing) return;
-      if (input.value === original) { load(); return; }   // 没改就还原，不发请求
+      if (input.value === original) { load(); return; }
       committing = true;
       try {
         await api('/api/passkeys/' + it.id, { method: 'PATCH', body: { name: input.value } });
@@ -1197,8 +1374,8 @@ function initPasskeys() {
       });
       toast('Passkey 已添加');
       await load();
-      // 创建后请用户起个名字（MDN：RP 应帮用户分辨「哪把、属于哪个认证器」）。
-      // 列表按 created_at DESC，首行即刚创建的这把；直接进入行内改名，可 Esc 跳过。
+      // 创建后请用户起个名字（帮助分辨「哪把、属于哪个认证器」）：列表按
+      // created_at DESC，首行即刚创建的这把，直接进入行内改名，可 Esc 跳过。
       const fresh = $('#passkey-list .item');
       if (fresh) {
         const renameBtn = fresh.querySelector('[data-act=rename]');
@@ -1240,21 +1417,29 @@ function initSecurity() {
     const was = badge.textContent;
     badge.textContent = st.enabled ? '已开启' : '未开启';
     badge.classList.toggle('on', st.enabled);
-    if (was && was !== badge.textContent) popIn(badge);   // 状态翻转：徽标轻浮现
+    if (was && was !== badge.textContent) popIn(badge);
     $('#totp-off').hidden = st.enabled;
     $('#totp-on').hidden = !st.enabled;
     if (st.enabled) {
       $('#totp-since').textContent = '开启时间：' + fmtTime(st.createdAt);
-      // 余量来自 /api/totp 的 recoveryLeft/Total（此前这句直接写「无法查询」）
       const rs = $('#recovery-state');
       if (rs) {
-        rs.textContent = (typeof st.recoveryTotal === 'number' && st.recoveryTotal > 0)
-          ? `恢复码：剩余 ${st.recoveryLeft} / ${st.recoveryTotal} 枚；用尽或想换一批时可重新生成。`
+        const left = typeof st.recoveryLeft === 'number' ? st.recoveryLeft : 0;
+        const total = typeof st.recoveryTotal === 'number' ? st.recoveryTotal : 0;
+        rs.textContent = total > 0
+          ? `恢复码：剩余 ${left} / ${total} 枚；用尽或想换一批时可重新生成。`
           : '恢复码：当前没有可用的恢复码，建议立即重新生成一批。';
+        // 低余量警示（≤2 枚）：用尽才发现没码是最贵的失败
+        if (total > 0 && left <= 2 && left < total) {
+          rs.innerHTML = `<span class="badge warn">恢复码即将用尽</span> ` +
+            `恢复码：剩余 ${left} / ${total} 枚，请尽快重新生成一批。`;
+        }
       }
     }
   }
 
+  /* 恢复码一次性展示：复选确认 + 完成钮联动（不勾「已保存」关不掉这一页，
+     防止「瞥一眼就关掉、一组码都没存」）。 */
   function showCodes(list) {
     codes = list;
     const box = $('#codes-list');
@@ -1264,10 +1449,25 @@ function initSecurity() {
       el.textContent = c;
       box.appendChild(el);
     });
+    // 一次性凭据用完即从 DOM 摘掉：绑定用的 TOTP 密钥、二维码与刚输入的码留在
+    // 页面上，之后任何 DOM 快照（截图、扩展、一次 XSS）都能把它们带走——绑定完成
+    // 后它们对用户已无用途，留着只有风险。
+    const secret = $('#setup-secret');
+    if (secret) secret.textContent = '';
+    const qr = $('#qr-img');
+    if (qr) qr.removeAttribute('src');
+    const setupCode = $('#setup-code');
+    if (setupCode) setupCode.value = '';
+    $('#codes-ack').checked = false;
+    $('#saved-codes').disabled = true;
     $('#setup-panel').classList.add('hidden');
     $('#codes-panel').classList.remove('hidden');
-    swapIn($('#codes-panel'));   // 恢复码面板浮现
+    swapIn($('#codes-panel'));
+    $('#codes-ack').focus();
   }
+  $('#codes-ack').addEventListener('change', e => {
+    $('#saved-codes').disabled = !e.target.checked;
+  });
 
   $('#start-setup').addEventListener('click', async () => {
     showErr('#setup-error', '');
@@ -1277,7 +1477,7 @@ function initSecurity() {
       $('#setup-secret').textContent = setup.secret;
       $('#setup-code').value = '';
       $('#setup-panel').classList.remove('hidden');
-      swapIn($('#setup-panel'));   // 绑定面板浮现
+      swapIn($('#setup-panel'));
       $('#setup-code').focus();
     } catch (err) { toast(err.message, true); }
   });
@@ -1293,20 +1493,15 @@ function initSecurity() {
     try {
       const res = await api('/api/totp/enable', { method: 'POST', body: { code: $('#setup-code').value.trim() } });
       showCodes(res.recoveryCodes);
-      $('#recovery-state').textContent = `恢复码：本次已生成 ${res.recoveryCodes.length} 个，请妥善保存。`;
       await refresh();
     } catch (err) { showErr('#setup-error', err.message); } finally { setBusy(btn, false); }
   });
 
-  /* 恢复码下载（参考 GitHub 的 github-recovery-codes.txt 结构：服务名 + 账号 +
-     生成日期 + 使用说明 + 码列表——纯码列表落进密码管理器后没人知道它是谁的）。 */
+  /* 恢复码下载（GitHub recovery-codes.txt 结构：服务名 + 账号 + 日期 + 说明 + 码） */
   $('#download-codes').addEventListener('click', () => {
-    // 账号邮箱取 title 属性（顶栏显示名已升级为昵称优先，完整邮箱在 title 里）
-    const el = $('#topbar-email');
-    const email = el ? (el.getAttribute('title') || el.textContent) : '';
     const body = [
       'Auth 恢复码',
-      `账号：${email}`,
+      `账号：${accountEmail()}`,
       `生成：${todayStr()}`,
       '',
       '每个恢复码只能用一次，验证器不可用时用于登录。用完即失效；重生成会让旧码全部作废。请离线保存。',
@@ -1315,28 +1510,29 @@ function initSecurity() {
       '',
     ].join('\n');
     const blob = new Blob([body], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
+    a.href = url;
     a.download = 'auth-recovery-codes.txt';
     a.click();
-    URL.revokeObjectURL(a.href);
+    // 下载是异步开始的：同步 revoke 会让部分浏览器（Safari）把下载取消掉，
+    // 留一拍再回收对象 URL。
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   });
   $('#copy-codes').addEventListener('click', async () => {
     await copyText(codes.join('\n'));
     toast('恢复码已复制到剪贴板');
   });
   const printBtn = $('#print-codes');
-  if (printBtn) printBtn.addEventListener('click', () => {
-    // 打印面板保持在页面上（.hidden 之外），@media print 已关掉全部动画
-    window.print();
-  });
+  if (printBtn) printBtn.addEventListener('click', () => window.print());
   $('#saved-codes').addEventListener('click', () => {
     $('#codes-panel').classList.add('hidden');
+    $('#codes-list').innerHTML = '';   // 与数组一起清：DOM 里也不留这组码
     codes = [];
     toast('恢复码已保存。离开本页后无法再查看，需要时可重生成。');
   });
 
-  // 通用「要一个码」弹框（单输入 + 恢复码切换；返回 {value, recovery}）
+  // 通用「要一个码」弹框（单输入 + 恢复码切换；返回码字符串，空串 = 取消）
   let codeResolver = null;
   const codeToggle = makeCodeToggle($('#code-input'), $('#code-input-label'), {
     initial: 'code',
@@ -1363,9 +1559,8 @@ function initSecurity() {
     $('#code-input').focus();
     return new Promise(resolve => { codeResolver = resolve; });
   }
-  // 取消的**唯一收口**：点「取消」、按 Esc、浏览器关闭弹窗都走这里。
-  // 此前只绑了 click，按 Esc 时 dialog 被浏览器关掉但 resolver 永不 resolve——
-  // 调用方（重生成/关闭两步验证）的 await 永久挂起，之后再点又会覆盖 resolver。
+  // 取消的**唯一收口**：点「取消」、按 Esc、浏览器关闭弹窗都走这里——
+  // 此前只绑 click，按 Esc 会让调用方的 await 永久挂起。
   const cancelCode = () => {
     if ($('#code-dialog').open) closeDialog($('#code-dialog'));
     if (codeResolver) { codeResolver(''); codeResolver = null; }
@@ -1376,7 +1571,7 @@ function initSecurity() {
     e.preventDefault();
     const value = $('#code-input').value.trim();
     if (!value) { showErr('#code-error', codeToggle.mode() === 'recovery' ? '请输入恢复码' : '请输入两步验证码'); return; }
-    if (codeResolver) { codeResolver(value); codeResolver = null; }   // 服务端 code 字段两码通用
+    if (codeResolver) { codeResolver(value); codeResolver = null; }
     closeDialog($('#code-dialog'));
   });
 
@@ -1386,7 +1581,6 @@ function initSecurity() {
     try {
       const res = await api('/api/totp/regenerate-recovery-codes', { method: 'POST', body: { code } });
       showCodes(res.recoveryCodes);
-      $('#recovery-state').textContent = `恢复码：本次已生成 ${res.recoveryCodes.length} 个，旧恢复码全部作废。`;
       toast('已换发新恢复码，旧码全部作废');
     } catch (err) { toast(err.message, true); }
   });
@@ -1407,8 +1601,8 @@ function initSecurity() {
     refresh().catch(() => { retryBtn.classList.remove('hidden'); $('#totp-badge').textContent = '读取失败'; });
   });
 
-  // 加载失败不能只弹个 toast 就完事：徽标会永远停在「读取中…」、两个分区双双
-  // 保持 hidden，整页空白且**没有任何重试入口**。改成徽标标「读取失败」+ 出重试钮。
+  // 加载失败不能只弹 toast：徽标会永远停在「读取中…」、两个分区双双隐藏，
+  // 整页空白且没有重试入口。改成徽标标「读取失败」+ 出重试钮。
   refresh().catch(err => {
     if (err.status === 401) return;
     const badge = $('#totp-badge');
@@ -1425,13 +1619,13 @@ function initAccount() {
 
   const tabs = { 'tab-pw-old': 'pane-pw-old', 'tab-pw-code': 'pane-pw-code' };
   Object.keys(tabs).forEach(id => $('#' + id).addEventListener('click', () => {
-    Object.keys(tabs).forEach(other => {
-      const on = other === id;
-      $('#' + other).setAttribute('aria-selected', on ? 'true' : 'false');
-      const pane = $('#' + tabs[other]);
-      pane.classList.toggle('hidden', !on);
-      if (on) swapIn(pane);   // 换面板：crossfade + 4px 上浮
-    });
+    // 与登录页同一套 flowSwap 连续过渡（两步之间不瞬变）
+    const prev = Object.keys(tabs).map(k => $('#' + tabs[k]))
+      .find(p => !p.classList.contains('hidden'));
+    Object.keys(tabs).forEach(other =>
+      $('#' + other).setAttribute('aria-selected', other === id ? 'true' : 'false'));
+    const next = $('#' + tabs[id]);
+    if (prev !== next) flowSwap(prev, next);
   }));
 
   $('#pane-pw-old').addEventListener('submit', async e => {
@@ -1484,6 +1678,8 @@ function initAccount() {
 
   $('#change-email').addEventListener('click', async () => {
     showErr('#email-error', '');
+    const btn = $('#change-email');
+    setBusy(btn, true);
     try {
       await api('/auth/change-email', {
         method: 'POST',
@@ -1494,25 +1690,19 @@ function initAccount() {
         },
       });
       $('#email-code').value = ''; $('#email-password').value = '';
-      // 改完邮箱必须**当场**把三处身份显示换成新邮箱：顶栏胶囊的 title 与显示名
-      // （无昵称时显示名就是邮箱前缀）、账号页的「注册邮箱」行。否则刚做完的敏感
-      // 操作页面上还挂着旧身份，看着像没生效。
+      // 改完邮箱当场把三处身份显示换成新邮箱（否则敏感操作做完了页面还挂着旧身份）
       const newEmail = $('#email-new').value.trim();
       if (newEmail) {
         const pfEmail = $('#pf-email');
         if (pfEmail) pfEmail.textContent = newEmail;
-        const top = $('#topbar-email');
-        if (top) {
-          const hasNickname = !!(profileCache && (profileCache.nickname || '').trim());
-          if (!hasNickname) top.textContent = newEmail.split('@')[0] || '';
-          top.setAttribute('title', newEmail);
-        }
+        const hasNickname = !!(profileCache && (profileCache.nickname || '').trim());
+        setAccountIdentity(newEmail, hasNickname ? null : newEmail.split('@')[0]);
       }
       toast('邮箱已更新，新旧邮箱都收到了通知');
-    } catch (err) { showErr('#email-error', err.message); }
+    } catch (err) { showErr('#email-error', err.message); } finally { setBusy(btn, false); }
   });
 
-  // ---- 注销（W2）：注册邮箱 + 邮箱验证码双确认，7 天反悔期 ----
+  // ---- 注销：注册邮箱 + 邮箱验证码双确认 + 手输短语闸，7 天反悔期 ----
   $('#start-delete').addEventListener('click', () => {
     $('#delete-email').value = ''; $('#delete-code').value = '';
     $('#delete-phrase').value = '';
@@ -1521,7 +1711,6 @@ function initAccount() {
     openDialog($('#delete-dialog'));
     $('#delete-email').focus();
   });
-  // 手输「注销」才解锁主钮（不可逆操作的有意识确认）
   $('#delete-phrase').addEventListener('input', () => {
     $('#delete-submit').disabled = $('#delete-phrase').value.trim() !== '注销';
   });
@@ -1551,35 +1740,45 @@ function initAccount() {
     try {
       await api('/auth/delete', { method: 'POST', body: { email, code } });
       closeDialog($('#delete-dialog'));
-      // 登出回登录页：会话多半已随注销失效，登不成也不拦跳转
-      try { await api('/web/logout', { method: 'POST', body: {} }); } catch (_) { /* 已登出也要跳 */ }
+      try { stopSessionRefresh(); await api('/web/logout', { method: 'POST', body: {} }); } catch (_) { /* 已登出也要跳 */ }
       flash('注销已提交，7 天内登录可撤销');
       location.href = '/web/login';
     } catch (err) { showErr('#delete-error', err.message); setBusy(btn, false); }
   });
+
+  initProfile();
+  initLoginNotify();
 }
 
-/* ---------- 账号资料（B5）：头像 / 昵称 / 头像色 ----------
-   PUT /api/profile 是**全量替换**语义（三字段每次都得提交完整），所以这里持一份
-   本地档案副本，保存时整份提交；avatarImage 与两个日记 App 同口径：**裸 base64**
-   （无 data: 前缀，标准字母表带 padding）——canvas toDataURL 产物剥掉前缀即是。 */
-/* 档案内存副本：PUT /api/profile 是**全量替换**，资料卡与登录提醒开关各发一次
-   全量 PUT 时，若其中一方用的是自己那份过期的 GET 结果，就会把对方刚改的字段
-   写回旧值（实测：改完昵称立刻切开关，昵称被写回旧值）。这里让两条路径共用
-   同一份「最后一次已知的完整档案」，谁保存成功谁更新它。 */
+/* ---------- 账号资料（头像 / 昵称 / 头像色） ----------
+   PUT /api/profile 是**全量替换**语义：资料卡与登录提醒开关各发一次全量 PUT，
+   若其中一方用过期的 GET 结果会把对方刚改的字段写回旧值——两条路径共用
+   同一份「最后一次已知的完整档案」（profileCache），谁保存成功谁更新它。 */
 let profileCache = null;
+
+/* 当前登录邮箱（顶栏胶囊 title 是权威来源；Minimal 壳没有顶栏时回空串） */
+function accountEmail() {
+  const el = $('#topbar-email');
+  return el ? (el.getAttribute('title') || '') : '';
+}
+
+/* 顶栏身份同步：显示名（昵称优先）+ title 邮箱，两处胶囊一起更新 */
+function setAccountIdentity(email, displayName) {
+  $$('.acct').forEach(a => { if (email) a.setAttribute('title', email); });
+  const nameEl = $('#topbar-email');
+  if (nameEl && displayName != null) nameEl.textContent = displayName;
+}
 
 function initProfile() {
   const avatarEl = $('#pf-avatar');
   if (!avatarEl) return;
   const fileInput = $('#pf-avatar-file');
   const saveBtn = $('#pf-save');
-  const email = $('#topbar-email') ? $('#topbar-email').getAttribute('title') : '';
+  const email = accountEmail();
   let pf = { nickname: '', avatarColor: 0, avatarImage: '' };
   let loaded = { nickname: '', avatarColor: 0, avatarImage: '' };
-  let meUid = 0;   // W3 派生底色用（/web/session 现取，拿不到按 0 回退色板首位）
+  let meUid = 0;
 
-  // 色板来自服务端注入的 JSON（internal/ui avatarPalette，与两 App AvatarPalette 同值）
   const PALETTE = (() => {
     try {
       const el = document.getElementById('avatar-palette');
@@ -1588,9 +1787,7 @@ function initProfile() {
     } catch (_) { return ['#5B8DEF']; }
   })();
 
-  /* W3：展示底色 = 显式色（>0）> uid%8 派生——与 Go ui.AvatarPaletteHexFor /
-     app.js avatarHex 同式。色板 chips 按展示色高亮；显式值只在用户点选后落 pf
-     （未设色的账号点「已高亮的那颗」不产生脏值）。 */
+  // 展示底色 = 显式色（>0）> uid%8 派生——与 Go ui.AvatarPaletteHexFor 同式
   function effectiveColor() {
     const i = Number(pf.avatarColor);
     if (Number.isInteger(i) && i > 0 && i < PALETTE.length) return i;
@@ -1607,7 +1804,7 @@ function initProfile() {
   function renderAvatar(fade) {
     const bg = PALETTE[effectiveColor()] || PALETTE[0];
     avatarEl.style.background = bg;
-    avatarEl.style.color = avatarInk(bg); // 首字墨色与底色成对（.avatar 不写死白墨）
+    avatarEl.style.color = avatarInk(bg);   // 首字墨色与底色成对
     const wantImg = !!pf.avatarImage;
     const curImg = avatarEl.querySelector('img');
     if (wantImg) {
@@ -1628,8 +1825,7 @@ function initProfile() {
       avatarEl.textContent = avatarInitial();
     }
     $('#pf-clear-avatar').classList.toggle('hidden', !wantImg);
-    // W7：有自定义头像时收起色板行（底色只在无图时决定首字观感）；
-    // 移除头像/换回色块形态即恢复——上传与移除都经这里，两态永远同步。
+    // 有自定义头像时收起色板行（底色只在无图时决定首字观感）；两态永远同步
     const paletteBox = $('#pf-palette');
     if (paletteBox) paletteBox.classList.toggle('hidden', wantImg);
   }
@@ -1638,12 +1834,9 @@ function initProfile() {
     $('#pf-nick-view').textContent = pf.nickname || '未设置（显示邮箱前缀）';
   }
 
-  /* 色板 = 「自动」+ 7 个可选色。
-     服务端语义 avatarColor=0 表示**未设**（按 uid 派生），而色板下标 0 正好也是
-     一个真实颜色——两者撞车：未设色账号点第 1 颗时 0 !== 0 判不脏，保存钮点不动；
-     已设别的色再点第 1 颗会写回 0（变回派生色）。把 0 显式解释成「自动」，可选色
-     从下标 1 起——每颗都能点、都能存，且不需要改后端语义与两个 App（它们本地默认
-     也写 0 = 未设，静默改语义会让存量用户头像整体变色）。 */
+  /* 色板 = 「自动」+ 7 个可选色：服务端语义 avatarColor=0 = 未设（按 uid 派生），
+     而色板下标 0 也是真实颜色——把 0 显式解释成「自动」，可选色从下标 1 起，
+     每颗都能点、都能存，且不改后端与两个 App 的语义。 */
   function renderPalette() {
     const box = $('#pf-palette');
     box.innerHTML = '';
@@ -1699,7 +1892,6 @@ function initProfile() {
 
   async function load() {
     try {
-      // W3：uid 只为「未设色按 uid 派生」服务，取不到就按 0 回退色板首位，不拦页面
       const [me, profile] = await Promise.all([
         api('/web/session', { method: 'POST', body: {} }).catch(() => null),
         api('/api/profile'),
@@ -1735,10 +1927,15 @@ function initProfile() {
   });
   $('#pf-nick-input').addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); closeNickEdit(); }
-    if (e.key === 'Escape') { e.preventDefault(); pf.nickname = loaded.nickname; $('#pf-nick-input').value = pf.nickname; renderNick(); renderAvatar(false); refreshDirty(); closeNickEdit(); }
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      pf.nickname = loaded.nickname;
+      $('#pf-nick-input').value = pf.nickname;
+      renderNick(); renderAvatar(false); refreshDirty(); closeNickEdit();
+    }
   });
 
-  // ---- 头像上传：方形裁剪（按短边居中裁）→ JPEG 0.85；解码后 >700KB 降质重压 ----
+  // ---- 头像上传：方形裁剪 → JPEG 0.85；超限降质重压 ----
   $('#pf-avatar-edit').addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('change', async () => {
     const file = fileInput.files && fileInput.files[0];
@@ -1768,12 +1965,7 @@ function initProfile() {
         body: { nickname: pf.nickname.trim(), avatarColor: pf.avatarColor, avatarImage: pf.avatarImage },
       }));
       toast('资料已更新');
-      // 顶栏胶囊同源更新（昵称显示名 + 头像），不整页刷新
-      const topName = $('#topbar-email');
-      if (topName) {
-        topName.textContent = (pf.nickname || '').trim() || (email || '').split('@')[0] || '';
-        topName.setAttribute('title', email);
-      }
+      setAccountIdentity(email, (pf.nickname || '').trim() || (email || '').split('@')[0] || '');
       updateTopbarAvatar();
     } catch (err) { showErr('#pf-error', err.message); } finally { setBusy(saveBtn, false); }
   });
@@ -1783,7 +1975,7 @@ function initProfile() {
     if (!top) return;
     const bg = PALETTE[effectiveColor()] || PALETTE[0];
     top.style.background = bg;
-    top.style.color = avatarInk(bg); // 首字墨色与底色成对（.avatar 不写死白墨）
+    top.style.color = avatarInk(bg);
     if (pf.avatarImage) {
       const img = document.createElement('img');
       img.src = 'data:image/jpeg;base64,' + pf.avatarImage;
@@ -1797,23 +1989,21 @@ function initProfile() {
   load();
 }
 
-/* ---------- 新设备登录提醒开关（W1，账号页登录提醒卡） ----------
-   PUT /api/profile 是全量替换语义：这里先 GET 整份档案，再带上 loginNotify 整份
-   PUT——只发 {loginNotify} 会把昵称/头像清空。失败回滚勾选态并 toast 原因。 */
+/* 新设备登录提醒开关：PUT /api/profile 全量替换语义——先拿共享缓存（资料卡
+   刚存过就是最新的），再带上 loginNotify 整份 PUT。失败回滚勾选态。 */
 function initLoginNotify() {
   const box = $('#login-notify');
   if (!box) return;
   let loaded = null;
   async function load() {
     try {
-      // 优先用共享缓存（资料卡刚存过就是最新的），没有才去 GET
       const p = profileCache || (profileCache = await api('/api/profile'));
       loaded = !!p.loginNotify;
       box.checked = loaded;
       box.disabled = false;
     } catch (err) {
-      // 读不到时**不能停在 unchecked**：服务端默认是「开」，显示成「关」等于
-      // 对用户撒谎。置 indeterminate + 禁用，表示「状态未知」。
+      // 读不到时不能停在 unchecked：服务端默认是「开」，显示成「关」等于撒谎。
+      // 置 indeterminate + 禁用，表示「状态未知」。
       box.checked = false;
       box.indeterminate = true;
       box.disabled = true;
@@ -1824,8 +2014,6 @@ function initLoginNotify() {
     const want = box.checked;
     box.disabled = true;
     try {
-      // 用共享缓存而不是重新 GET：重新 GET 可能读到资料卡保存**之前**的状态，
-      // 整份 PUT 就会把刚改的昵称/头像写回旧值。
       const p = profileCache || (profileCache = await api('/api/profile'));
       const saved = await api('/api/profile', {
         method: 'PUT',
@@ -1845,8 +2033,7 @@ function initLoginNotify() {
   load();
 }
 
-/* 头像换新交叉淡入（B5）：旧内容淡出 → 换新 → 淡入，只动 opacity/transform；
-   reduced-motion 直接切（与 fadeOutRow 同一套门禁）。 */
+/* 头像换新交叉淡入：只动 opacity */
 function crossFade(el) {
   if (!el || reducedMotion() || typeof el.animate !== 'function') return;
   try {
@@ -1855,9 +2042,8 @@ function crossFade(el) {
   } catch (_) { /* 浏览器不支持就静默 */ }
 }
 
-/* 方形裁剪 + JPEG 压缩：按短边居中裁成正方形（输出上限 512px），toDataURL(0.85)；
-   解码后 >700KB（服务端 maxAvatarImageBytes）就逐档降质（0.85→0.35），仍超再缩画布。
-   回**裸 base64**（剥 data: 前缀）——与日记客户端 Base64.NO_WRAP 的产物同形。 */
+/* 方形裁剪 + JPEG 压缩：按短边居中裁（上限 512px），toDataURL(0.85)；
+   解码后 >700KB 逐档降质，仍超再缩画布。回**裸 base64**（与两 App 同形）。 */
 const AVATAR_MAX_DECODED = 700 * 1024;
 async function cropAvatar(file) {
   const url = URL.createObjectURL(file);
@@ -1879,10 +2065,9 @@ async function cropAvatar(file) {
       canvas.getContext('2d').drawImage(img, sx, sy, side, side, 0, 0, size, size);
       for (let q = 0.85; q >= 0.3; q -= 0.1) {
         const b64 = canvas.toDataURL('image/jpeg', q).split(',')[1] || '';
-        // base64 长度 ≈ 解码字节数 × 4/3：直接按字符数估即可，不必真解一遍
         if (Math.floor(b64.length * 3 / 4) <= AVATAR_MAX_DECODED) return b64;
       }
-      size = Math.floor(size * 0.7); // 最低档仍超：缩小画布再来一轮
+      size = Math.floor(size * 0.7);
     }
     throw new Error('图片过大，请换一张更小的图');
   } finally {
@@ -1890,15 +2075,9 @@ async function cropAvatar(file) {
   }
 }
 
-/* ---------- 后台：用户（含原角色管理，合并页） ---------- */
-/* 角色徽标与授权文案的术语表：super→平台管理员、admin→项目管理员、user→普通用户；
-   授权列只给计数文案，不列 app 名。 */
+/* ---------- 头像渲染（列表/抽屉/会话总览共用） ---------- */
 const ROLE_LABEL = { super: '平台管理员', admin: '项目管理员', user: '普通用户' };
 
-/* 头像渲染（B5，列表/抽屉/会话总览共用）：avatarImage 有值用图，无图回退色块+首字
-   （首字取昵称首字符，再退邮箱前缀首字符；底色取 avatarColor 下标对应的色板值、
-   首字墨色按 avatarInk(底色) 择黑/白——色板来自服务端注入的 JSON，与 internal/ui
-   avatarPalette 及两 App 同一份值）。 */
 function avatarPalette() {
   try {
     const el = document.getElementById('avatar-palette');
@@ -1914,19 +2093,17 @@ function avatarInitial(nickname, email) {
 function avatarHex(index, uid) {
   const p = avatarPalette();
   const i = Number(index);
-  // W3 展示色派生：显式设过的色（>0）原样用；未设（0/越界）按 uid%8 派生——
-  // 与 Go 侧 ui.AvatarPaletteHexFor 同式（改规则请同 PR 同步 Go 半边）。
+  // 展示色派生：显式色（>0）原样用；未设（0/越界）按 uid%8 派生——
+  // 与 Go 侧 ui.AvatarPaletteHexFor 同式。
   if (Number.isInteger(i) && i > 0 && i < p.length) return p[i];
   const u = Number(uid);
   return p[Number.isInteger(u) && u > 0 ? u % p.length : 0];
 }
-/* 首字墨色：按 WCAG 相对亮度取白墨/黑墨中对比更高的一支——与 Go 侧 ui.avatarInkFor
-   及两 App AvatarPalette.inkFor 同式（.avatar 不再写死白墨：白墨对 8 色色板实测只有
-   1.92~4.49:1，全数低于 4.5:1；黑墨全数 ≥4.5，实测表见 ui.go avatarInkFor 注释，
-   TestAvatarInkContrast 钉住 Go 侧——改规则请同 PR 同步两处）。 */
+/* 首字墨色：按 WCAG 相对亮度取白墨/黑墨中对比更高的一支——与 Go 侧
+   ui.avatarInkFor 同式（白墨对 8 色色板全数 <4.5:1）。 */
 function avatarInk(bg) {
   const m = /^#([0-9a-fA-F]{6})$/.exec(String(bg || '').trim());
-  if (!m) return '#000000'; // 走不到（底色只来自常量色板），兜底黑墨 = 8 色全达标的那支
+  if (!m) return '#000000';
   const n = parseInt(m[1], 16);
   const lin = c => { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
   const l = 0.2126 * lin(n >> 16 & 255) + 0.7152 * lin(n >> 8 & 255) + 0.0722 * lin(n & 255);
@@ -1936,36 +2113,34 @@ function avatarHTML(u, px) {
   const size = `width:${px}px;height:${px}px;font-size:${Math.round(px * 0.42)}px`;
   const bg = avatarHex(u.avatarColor, u.uid);
   const initial = avatarInitial(u.nickname, u.email);
-  // W3：真图统一走 /admin/users/{uid}/avatar（懒加载；服务端弱缓存 5 分钟 + ETag），
-  // 无图 404 或加载失败时由 document 捕获阶段的 error 监听回退「色块 + 首字」——
-  // 回退方向是「图 → 占位符」，占位色块是兜底不是主图。uid 缺位（打开抽屉的过场）
-  // 直接渲染色块，不发注定 404 的请求。
+  // 真图统一走 /admin/users/{uid}/avatar（懒加载），无图 404 或加载失败时由
+  // document 捕获阶段的 error 监听回退「色块 + 首字」；uid 缺位直接渲染色块。
   const img = Number(u.uid) > 0
     ? `<img class="avatar-img" loading="lazy" src="/admin/users/${esc(u.uid)}/avatar" alt="">` : '';
   return `<span class="avatar" data-initial="${initial}" style="${size};background:${esc(bg)};color:${avatarInk(bg)}" aria-hidden="true">${img || initial}</span>`;
 }
 /* 头像图加载失败（无图 404 / 网络错）：原地换回色块+首字。error 事件不冒泡，
-   用 document 的**捕获**阶段统一接（免去每个 innerHTML 注入点各自挂 onerror）。 */
+   用 document 的捕获阶段统一接。 */
 document.addEventListener('error', e => {
   const t = e.target;
   if (!t || !t.classList || !t.classList.contains('avatar-img')) return;
   const wrap = t.parentElement;
   if (wrap) wrap.textContent = wrap.dataset.initial || '?';
 }, true);
-/* 身份堆叠（头像+昵称+邮箱，Qualytics 形态）：列表与抽屉头部同款。 */
 function userCell(u, px) {
   const name = (u.nickname || '').trim() || u.email;
   return `<span class="user-cell">${avatarHTML(u, px)}
     <span class="grow"><span class="title truncate" title="${esc(u.email)}">${esc(name)}</span>${u.nickname ? `<br><span class="meta truncate" title="${esc(u.email)}">${esc(u.email)}</span>` : ''}</span></span>`;
 }
+/* 登录豁免摘要：角色/授权数 → 「谁对什么豁免」的一句话（与 access 页层级同口径） */
 function scopeSummary(u) {
-  if (u.role === 'super') return '管理全部项目';
+  if (u.role === 'super') return '豁免全部项目';
   const n = Number(u.scopeCount || 0);
-  return n > 0 ? `已授权 ${n} 个项目` : '未授权任何项目';
+  return n > 0 ? `豁免 ${n} 个项目` : '未获项目豁免';
 }
 
 /* 封禁范围选项：平台管理员 = 全局 + 注册表全部项目；项目管理员 = 仅自己授权的
-   项目（GET /admin/projects 只回自己范围内的，前端不再裁；永远没有全局项）。 */
+   项目（GET /admin/projects 只回自己范围内的，前端不再裁）。 */
 async function banScopeOptions() {
   if (IS_SUPER) {
     return [{ key: '*', label: '全部项目（全局）' }]
@@ -1977,22 +2152,25 @@ async function banScopeOptions() {
   } catch (_) { return []; }
 }
 
-/* 限时封禁的最早解除时间：当前 + 5 分钟（datetime-local 的本地格式）。 */
+/* 限时封禁的最早解除时间：当前 + 5 分钟（datetime-local 的本地格式） */
 function banMinStr() {
   const d = new Date(Date.now() + 5 * 60 * 1000);
   const p = n => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+/* ---------- 后台：用户（含角色管理与登录豁免，合并页） ----------
+   列表 = 搜索 + 服务端跨页筛选（角色/封禁）+ 分页 + 批量操作；详情 = 身份/角色与
+   登录豁免/会话/资料/
+   高风险操作（danger-zone）。授予项目即让该账号豁免该项目的登录限制——与
+   项目访问页的豁免层级是同一件事的两个入口。 */
 function initAdminUsers() {
   const body = $('#users-body');
   if (!body) return;
   const APPS = knownApps();
   const pager = makePager({ prev: '#users-prev', next: '#users-next', label: '#users-page', limit: 20 });
 
-  // 确认弹窗：一次挂一个待执行动作 + 它的成功提示，确认后走 reauth 闸
-  //（api() 401 自动弹重验框）——提示按操作分说，不统一糊一句「已生效」。
-  // after 可选：拿回执干收尾活（重置密码的一次性密码展示层走它）。
+  // 确认弹窗：一次挂一个待执行动作 + 它的成功提示；after 可选拿回执收尾
   let pending = null;
   let lastDetail = { uid: 0, email: '' };
   function confirmAction(title, desc, done, fn, danger, after) {
@@ -2012,15 +2190,14 @@ function initAdminUsers() {
     if (!job) return;
     try {
       const res = await job.fn();
-      // after 可以是异步的（邀请撤销先等行淡出播完再重取列表），所以 await
       if (job.after) await job.after(res);
       toast(job.done);
       await Promise.all([load(), loadInvites()]);
       if (lastDetail.uid) openDetail(lastDetail.uid, lastDetail.email);
-    } catch (err) { toast(err.message, true); }
+    } catch (err) { reportDenial('#users-denied', err); }
   });
 
-  // ---- 一次性临时密码展示层（W3）：等宽展示 + 复制，关层即清零 ----
+  // ---- 一次性临时密码展示层：等宽展示 + 复制，关层即清零 ----
   let tempPassword = '';
   function showTempPassword(pw, notify) {
     tempPassword = pw || '';
@@ -2036,14 +2213,12 @@ function initAdminUsers() {
     toast('密码已复制');
   });
   $('#rp-done-close').addEventListener('click', () => closeDialog($('#rp-done')));
-  // Esc / 关闭都会落到 close 事件：变量与展示一并清零
   $('#rp-done').addEventListener('close', () => {
     tempPassword = '';
     $('#rp-done-pw').textContent = '';
   });
 
-  // ---- 选择集与批量工具条（B9）：Map<uid,email>，跨翻页保留（批量本就要跨页选人）；
-  // 清空是显式动作。N 实时刷新，工具条在 N=0 时整条收起。 ----
+  // ---- 选择集与批量工具条：Map<uid,email>，跨翻页保留 ----
   const selected = new Map();
   function refreshBulkBar() {
     const n = selected.size;
@@ -2058,8 +2233,39 @@ function initAdminUsers() {
     refreshBulkBar();
   }
 
-  // ---- 邀请记录（B9）：四态徽标（pending 主色 / accepted 绿 / revoked·expired 灰）、
-  // 行内重发与撤销；过滤复用用户搜索框的同一查询串（少一个输入框）。 ----
+  // ---- 筛选（角色/封禁）：两项都进 /admin/users 查询串，服务端跨页过滤 ----
+  const facet = { role: 'all', status: 'all' };
+  let pageItems = [];
+
+  function syncFacetChips() {
+    $$('[data-role-facet]').forEach(c => {
+      const on = c.dataset.roleFacet === facet.role;
+      c.classList.toggle('on', on);
+      c.setAttribute('aria-pressed', on ? 'true' : 'false');
+      if (on) popIn(c);
+    });
+    $$('[data-status-facet]').forEach(c => {
+      const on = c.dataset.statusFacet === facet.status;
+      c.classList.toggle('on', on);
+      c.setAttribute('aria-pressed', on ? 'true' : 'false');
+      if (on) popIn(c);
+    });
+  }
+  function refreshFacetNote() {
+    const note = $('#users-facet-note');
+    const active = facet.role !== 'all' || facet.status !== 'all';
+    note.hidden = !active;
+    if (active) {
+      note.textContent = `当前筛选生效：共 ${pager.state.total} 个匹配账号（服务端跨页筛选）`;
+    }
+    syncQuery({
+      query: pager.state.query || '', offset: pager.state.offset || '',
+      role: facet.role !== 'all' ? facet.role : '',
+      banned: facet.status === 'banned' ? 'true' : '',
+    });
+  }
+
+  // ---- 邀请记录：四态徽标 + 行内重发/撤销；复用用户搜索的同一查询串 ----
   let inviteQuery = '';
   const INVITE_BADGE = {
     pending: '<span class="badge on">待接受</span>',
@@ -2075,32 +2281,31 @@ function initAdminUsers() {
       const list = res.invites || [];
       $('#invites-count').textContent = list.length ? `· 共 ${list.length} 条` : '';
       if (!list.length) {
-        tbody.innerHTML = `<tr><td colspan="5" class="empty"><span class="empty-title">${inviteQuery ? '没有匹配的邀请' : '还没有发出过邀请'}</span><span class="empty-hint">${inviteQuery ? '清空搜索看看全部邀请。' : '在下方输入邮箱即可发出第一条邀请。'}</span></td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="5" class="empty"><span class="empty-title">${inviteQuery ? '没有匹配的邀请' : '还没有发出过邀请'}</span><span class="empty-hint">${inviteQuery ? '清空搜索看看全部邀请。' : '点「邀请用户」发出第一条邀请。'}</span></td></tr>`;
         return;
       }
       tbody.innerHTML = '';
       list.forEach(it => {
-        // 还能动手的行（待接受/已过期可重发与撤销）才渲染行内按钮；
-        // 已接受/已撤销是不可逆事实，只留状态（业务层对它们的重发/撤销也一律 400）
+        // 只有还能动手的行（待接受/已过期）渲染行内按钮；已接受/已撤销是不可逆事实
         const live = it.state === 'pending' || it.state === 'expired';
         const validity = it.state === 'pending'
           ? `剩余 ${esc(remainTime(it.expiresAt))}` : `至 ${esc(fmtTime(it.expiresAt))}`;
         const tr = node(`
           <tr data-invite="${esc(it.id)}">
-            <td class="wrap-cell">${esc(it.email)}</td>
-            <td>${it.app ? esc(appLabel(it.app)) : '<span class="dim">不限项目</span>'}</td>
-            <td>${INVITE_BADGE[it.state] || esc(it.state)}</td>
-            <td>${validity}</td>
-            <td>${live ? `<span class="row" style="gap:6px">
+            ${td('', esc(it.email), 'cell-title wrap-cell')}
+            ${td('项目', it.app ? esc(appLabel(it.app)) : '<span class="dim">不限项目</span>')}
+            ${td('状态', INVITE_BADGE[it.state] || esc(it.state))}
+            ${td('有效期', validity)}
+            ${td('', live ? `<span class="row" style="gap:6px">
                 <button type="button" class="btn small" data-resend>重发</button>
                 <button type="button" class="btn small danger" data-revoke>撤销</button>
-              </span>` : ''}</td>
+              </span>` : '', 'cell-action')}
           </tr>`);
         const resend = tr.querySelector('[data-resend]');
         if (resend) resend.addEventListener('click', async () => {
           setBusy(resend, true);
           try {
-            // 重发 = 换新 token + 续 24h，旧链接即刻失效（文案要说清「去打开新的那封」）
+            // 重发 = 换新 token + 续 24h，旧链接即刻失效（文案要说清）
             await api(`/admin/users/invite/${encodeURIComponent(it.id)}/resend`, { method: 'POST', body: {} });
             toast(`邀请已重新发送至 ${it.email}，旧链接已失效`);
             await loadInvites();
@@ -2115,7 +2320,6 @@ function initAdminUsers() {
             `已撤销发给 ${it.email} 的邀请`,
             () => api(`/admin/users/invite/${encodeURIComponent(it.id)}/revoke`, { method: 'POST', body: {} }),
             true,
-            // 成功后先让本行淡出（.leaving / fadeOutRow 配方），再由外层重取列表
             () => new Promise(done => fadeOutRow(tr, done)));
         });
         tbody.appendChild(tr);
@@ -2126,9 +2330,7 @@ function initAdminUsers() {
     }
   }
 
-  // ---- 批量操作（B9）：确认视图 = 所选邮箱清单（可滚动）+ 后果逐条 + 一次配置；
-  // N>5 手打「确认」解锁主钮；执行中 busy 禁用；结果视图逐项成败，失败项可勾选
-  // 只重跑子集。临时密码**不进**结果面板（凭证只随逐用户邮件走）。 ----
+  // ---- 批量操作：确认视图（清单 + 后果逐条 + 一次配置）与结果视图同层切换 ----
   const BULK_TITLE = { password_reset: '批量重置密码', ban: '批量封禁', unban: '批量解除封禁' };
   const BULK_CONSEQUENCES = {
     password_reset: [
@@ -2144,12 +2346,10 @@ function initAdminUsers() {
       '没有生效中封禁的用户同样回执成功',
     ],
   };
-  let bulkJob = null;    // {kind, uids}
-  let bulkState = null;  // {kind, results: Map<uid,{ok,message}>}
-  let bulkEmails = new Map(); // 开批时的 uid→email 快照（结果面板的称呼不随选择集漂）
+  let bulkJob = null;
+  let bulkState = null;
+  let bulkEmails = new Map();
 
-  // bulkRequest 组装请求体：password_reset 只有 kind+uids；ban 带范围/时长/原因；
-  // unban 只带范围（业务层 AdminUnban 只吃 app）。
   function bulkRequest(kind, uids) {
     const body = { kind, uids };
     if (kind === 'ban' || kind === 'unban') {
@@ -2219,7 +2419,7 @@ function initAdminUsers() {
       const opts = await banScopeOptions();
       $('#bulk-app').innerHTML = opts.map(o => `<option value="${esc(o.key)}">${esc(o.label)}</option>`).join('')
         || '<option value="">无可用范围</option>';
-      decorateSelect($('#bulk-app'));   // W9：同步按钮文案
+      decorateSelect($('#bulk-app'));
       const isBan = kind === 'ban';
       $('#bulk-dur-group').classList.toggle('hidden', !isBan);
       $('#bulk-reason-field').classList.toggle('hidden', !isBan);
@@ -2241,7 +2441,6 @@ function initAdminUsers() {
     sel.innerHTML = '<option value="">加载中…</option>';
     openDialog($('#invite-dialog'), '#invite-cancel');
     // super：全部项目 +「不限项目」；项目管理员：仅其授权项目且必选
-    //（用户页当前是平台管理员页，这条支路是接口口径的前端对齐，不另开页面）
     let opts;
     if (IS_SUPER) {
       opts = [{ key: '', label: '不限项目' }]
@@ -2255,47 +2454,71 @@ function initAdminUsers() {
     }
     sel.innerHTML = opts.map(o => `<option value="${esc(o.key)}">${esc(o.label)}</option>`).join('')
       || '<option value="">无可邀请的项目</option>';
-    decorateSelect(sel);   // W9：选项是打开后才灌的，这里同步按钮文案
+    decorateSelect(sel);   // 选项是打开后才灌的，这里同步按钮文案
     $('#invite-email').focus();
+  }
+
+  function renderRows() {
+    const rows = pageItems;
+    body.innerHTML = '';
+    if (!rows.length) {
+      body.innerHTML = emptyCell(7,
+        pageItems.length ? '当前筛选下没有用户' : '暂无匹配的用户',
+        pageItems.length ? '换一个筛选条件，或点「全部」清空筛选。'
+          : '调整关键词，或点「邀请用户」新建账号。');
+      $('#users-selall').checked = false;
+      refreshBulkBar();
+      refreshFacetNote();
+      return;
+    }
+    rows.forEach(u => {
+      const tr = node(`<tr>
+        ${td('', `<input type="checkbox" class="row-sel" data-uid="${esc(u.uid)}" data-email="${esc(u.email)}" aria-label="选择 ${esc(u.email)}"${selected.has(Number(u.uid)) ? ' checked' : ''}>`, 'cell-pick')}
+        ${td('', userCell(u, 32), 'cell-title wrap-cell')}
+        ${td('uid', `<span class="mono">${esc(u.uid)}</span>`)}
+        ${td('角色', `<span class="row-inline">${u.isRoot
+          ? '<span class="badge on" title="唯一的平台管理员任命者">根管理员</span>'
+          : u.role === 'user' ? `<span class="badge plain">${ROLE_LABEL.user}</span>`
+            : `<span class="badge on">${esc(ROLE_LABEL[u.role] || u.role)}</span>`}${banBadge(u.ban)}</span>`)}
+        ${td('登录豁免', esc(scopeSummary(u)), 'wrap-cell')}
+        ${td('安全', `<span class="row-inline">${u.totpEnabled
+          ? '<span class="badge on">两步验证</span>'
+          : '<span class="badge off">无两步验证</span>'}<span class="badge${u.passkeyCount ? '' : ' off'}">${u.passkeyCount} 个 Passkey</span></span>`)}
+        ${td('', '<button type="button" class="btn small">管理</button>', 'cell-action')}
+      </tr>`);
+      tr.querySelector('button').addEventListener('click', () => openDetail(u.uid, u.email));
+      body.appendChild(tr);
+    });
+    $$('#users-body .row-sel').forEach(cb => cb.addEventListener('change', () => syncSelection(cb)));
+    refreshBulkBar();
+    refreshFacetNote();
   }
 
   async function load() {
     showErr('#users-error', '');
+    showDenial('#users-denied', null);
+    setListBusy(body, true);
     try {
       const st = pager.state;
-      const res = await api(`/admin/users?query=${encodeURIComponent(st.query || '')}&limit=${st.limit}&offset=${st.offset}`);
+      const params = new URLSearchParams({
+        query: st.query || '', limit: String(st.limit), offset: String(st.offset),
+      });
+      if (facet.role !== 'all') params.set('role', facet.role);
+      if (facet.status === 'banned') params.set('banned', 'true');
+      const res = await api('/admin/users?' + params.toString());
       st.query = st.query || '';
       $('#users-total').textContent = `共 ${res.total} 个账号`;
-      syncQuery({ query: st.query || '', offset: st.offset || '' });
       pager.set(res.total, res.items.length);
-      body.innerHTML = '';
-      if (!res.items.length) {
-        body.innerHTML = `<tr><td colspan="7" class="empty"><span class="empty-title">暂无匹配的用户</span><span class="empty-hint">调整关键词，或点「邀请用户」新建账号。</span></td></tr>`;
-        $('#users-selall').checked = false;
-        return;
-      }
-      res.items.forEach(u => {
-        const tr = node(`
-          <tr>
-            <td><input type="checkbox" class="row-sel" data-uid="${esc(u.uid)}" data-email="${esc(u.email)}" aria-label="选择 ${esc(u.email)}"${selected.has(Number(u.uid)) ? ' checked' : ''}></td>
-            <td class="wrap-cell">${userCell(u, 32)}</td>
-            <td class="mono">${esc(u.uid)}</td>
-            <td class="row-inline">${u.role === 'user' ? `<span class="badge">${ROLE_LABEL.user}</span>` : `<span class="badge on">${esc(ROLE_LABEL[u.role] || u.role)}</span>`}${banBadge(u.ban)}</td>
-            <td>${esc(scopeSummary(u))}</td>
-            <td class="row-inline">${u.totpEnabled
-              ? '<span class="badge on">两步验证</span>'
-              : '<span class="badge off">无两步验证</span>'}<span class="badge${u.passkeyCount ? '' : ' off'}">${u.passkeyCount} 个 Passkey</span></td>
-            <td><button type="button" class="btn small">管理</button></td>
-          </tr>`);
-        tr.querySelector('button').addEventListener('click', () => openDetail(u.uid, u.email));
-        body.appendChild(tr);
-      });
-      $$('#users-body .row-sel').forEach(cb => cb.addEventListener('change', () => syncSelection(cb)));
-      refreshBulkBar();
+      pageItems = res.items || [];
+      renderRows();
     } catch (err) {
-      showErr('#users-error', err.message);
+      if (!showDenial('#users-denied', err, { retry: load, backHref: '/web/console', backLabel: '回到概览' })) {
+        showErr('#users-error', err.message);
+      }
       body.innerHTML = emptyCell(7, '读取失败', '稍后重试。');
       refreshBulkBar();
+    } finally {
+      setListBusy(body, false);
     }
   }
 
@@ -2304,14 +2527,13 @@ function initAdminUsers() {
     const panel = $('#user-detail');
     const wasHidden = panel.classList.contains('hidden');
     panel.classList.remove('hidden');
-    if (wasHidden) slideIn(panel);   // 首次展开做钻取滑入，重绘不重复播
+    if (wasHidden) slideIn(panel);
     $('#ud-title').innerHTML = `<span class="user-cell">${avatarHTML({ email }, 48)}
       <span class="grow"><span class="title">${esc(email)}</span><br><span class="meta">用户详情</span></span></span>`;
     $('#ud-body').innerHTML = '<div class="empty">读取中…</div>';
     panel.scrollIntoView({ block: 'nearest' });
     try {
       const d = await api('/admin/users/' + uid);
-      // 头部按全量档案重绘（48px 头像 + 昵称 + 邮箱）
       $('#ud-title').innerHTML = `<span class="user-cell">${avatarHTML(d, 48)}
         <span class="grow"><span class="title">${esc((d.nickname || '').trim() || d.email)}</span><br><span class="meta wrap-cell">${esc(d.email)}</span></span></span>`;
       const scopes = d.scopes || [];
@@ -2323,32 +2545,48 @@ function initAdminUsers() {
         </div>`).join('') || emptyState('没有活跃会话', '该用户的所有会话被退出或过期后，这里会清空。');
       const passkeys = (d.passkeys || []).map(p =>
         `<li>${esc(p.name)} · ${esc(fmtTime(p.createdAt))}</li>`).join('') || '<li>未添加</li>';
-      // 封禁列表（W3）：全局/项目名 + 永久或解除时间 + 原因 + 解除按钮
       const banRows = (d.bans || []).map(b => `
         <div class="item">
           <span class="grow"><span class="title">${b.app === '*' ? '全局' : esc(appLabel(b.app))}</span>
           <br><span class="meta">${Number(b.until) > 0 ? `将于 ${esc(fmtTime(b.until))} 解除` : '永久'}${b.reason ? ` · ${esc(b.reason)}` : ''}</span></span>
           <button type="button" class="btn small danger" data-unban="${esc(b.app)}">解除</button>
         </div>`).join('') || emptyState('没有生效中的封禁', '封禁后会在这里列出范围、解除时间与原因。');
-      const isSelf = d.uid === window.__meUid;
+      const isRootTarget = !!d.isRoot;
+      const meUid = await viewerUid();
+      const root = isRootViewer();
+      const isSelf = Number(d.uid) === meUid;
+      // 任命能力预判（Keycloak 口径：只能授予自己拥有的角色层级；后端矩阵：
+      // 只有根管理员能任命/回收平台管理员）。锁死的目标 = 自己 / 平台管理员
+      //（非根视角）——下拉整体禁用并说明原因；其余情况只禁掉「平台管理员」项。
+      const targetLocked = isSelf || (isRootTarget && !root) ||
+        (d.role === 'super' && !root);
+      const canAppointSuper = root;
+      const roleNote = isSelf
+        ? '不能修改自己的角色。'
+        : isRootTarget && !root
+          ? '根管理员账号只有本人能调整。'
+          : targetLocked && !isSelf
+            ? '平台管理员的角色只有根管理员能任命或回收。'
+            : canAppointSuper
+              ? '你是根管理员：可任命/回收平台管理员；平台管理员可任命项目管理员与普通用户。不能授予高于自己的角色。'
+              : '只有根管理员能任命/回收平台管理员；你可任命项目管理员与普通用户。项目管理员只在被授予的项目内行使管理权，不跨项目。';
       const roleCtl = `
         <label class="row" style="gap:8px"><span class="dim">角色</span>
-          <select id="ud-role" ${isSelf ? 'disabled title="不能修改自己的角色"' : ''}>
+          <select id="ud-role" ${targetLocked ? 'disabled title="该角色调整超出你的能力范围"' : ''}>
             <option value="user"${d.role === 'user' ? ' selected' : ''}>普通用户</option>
             <option value="admin"${d.role === 'admin' ? ' selected' : ''}>项目管理员</option>
-            <option value="super"${d.role === 'super' ? ' selected' : ''}>平台管理员</option>
+            <option value="super"${d.role === 'super' ? ' selected' : ''}${canAppointSuper ? '' : ' disabled'}>平台管理员</option>
           </select>
         </label>
-        <button type="button" class="btn small primary" id="ud-save-role" ${isSelf ? 'disabled' : ''}>保存角色</button>`;
-      // 应用授权开关：选项来自服务端注册表（known-apps JSON），不再硬编码 app 清单；
-      // super 无需按应用授权（平台级自带全部范围）
+        <button type="button" class="btn small primary" id="ud-save-role" ${targetLocked ? 'disabled' : ''}>保存角色</button>`;
+      // 应用授权开关：选项来自服务端注册表；每项的语义 = 登录豁免（与访问页同口径）
       const scopeList = d.role === 'super'
-        ? '<div class="empty">平台管理员管理全部项目。</div>'
+        ? '<div class="empty">平台管理员豁免全部项目的登录要求，无需逐项授权。</div>'
         : APPS.map(app => {
             const granted = scopes.indexOf(app.key) >= 0;
             return `<div class="item">
               <span class="grow"><span class="title">${esc(app.label)}</span><br>
-              <span class="meta">${granted ? '已授权' : '未授权'}</span></span>
+              <span class="meta">${granted ? '已授权 · 豁免本项目登录限制' : '未授权 · 受本项目登录限制约束'}</span></span>
               <button type="button" class="btn small ${granted ? 'danger' : 'primary'}" data-app="${esc(app.key)}" data-op="${granted ? 'revoke' : 'grant'}">
                 ${granted ? '回收' : '授予'}
               </button>
@@ -2361,71 +2599,88 @@ function initAdminUsers() {
           <div><span class="dim">密码</span><br>${d.hasPassword ? '已设置' : '未设置'}</div>
           <div><span class="dim">两步验证</span><br>${d.totpEnabled ? '已开启' : '未开启'}</div>
         </div>
-        <h3>角色与项目授权</h3>
+
+        <h3>角色与登录豁免</h3>
         <div class="row" style="gap:8px;flex-wrap:wrap">${roleCtl}</div>
-        <p class="hint">授予项目即成为项目管理员；全部项目都回收后角色自动降回普通用户。平台管理员的授予/撤销仅平台管理员可操作。</p>
+        <p class="hint" id="ud-role-note">${esc(roleNote)}</p>
+        <p class="hint">授予项目即成为该项目的项目管理员：豁免该项目的登录要求、可管理其名单；全部项目都回收后角色自动降回普通用户。平台管理员豁免全部项目，仅平台管理员能调整角色与授权；项目管理员的授权只在单个项目内生效，不跨项目。</p>
         <div class="list">${scopeList}</div>
-        <h3>重置密码</h3>
-        <div class="row" style="gap:8px">
-          <span class="app-switch" role="group" aria-label="重置密码方式">
-            <button type="button" class="app-chip on" data-rp-mode="generate" aria-pressed="true">自动生成</button>
-            <button type="button" class="app-chip" data-rp-mode="manual" aria-pressed="false">手动输入</button>
-          </span>
-        </div>
-        <label class="field hidden" id="ud-rp-pw-field"><span>指定的新密码（至少 8 位）</span>
-          <input type="text" id="ud-rp-pw" autocomplete="off" placeholder="输入要设为登录密码的新密码">
-        </label>
-        <div class="row" style="gap:8px;margin-top:8px">
-          <label class="row" style="gap:6px"><input type="checkbox" id="ud-rp-force" checked> 下次登录必须修改密码</label>
-          <label class="row" style="gap:6px"><input type="checkbox" id="ud-rp-notify" checked> 邮件通知用户</label>
-        </div>
-        <label class="field"><span>原因（选填）</span>
-          <input type="text" id="ud-rp-reason" placeholder="操作原因（记入审计）" autocomplete="off">
-        </label>
-        <p class="err" id="ud-rp-error" role="alert" hidden></p>
-        <div class="row"><button type="button" class="btn danger" id="ud-rp-go">重置密码</button></div>
-        <h3>更换邮箱</h3>
-        <p class="hint">当前邮箱 <span class="mono">${esc(d.email)}</span>。更换后用户立即用新邮箱登录，现会话不受影响；新旧邮箱都会收到通知。</p>
-        <label class="field"><span>新邮箱</span>
-          <input type="email" id="ud-email-new" autocomplete="off" placeholder="输入新的登录邮箱">
-        </label>
-        <label class="field"><span>原因（选填）</span>
-          <input type="text" id="ud-email-reason" placeholder="操作原因（记入审计）" autocomplete="off">
-        </label>
-        <p class="err" id="ud-email-error" role="alert" hidden></p>
-        <div class="row"><button type="button" class="btn danger" id="ud-email-go">更换邮箱</button></div>
-        <h3>重置资料</h3>
+
+        <h3>活跃会话</h3>
+        <div class="list">${sessions}</div>
+
+        <h3>资料</h3>
         <p class="hint">重置头像后回退为「色块 + 首字母」，重置昵称后显示回退为邮箱前缀。不影响登录与会话。</p>
         <div class="row" style="gap:8px">
           <button type="button" class="btn" id="ud-reset-avatar"${d.hasAvatar || d.avatarColor ? '' : ' disabled'}>重置头像</button>
           <button type="button" class="btn" id="ud-reset-nickname"${d.nickname ? '' : ' disabled'}>重置昵称</button>
         </div>
-        <h3>封禁</h3>
-        <div class="list">${banRows}</div>
-        <div class="detail">
+
+        <h3>Passkey</h3><ul>${passkeys}</ul>
+
+        <!-- 高风险操作统一收进危险区：与常规设置视觉隔离，逐项点名确认 -->
+        <div class="danger-zone" style="margin-top:16px">
+          <h2>高风险操作</h2>
+          <p class="hint">以下操作会立即影响该账号的登录与凭证，执行前都会点名确认。</p>
+
+          <h3>重置密码</h3>
           <div class="row" style="gap:8px">
-            <label class="row" style="gap:6px"><span class="dim">范围</span>
-              <select id="ud-ban-app" aria-label="封禁范围"></select>
-            </label>
-            <label class="row" style="gap:6px"><input type="radio" name="ud-ban-dur" id="ud-ban-perm" checked> 永久</label>
-            <label class="row" style="gap:6px"><input type="radio" name="ud-ban-dur" id="ud-ban-temp"> 限时</label>
-            <label class="row hidden" id="ud-ban-until-field" style="gap:6px"><span class="dim">解除时间</span>
-              <input type="datetime-local" id="ud-ban-until">
-            </label>
+            <span class="app-switch" role="group" aria-label="重置密码方式">
+              <button type="button" class="app-chip on" data-rp-mode="generate" aria-pressed="true">自动生成</button>
+              <button type="button" class="app-chip" data-rp-mode="manual" aria-pressed="false">手动输入</button>
+            </span>
+          </div>
+          <label class="field hidden" id="ud-rp-pw-field"><span>指定的新密码（至少 8 位）</span>
+            <input type="text" id="ud-rp-pw" autocomplete="off" placeholder="输入要设为登录密码的新密码">
+          </label>
+          <div class="row" style="gap:8px;margin-top:8px">
+            <label class="row" style="gap:6px"><input type="checkbox" id="ud-rp-force" checked> 下次登录必须修改密码</label>
+            <label class="row" style="gap:6px"><input type="checkbox" id="ud-rp-notify" checked> 邮件通知用户</label>
           </div>
           <label class="field"><span>原因（选填）</span>
-            <input type="text" id="ud-ban-reason" placeholder="填写封禁原因（记入审计）" autocomplete="off">
+            <input type="text" id="ud-rp-reason" placeholder="操作原因（记入审计）" autocomplete="off">
           </label>
-          <p class="err" id="ud-ban-error" role="alert" hidden></p>
-          <div class="row"><button type="button" class="btn danger" id="ud-ban-go">封禁</button></div>
-        </div>
-        <h3>Passkey</h3><ul>${passkeys}</ul>
-        <h3>活跃会话</h3><div class="list">${sessions}</div>
-        <div class="detail row">
-          <button type="button" class="btn small danger" id="ud-kick-all">退出该用户全部会话</button>
+          <p class="err" id="ud-rp-error" role="alert" hidden></p>
+          <div class="row"><button type="button" class="btn danger" id="ud-rp-go">重置密码</button></div>
+
+          <h3>更换邮箱</h3>
+          <p class="hint">当前邮箱 <span class="mono">${esc(d.email)}</span>。更换后用户立即用新邮箱登录，现会话不受影响；新旧邮箱都会收到通知。</p>
+          <label class="field"><span>新邮箱</span>
+            <input type="email" id="ud-email-new" autocomplete="off" placeholder="输入新的登录邮箱">
+          </label>
+          <label class="field"><span>原因（选填）</span>
+            <input type="text" id="ud-email-reason" placeholder="操作原因（记入审计）" autocomplete="off">
+          </label>
+          <p class="err" id="ud-email-error" role="alert" hidden></p>
+          <div class="row"><button type="button" class="btn danger" id="ud-email-go">更换邮箱</button></div>
+
+          <h3>封禁</h3>
+          <div class="list">${banRows}</div>
+          <div class="detail">
+            <div class="row" style="gap:8px">
+              <label class="row" style="gap:6px"><span class="dim">范围</span>
+                <select id="ud-ban-app" aria-label="封禁范围"></select>
+              </label>
+              <label class="row" style="gap:6px"><input type="radio" name="ud-ban-dur" id="ud-ban-perm" checked> 永久</label>
+              <label class="row" style="gap:6px"><input type="radio" name="ud-ban-dur" id="ud-ban-temp"> 限时</label>
+              <label class="row hidden" id="ud-ban-until-field" style="gap:6px"><span class="dim">解除时间</span>
+                <input type="datetime-local" id="ud-ban-until">
+              </label>
+            </div>
+            <label class="field"><span>原因（选填）</span>
+              <input type="text" id="ud-ban-reason" placeholder="填写封禁原因（记入审计）" autocomplete="off">
+            </label>
+            <p class="err" id="ud-ban-error" role="alert" hidden></p>
+            <div class="row"><button type="button" class="btn danger" id="ud-ban-go">封禁</button></div>
+          </div>
+
+          <h3>会话</h3>
+          <div class="row">
+            <button type="button" class="btn danger" id="ud-kick-all">退出该用户全部会话</button>
+          </div>
         </div>`;
-      decorateSelects($('#ud-body'));   // W9：抽屉里的角色/封禁范围下拉换站内形态
-      // 单条会话退出也走确认（与用户侧「登录会话」页同口径：点名设备再动手）
+      decorateSelects($('#ud-body'));
+      // 单条会话退出也走确认（点名设备再动手）
       $$('#ud-body [data-kick]').forEach(btn => btn.addEventListener('click', () => {
         const row = btn.closest('.item');
         const title = row && row.querySelector('.title');
@@ -2441,11 +2696,11 @@ function initAdminUsers() {
         const app = btn.dataset.app;
         const op = btn.dataset.op;
         confirmAction(
-          op === 'grant' ? '授予项目管理员' : '回收项目管理员',
+          op === 'grant' ? '授予项目豁免' : '回收项目豁免',
           op === 'grant'
-            ? `将「${appLabel(app)}」的管理权授予该用户（角色自动提为项目管理员）。`
-            : `回收「${appLabel(app)}」的管理权；全部项目都回收后，该用户的角色会降回普通用户。`,
-          op === 'grant' ? `已授予「${appLabel(app)}」管理权` : `已回收「${appLabel(app)}」的管理权`,
+            ? `将「${appLabel(app)}」的管理权授予该用户：TA 豁免该项目的登录限制（角色自动提为项目管理员）。`
+            : `回收「${appLabel(app)}」的管理权；该账号不再豁免该项目的登录限制，全部项目都回收后角色会降回普通用户。`,
+          op === 'grant' ? `已授予「${appLabel(app)}」豁免` : `已回收「${appLabel(app)}」的豁免`,
           () => api(`/admin/roles/${uid}/scope`, { method: 'POST', body: { app, op } }),
           op === 'revoke');
       }));
@@ -2455,10 +2710,10 @@ function initAdminUsers() {
         confirmAction(
           '调整角色',
           role === 'super'
-            ? `将该用户设为平台管理员：可管理全部项目、用户目录与全局配置。`
+            ? '将该用户设为平台管理员：可管理全部项目、用户目录与全局配置，并可任命项目管理员。此操作只有根管理员能执行。'
             : role === 'admin'
-              ? '将该用户设为项目管理员：需再授予至少一个项目才有实际管理范围。'
-              : '将该用户降为普通用户：项目授权会一并收回。',
+              ? '将该用户设为项目管理员：需再授予至少一个项目才有实际管理范围与豁免；其授权不跨项目。'
+              : '将该用户降为普通用户：项目授权与豁免会一并收回。',
           role === 'super' ? '已设为平台管理员'
             : role === 'admin' ? '已设为项目管理员' : '已降为普通用户',
           () => api(`/admin/users/${uid}/role`, { method: 'POST', body: { role } }),
@@ -2473,7 +2728,7 @@ function initAdminUsers() {
           true);
       });
 
-      // ---- 重置密码（W3）：方式切换 + 两个勾选 + 原因；确认后展示一次性密码 ----
+      // ---- 重置密码：方式切换 + 两个勾选 + 原因；确认后展示一次性密码 ----
       let rpMode = 'generate';
       $$('#ud-body [data-rp-mode]').forEach(chip => chip.addEventListener('click', () => {
         rpMode = chip.dataset.rpMode;
@@ -2484,7 +2739,7 @@ function initAdminUsers() {
         });
         const field = $('#ud-rp-pw-field');
         field.classList.toggle('hidden', rpMode !== 'manual');
-        if (rpMode === 'manual') { swapIn(field); $('#ud-rp-pw').focus(); }   // 分段切换：crossfade + 上浮
+        if (rpMode === 'manual') { swapIn(field); $('#ud-rp-pw').focus(); }
         showErr('#ud-rp-error', '');
       }));
       $('#ud-rp-go').addEventListener('click', () => {
@@ -2508,7 +2763,7 @@ function initAdminUsers() {
           res => showTempPassword(res && res.temporaryPassword, notify));
       });
 
-      // ---- 更换邮箱（B5）：确认点名新旧邮箱，提示必达两封通知 ----
+      // ---- 更换邮箱：确认点名新旧邮箱，提示必达两封通知 ----
       $('#ud-email-go').addEventListener('click', () => {
         showErr('#ud-email-error', '');
         const next = $('#ud-email-new').value.trim();
@@ -2523,7 +2778,7 @@ function initAdminUsers() {
           true);
       });
 
-      // ---- 重置资料（B5）：头像/昵称各自点名确认，说清回退效果 ----
+      // ---- 重置资料：头像/昵称各自点名确认 ----
       const resetAvatarBtn = $('#ud-reset-avatar');
       if (resetAvatarBtn) resetAvatarBtn.addEventListener('click', () => {
         confirmAction(
@@ -2543,12 +2798,12 @@ function initAdminUsers() {
           true);
       });
 
-      // ---- 封禁（W3）：范围（super 见全局+全部项目，项目管理员只见授权项目）----
+      // ---- 封禁：范围（super 见全局+全部项目，项目管理员只见授权项目）----
       const banSel = $('#ud-ban-app');
       banScopeOptions().then(opts => {
         if (banSel) {
           banSel.innerHTML = opts.map(o => `<option value="${esc(o.key)}">${esc(o.label)}</option>`).join('');
-          decorateSelect(banSel);   // W9：范围选项异步灌入后同步按钮文案
+          decorateSelect(banSel);
         }
       });
       const untilField = $('#ud-ban-until-field');
@@ -2596,30 +2851,43 @@ function initAdminUsers() {
     }
   }
 
-  // 关闭必须**清掉 lastDetail**：任何确认操作成功后都会 if (lastDetail.uid)
-  // openDetail(...) 重刷详情，不清的话「打开详情 → 关闭 → 去撤销一条邀请」会把
+  // 关闭必须清掉 lastDetail：否则「打开详情 → 关闭 → 撤销一条邀请」会把
   // 已关闭的面板自动弹回来。
   $('#ud-close').addEventListener('click', () => {
     lastDetail = { uid: 0, email: '' };
     $('#user-detail').classList.add('hidden');
     // 焦点还给触发行（APG dialog 模式）：关闭后焦点落 body 会让键盘用户丢失位置
-    const back = $('#users-body button:focus') || $('#users-body tr:last-child button');
+    const back = $('#users-body tr:last-child button');
     if (back) back.focus();
   });
   $('#user-search-form').addEventListener('submit', e => {
     e.preventDefault();
     pager.state.query = $('#user-query').value.trim();
     pager.state.offset = 0;
-    inviteQuery = pager.state.query;   // 邀请记录复用同一查询串（邮箱片段）
+    inviteQuery = pager.state.query;
     load();
     loadInvites();
   });
+
+  // 服务端筛选 chips：角色四选一 + 封禁开关（再点一次取消），选择写入 URL
+  $$('[data-role-facet]').forEach(chip => chip.addEventListener('click', () => {
+    facet.role = chip.dataset.roleFacet || 'all';
+    pager.state.offset = 0;
+    syncFacetChips();
+    load();
+  }));
+  $$('[data-status-facet]').forEach(chip => chip.addEventListener('click', () => {
+    facet.status = facet.status === chip.dataset.statusFacet ? 'all' : chip.dataset.statusFacet;
+    pager.state.offset = 0;
+    syncFacetChips();
+    load();
+  }));
+
   // 审计页的 uid 链接会带 ?uid= 直达用户详情（日志可顺着线索钻取）
   (function openFromURL() {
     const uid = Number(new URLSearchParams(location.search).get('uid') || 0);
     if (uid > 0) openDetail(uid, '');
   })();
-  // 从 URL 回填（刷新/分享/后退还原同一份搜索与页码）
   (function restoreUsersFromURL() {
     const q = new URLSearchParams(location.search);
     if (q.get('query')) {
@@ -2628,10 +2896,12 @@ function initAdminUsers() {
       inviteQuery = q.get('query');
     }
     if (q.get('offset')) pager.state.offset = Number(q.get('offset')) || 0;
+    if (q.get('role') && ['super', 'admin', 'user'].indexOf(q.get('role')) >= 0) facet.role = q.get('role');
+    if (q.get('banned') === 'true' || q.get('status') === 'banned') facet.status = 'banned';
+    syncFacetChips();
   })();
   pager.wire(load);
 
-  // ---- 邀请用户（B9）：弹层提交 → 成功 toast + 顺手展开邀请区 ----
   $('#invite-open').addEventListener('click', openInvite);
   $('#invite-cancel').addEventListener('click', () => closeDialog($('#invite-dialog')));
   $('#invite-form').addEventListener('submit', async e => {
@@ -2652,7 +2922,6 @@ function initAdminUsers() {
     finally { setBusy(btn, false); }
   });
 
-  // ---- 批量（B9）：工具条三动作 + 全选 + 清空 ----
   $('#users-selall').addEventListener('change', e => {
     $$('#users-body .row-sel').forEach(cb => { cb.checked = e.target.checked; syncSelection(cb); });
   });
@@ -2689,12 +2958,12 @@ function initAdminUsers() {
       }
     }
     const btn = $('#bulk-ok');
-    setBusy(btn, true);   // 执行中：主钮 busy 禁用（CSS 接管转圈与 pointer-events）
+    setBusy(btn, true);
     try {
       const res = await api('/admin/users/bulk', { method: 'POST', body: bulkRequest(job.kind, job.uids) });
       bulkState = { kind: job.kind, results: new Map() };
       (res.items || []).forEach(it => bulkState.results.set(it.uid, { ok: !!it.ok, message: it.message }));
-      // 回执缺项按失败补记：结果面板宁可多报一条「未返回结果」，不能少报
+      // 回执缺项按失败补记：宁可多报一条「未返回结果」，不能少报
       job.uids.forEach(uid => {
         if (!bulkState.results.has(uid)) {
           bulkState.results.set(uid, { ok: false, message: '未返回结果，请刷新后重试' });
@@ -2747,14 +3016,18 @@ function initAdminUsers() {
   loadInvites();
 }
 
-/* ---------- 后台：项目访问（W4）——每项目一张卡：登录范围开关 + 登录名单 ---------- */
+/* ---------- 后台：项目访问 —— 豁免层级 + 每项目一张卡 ----------
+   「谁对什么豁免」三层与服务端 gate.go 的判定同源：平台管理员豁免全部项目、
+   项目管理员豁免被授权的项目、名单内成员是「仅限受邀」时唯一能登录的普通账号。
+   豁免管理 = 授予/回收项目管理员授权（POST /admin/roles/{uid}/scope，仅平台
+   管理员；按邮箱查 uid 走既有 GET /admin/users?query=，契约零改动）。 */
 const EMPTY_MEMBERS_HINT = '名单为空时开启限制，只有管理员能登录。';
 function initAdminAccess() {
   const wrap = $('#access-list');
   if (!wrap) return;
   let pending = null;
+  let loaded = [];
 
-  // 通用确认弹层：一次挂一个待执行动作 + 它的成功提示（与用户页 confirmAction 同构）
   function confirmAccess(title, desc, danger, done, fn) {
     pending = { done, fn };
     $('#access-dlg-title').textContent = title;
@@ -2773,34 +3046,46 @@ function initAdminAccess() {
     try {
       await job.fn();
       toast(job.done);
-    } catch (err) { toast(err.message, true); } finally { setBusy(btn, false); }
+    } catch (err) { reportDenial('#access-denied', err); } finally { setBusy(btn, false); }
   });
 
-  // ---- Web 接入（B4 OAuth 跳转授权）已整体撤下（W4 定案：项目访问页的两个日记
-  // App 不是 web 项目，OAuth 接入留给以后的 web 项目）——后端 /admin/projects 的
-  // clientId 字段与 /admin/projects/{app}/oauth 端点保留休眠，这里不再渲染任何入口。
+  function refreshStats() {
+    const on = loaded.filter(p => p.restricted).length;
+    $('#access-stats').textContent = loaded.length
+      ? `共 ${loaded.length} 个项目 · ${on} 个已开启仅限受邀` : '';
+  }
+
   async function load() {
     showErr('#access-error', '');
+    showDenial('#access-denied', null);
+    setListBusy(wrap, true);
     let list = [];
     try {
       const res = await api('/admin/projects');
       list = res.projects || [];
     } catch (err) {
-      showErr('#access-error', err.message);
+      if (!showDenial('#access-denied', err, { retry: load, backHref: '/web/console', backLabel: '回到概览' })) {
+        showErr('#access-error', err.message);
+      }
       wrap.innerHTML = emptyState('读取失败', '刷新页面重试；如果一直失败，把提示语发给管理员。');
+      setListBusy(wrap, false);
       return;
     }
+    loaded = list;
+    refreshStats();
     wrap.innerHTML = '';
     if (!list.length) {
       wrap.innerHTML = emptyState('当前没有可管理的项目',
         '平台管理员看全部接入项目，项目管理员只看被授权的项目。');
+      setListBusy(wrap, false);
       return;
     }
     list.forEach(p => {
       const card = cardOf(p);
       wrap.appendChild(card);
-      swapIn(card);   // 新卡片进场沿用区块切换动效（crossfade + 上浮）
+      swapIn(card);
     });
+    setListBusy(wrap, false);
   }
 
   function cardOf(p) {
@@ -2808,15 +3093,46 @@ function initAdminAccess() {
     let restricted = !!p.restricted;
     const members = p.members || [];
     const card = node(`
-      <section class="card" data-app="${esc(p.app)}">
-        <div class="row between">
+      <section class="card access-card" data-app="${esc(p.app)}">
+        <div class="row between access-head">
           <h2>${esc(name)} <span class="badge${restricted ? ' on' : ''}" data-badge>${restricted ? '仅限受邀' : '开放登录'}</span></h2>
           <span class="app-switch" role="group" aria-label="「${esc(name)}」登录范围">
             <button type="button" class="app-chip${restricted ? '' : ' on'}" data-restrict="0" aria-pressed="${restricted ? 'false' : 'true'}">开放登录</button>
             <button type="button" class="app-chip${restricted ? ' on' : ''}" data-restrict="1" aria-pressed="${restricted ? 'true' : 'false'}">仅限受邀</button>
           </span>
         </div>
-        <div class="list" data-members style="margin-top:10px"></div>
+
+        <!-- 本项目视角的「谁对什么豁免」：与页顶图例同三层，落点收窄到本项目 -->
+        <h3>登录要求与豁免</h3>
+        <div class="access-exempt">
+          <div class="item">
+            <span class="grow"><span class="title">平台管理员</span><br>
+              <span class="meta">豁免全部项目，不受本项目限制</span></span>
+            <span class="badge on">豁免 · 全部项目</span>
+          </div>
+          <div class="item">
+            <span class="grow"><span class="title">本项目管理员</span><br>
+              <span class="meta">被授予「${esc(name)}」管理权的账号豁免本项目</span></span>
+            <span class="badge on">豁免 · 本项目</span>
+          </div>
+          <div class="item">
+            <span class="grow"><span class="title">登录名单</span><br>
+              <span class="meta">「仅限受邀」时唯一能登录的普通账号</span></span>
+            <span class="badge${restricted ? '' : ' off'}" data-member-count>${members.length} 人在册</span>
+          </div>
+        </div>
+        <h3>本项目管理员</h3>
+        <div class="list" data-admins style="margin-top:6px"></div>
+        <p class="hint" data-admins-empty hidden>还没有账号被授予本项目的管理豁免。</p>
+        <div class="row" style="gap:8px;margin-top:8px">
+          ${IS_SUPER
+      ? '<button type="button" class="btn small" data-exempt-manage>豁免管理</button><span class="hint">授予/回收「谁豁免本项目」的项目管理员权限</span>'
+      : '<span class="hint">项目管理员豁免由平台管理员在「用户」页授予；你可管理下方名单。</span>'}
+        </div>
+        <p class="hint" data-open-note${restricted ? ' hidden' : ''}>未启用登录限制 · 全员可登录，上述豁免与名单当前不构成门槛。</p>
+
+        <h3>登录名单</h3>
+        <div class="list" data-members style="margin-top:6px"></div>
         ${members.length ? '' : `<p class="hint" data-empty>${EMPTY_MEMBERS_HINT}</p>`}
         <form class="row" data-add style="margin-top:10px">
           <label class="field grow" style="margin:0"><span class="sr-only">要加入「${esc(name)}」登录名单的邮箱</span>
@@ -2826,6 +3142,41 @@ function initAdminAccess() {
         <p class="err" data-add-err role="alert" hidden></p>
       </section>`);
     const listEl = card.querySelector('[data-members]');
+    const countEl = card.querySelector('[data-member-count]');
+    const syncCount = () => {
+      if (!countEl) return;
+      countEl.textContent = `${listEl.children.length} 人在册`;
+      countEl.classList.toggle('off', !restricted);
+      popIn(countEl);
+    };
+
+    // admins 来自 /admin/projects 的服务端聚合（恒数组）；与登录名单分开列，
+    // 回收仍走既有 POST /admin/roles/{uid}/scope，不引入新端点。
+    const adminsEl = card.querySelector('[data-admins]');
+    const adminsEmpty = card.querySelector('[data-admins-empty]');
+    function adminRow(a) {
+      const row = node(`
+        <div class="item" data-admin-uid="${esc(a.uid)}">
+          <span class="grow"><span class="title mono">${esc(a.email)}</span><br>
+            <span class="meta">uid ${esc(a.uid)} · 豁免本项目登录限制</span></span>
+          ${IS_SUPER ? '<button type="button" class="btn small danger" data-revoke-admin>回收豁免</button>' : ''}
+        </div>`);
+      const revoke = row.querySelector('[data-revoke-admin]');
+      if (revoke) revoke.addEventListener('click', () => {
+        confirmAccess(
+          '回收项目豁免',
+          `将回收 ${a.email} 对「${name}」的管理权，该账号不再豁免本项目的登录要求；全部项目都回收后角色会降回普通用户。`,
+          true,
+          `已回收 ${a.email} 的「${name}」豁免`,
+          async () => {
+            await api(`/admin/roles/${a.uid}/scope`, { method: 'POST', body: { app: p.app, op: 'revoke' } });
+            fadeOutRow(row, () => load());
+          });
+      });
+      return row;
+    }
+    (p.admins || []).forEach(a => adminsEl.appendChild(adminRow(a)));
+    adminsEmpty.hidden = adminsEl.children.length > 0;
 
     function memberRow(email) {
       const row = node(`
@@ -2839,9 +3190,9 @@ function initAdminAccess() {
           true, `已将 ${email} 移出「${name}」登录名单`,
           async () => {
             await api(`/admin/projects/${encodeURIComponent(p.app)}/access`, { method: 'DELETE', body: { email } });
-            // 行先淡出下沉，播完再摘行——视觉上是「这条走了」而不是突然消失
             fadeOutRow(row, () => {
               row.remove();
+              syncCount();
               if (!listEl.children.length && !card.querySelector('[data-empty]')) {
                 listEl.insertAdjacentElement('afterend', node(`<p class="hint" data-empty>${EMPTY_MEMBERS_HINT}</p>`));
               }
@@ -2852,7 +3203,6 @@ function initAdminAccess() {
     }
     members.forEach(m => listEl.appendChild(memberRow(m.email)));
 
-    // 开关状态就地更新（badge + 两颗 chip），不整卡重绘
     function setState(next) {
       restricted = next;
       $$('.app-chip', card).forEach(chip => {
@@ -2863,7 +3213,10 @@ function initAdminAccess() {
       const badge = card.querySelector('[data-badge]');
       badge.textContent = restricted ? '仅限受邀' : '开放登录';
       badge.classList.toggle('on', restricted);
-      popIn(badge);   // 状态翻转：徽标轻浮现
+      const openNote = card.querySelector('[data-open-note]');
+      if (openNote) openNote.hidden = restricted;
+      syncCount();
+      popIn(badge);
     }
     $$('.app-chip', card).forEach(chip => chip.addEventListener('click', () => {
       const want = chip.dataset.restrict === '1';
@@ -2871,7 +3224,7 @@ function initAdminAccess() {
       confirmAccess('调整登录范围',
         want
           ? '开启后，除平台管理员、该项目的管理员和名单内用户外，其他账号将无法登录该项目。'
-          : '开启后所有账号都可登录该项目。',
+          : '关闭后所有账号都可登录该项目（名单与豁免保留，仅不再构成门槛）。',
         want,
         want ? `已开启「${name}」仅限受邀登录` : `已关闭「${name}」的登录限制`,
         async () => {
@@ -2897,12 +3250,13 @@ function initAdminAccess() {
         if (emptyEl) emptyEl.remove();
         const row = memberRow(email);
         listEl.appendChild(row);
-        popIn(row);   // 成功行内插入：轻浮现
+        popIn(row);
+        syncCount();
         toast(`已将 ${email} 加入「${name}」登录名单`);
       } catch (err) {
         errEl.hidden = false;
         if (err.status === 404) {
-          // 「人不在系统里」的正解是发出邀请，而不是留一句死胡同（Polaris 空/失败态）
+          // 「人不在系统里」的正解是发出邀请，而不是留一句死胡同
           errEl.innerHTML = `${esc(email)} 尚未注册。` +
             `<button type="button" class="btn small" id="access-invite">发送邀请</button>`;
           const ib = $('#access-invite');
@@ -2922,25 +3276,100 @@ function initAdminAccess() {
       } finally { setBusy(btn, false); }
     });
 
-    // Web 接入（clientId / 回跳地址 / Secret）块已撤下（W4）：见上方说明。
+    const exemptBtn = card.querySelector('[data-exempt-manage]');
+    if (exemptBtn) exemptBtn.addEventListener('click', () => openExempt(p));
+
     return card;
+  }
+
+  /* ---- 豁免管理（仅平台管理员）：邮箱 → uid → 当前授权 → 授予/回收 ---- */
+  let exemptApp = '';
+  function openExempt(p) {
+    exemptApp = p.app;
+    $('#exempt-dlg-desc').textContent =
+      `调整「${p.name || p.app}」的项目管理员豁免：被授予的账号无视本项目的登录要求，并可管理其名单。`;
+    $('#exempt-email').value = '';
+    $('#exempt-result').classList.add('hidden');
+    $('#exempt-result').innerHTML = '';
+    showErr('#exempt-error', '');
+    openDialog($('#exempt-dlg'), '#exempt-email');
+  }
+  $('#exempt-close').addEventListener('click', () => closeDialog($('#exempt-dlg')));
+  $('#exempt-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    showErr('#exempt-error', '');
+    const email = $('#exempt-email').value.trim();
+    if (!email) { showErr('#exempt-error', '请输入账号邮箱'); return; }
+    const btn = $('#exempt-find');
+    setBusy(btn, true);
+    try {
+      const res = await api('/admin/users?query=' + encodeURIComponent(email) + '&limit=20&offset=0');
+      const hit = (res.items || []).find(u => String(u.email || '').toLowerCase() === email.toLowerCase());
+      if (!hit) {
+        showErr('#exempt-error', `${email} 尚未注册。先在「用户」页发出邀请，对方注册后再来调整豁免。`);
+        return;
+      }
+      renderExemptResult(await api('/admin/users/' + hit.uid));
+    } catch (err) {
+      showErr('#exempt-error', err.message);
+    } finally { setBusy(btn, false); }
+  });
+
+  function renderExemptResult(d) {
+    const granted = (d.scopes || []).indexOf(exemptApp) >= 0;
+    const isSuperUser = d.role === 'super';
+    const label = appLabel(exemptApp);
+    const box = $('#exempt-result');
+    box.innerHTML = `
+      <div class="item">
+        <span class="grow"><span class="title">${esc(d.email)}</span><br>
+          <span class="meta">uid ${esc(d.uid)} · ${esc(ROLE_LABEL[d.role] || d.role)}</span></span>
+        <span class="badge ${granted || isSuperUser ? 'on' : 'off'}">${isSuperUser ? '豁免 · 全部项目' : granted ? '豁免 · 本项目' : '未获本项目豁免'}</span>
+      </div>
+      ${isSuperUser
+        ? '<p class="hint">平台管理员已豁免全部项目，无需再授予单项目豁免。</p>'
+        : granted
+          ? '<p class="hint">回收后该账号不再豁免本项目的登录要求；全部项目都回收时角色降回普通用户。</p>'
+          : '<p class="hint">授予后该账号成为本项目的项目管理员：豁免本项目登录要求，并可管理其名单。</p>'}`;
+    box.classList.remove('hidden');
+    swapIn(box);
+    if (isSuperUser) return;
+    const op = node(`<button type="button" class="btn small ${granted ? 'danger' : 'primary'}" data-exempt-op style="margin-top:8px">${granted ? '回收本项目豁免' : '授予本项目豁免'}</button>`);
+    op.addEventListener('click', () => {
+      confirmAccess(
+        granted ? '回收项目豁免' : '授予项目豁免',
+        granted
+          ? `将回收 ${d.email} 对「${label}」的管理权，该账号不再豁免本项目的登录要求；全部项目都回收后角色会降回普通用户。`
+          : `将授予 ${d.email} 管理「${label}」：豁免本项目的登录要求（角色自动提为项目管理员）。`,
+        granted,
+        granted ? `已回收 ${d.email} 的「${label}」豁免` : `已授予 ${d.email}「${label}」豁免`,
+        async () => {
+          await api(`/admin/roles/${d.uid}/scope`, { method: 'POST', body: { app: exemptApp, op: granted ? 'revoke' : 'grant' } });
+          renderExemptResult(await api('/admin/users/' + d.uid));
+          load();
+        });
+    });
+    box.appendChild(op);
   }
 
   load();
 }
 
-/* ---------- 后台：会话总览（uid 先行钻取） ----------
-   层级一按用户聚合（邮箱/uid/会话数/最近活跃），点「查看会话」滑入层级二
-   逐条管理。聚合数据来自 GET /admin/sessions 自身（super 与 app-admin 同一条路：
-   /admin/users 是 super 专属端点，app-admin 调它只会 403）。 */
+/* ---------- 后台：会话总览（uid 先行钻取 + 归属地聚合） ----------
+   层级一按用户聚合（邮箱/uid/会话数/覆盖项目/主要归属地/最近活跃），点「查看
+   会话」钻入层级二逐条管理，并给出该用户的归属地分布条。聚合数据来自
+   GET /admin/sessions 自身（app-admin 调 /admin/users 会 403）；全量退出走
+   POST /admin/users/{uid}/revoke-sessions（端点 requireSuper，仅平台管理员）。 */
 function initAdminSessions() {
   const ubody = $('#sess-users-body');
   if (!ubody) return;
-  // 不给 makePager 传 label：页码文案按**用户**说（见 loadUsers），按钮仍按会话数分页
+  // 不给 makePager 传 label：页码文案按**用户**说，按钮仍按会话数分页
   const pager = makePager({ prev: '#sess-prev', next: '#sess-next', limit: 100 });
 
-  // 单条退出的确认（点名设备与项目，与用户侧「登录会话」页同口径）
   let pendingKick = null;
+  let pendingAll = null;
+
+  // 单条退出：点名设备再动手
   $('#sd-kick-cancel').addEventListener('click', () => closeDialog($('#sd-kick-dialog')));
   $('#sd-kick-ok').addEventListener('click', async () => {
     const job = pendingKick;
@@ -2954,38 +3383,95 @@ function initAdminSessions() {
       fadeOutRow(job.el, () => openDetail(job.uid, job.email));
     } catch (err) {
       closeDialog($('#sd-kick-dialog'));
-      toast(err.message, true);
+      reportDenial('#sess-denied', err);
     } finally {
       setBusy(okBtn, false);
       pendingKick = null;
     }
   });
 
+  // 全量退出：点名用户与条数（平台管理员）
+  $('#sd-all-cancel').addEventListener('click', () => { pendingAll = null; closeDialog($('#sd-all-dialog')); });
+  $('#sd-all-ok').addEventListener('click', async () => {
+    const job = pendingAll;
+    pendingAll = null;
+    const okBtn = $('#sd-all-ok');
+    if (!job) { closeDialog($('#sd-all-dialog')); return; }
+    setBusy(okBtn, true);
+    try {
+      await api(`/admin/users/${job.uid}/revoke-sessions`, { method: 'POST', body: {} });
+      closeDialog($('#sd-all-dialog'));
+      toast(`已退出 ${job.email} 的全部会话`);
+      await Promise.all([loadUsers(), openDetail(job.uid, job.email)]);
+    } catch (err) {
+      closeDialog($('#sd-all-dialog'));
+      reportDenial('#sess-denied', err);
+    } finally { setBusy(okBtn, false); }
+  });
+  $('#sd-kick-all').addEventListener('click', () => {
+    const btn = $('#sd-kick-all');
+    const uid = Number(btn.dataset.uid || 0);
+    if (!uid) return;
+    pendingAll = { uid, email: btn.dataset.email || `uid ${uid}` };
+    $('#sd-all-desc').textContent =
+      `将退出 ${pendingAll.email} 的全部 ${btn.dataset.count} 条会话（含网页端），该账号所有设备都需要重新登录。`;
+    openDialog($('#sd-all-dialog'), '#sd-all-cancel');
+  });
+
+  /* 列表里「单个用户主要归属地」仍按已加载行计算；全页 KPI 不再用这个函数，
+     改读服务端与列表同筛选的 apps/regions，避免把一页当全量。 */
+  function regionBreakdown(items) {
+    const m = new Map();
+    (items || []).forEach(s => {
+      const r = (s.ipRegion || '').trim() || '未知归属地';
+      m.set(r, (m.get(r) || 0) + 1);
+    });
+    return [...m.entries()]
+      .map(([region, count]) => ({ region, count }))
+      .sort((a, b) => b.count - a.count);
+  }
+
+  /* KPI 四项全部来自同一份 /admin/sessions 回执：total/totalUsers/总数，
+     apps/regions/同筛选下的去重桶数。 */
+  function refreshKpis(res) {
+    $('#sess-kpi-sessions').textContent = String(Number(res.total) || 0);
+    $('#sess-kpi-users').textContent = String(Number(res.totalUsers) || 0);
+    $('#sess-kpi-projects').textContent = String((res.apps || []).length);
+    $('#sess-kpi-regions').textContent = String((res.regions || []).length);
+  }
+
   async function loadUsers() {
     showErr('#sess-error', '');
+    showDenial('#sess-denied', null);
+    setListBusy(ubody, true);
     try {
       const st = pager.state;
-      // 搜索走服务端 ?query=（邮箱片段或 uid，join users 过滤）：在本页 100 条会话上
-      // 本地过滤会漏掉本页之外的用户，total/totalUsers 也不成立
+      // 搜索走服务端 ?query=（邮箱片段或 uid）：本地过滤会漏掉本页之外的用户
       const res = await api(`/admin/sessions?query=${encodeURIComponent(st.query || '')}` +
         `&ip=${encodeURIComponent(st.ip || '')}${appFilter()}&limit=${st.limit}&offset=${st.offset}`);
-      // 按 uid 聚合成本页的用户行
+      const items = res.items || [];
       const map = new Map();
-      (res.items || []).forEach(s => {
-        const cur = map.get(s.uid) || { uid: s.uid, email: s.email, nickname: s.nickname, avatarColor: s.avatarColor, count: 0, last: 0 };
+      items.forEach(s => {
+        const cur = map.get(s.uid) || {
+          uid: s.uid, email: s.email, nickname: s.nickname, avatarColor: s.avatarColor,
+          count: 0, last: 0, apps: new Set(), sessions: [],
+        };
         cur.count += 1;
         cur.last = Math.max(cur.last, Number(s.lastSeenAt || 0));
+        if (s.app) cur.apps.add(s.app);
+        cur.sessions.push(s);
         map.set(s.uid, cur);
       });
       const users = [...map.values()];
       $('#sess-total').textContent = `共 ${res.total} 条活跃会话`;
-      pager.set(res.total, (res.items || []).length);
+      pager.set(res.total, items.length);
       $('#sess-page').textContent =
         `第 ${Math.floor(st.offset / st.limit) + 1} 页 · 共 ${res.totalUsers || 0} 位用户`;
+      refreshKpis(res);
       ubody.innerHTML = '';
       if (!users.length) {
         const q = $('#sess-user-query').value.trim() || $('#sess-user-ip').value.trim();
-        ubody.innerHTML = emptyCell(5,
+        ubody.innerHTML = emptyCell(7,
           q ? '没有匹配的活跃会话' : '当前没有活跃会话',
           q ? '换一个邮箱片段、uid 或 IP 试试。'
             : '所有用户都不在线时这里是空的；有人登录后会出现在这里。');
@@ -2993,20 +3479,35 @@ function initAdminSessions() {
       }
       users.sort((a, b) => b.last - a.last);
       users.forEach(u => {
-        const tr = node(`
-          <tr>
-            <td class="wrap-cell">${userCell(u, 32)}</td>
-            <td class="mono">${esc(u.uid)}</td>
-            <td>${u.count}</td>
-            <td>${esc(relTime(u.last))}</td>
-            <td><button type="button" class="btn small">查看会话</button></td>
-          </tr>`);
+        const appNames = [...u.apps].map(appLabel);
+        const appCell = !appNames.length ? '—'
+          : appNames.length > 2
+            ? `${esc(appNames.slice(0, 2).join('、'))} 等 ${appNames.length} 项`
+            : esc(appNames.join('、'));
+        const regions = regionBreakdown(u.sessions);
+        const top = regions[0];
+        const regionCell = top
+          ? `<span title="${esc(regions.map(r => `${r.region} ${r.count} 条`).join(' · '))}">${esc(top.region)} · ${top.count}/${u.count}</span>`
+          : '—';
+        const tr = node(`<tr>
+          ${td('', userCell(u, 32), 'cell-title wrap-cell')}
+          ${td('uid', `<span class="mono">${esc(u.uid)}</span>`)}
+          ${td('会话数', esc(u.count))}
+          ${td('覆盖项目', appCell, 'wrap-cell')}
+          ${td('主要归属地', regionCell, 'wrap-cell')}
+          ${td('最近活跃', esc(relTime(u.last)))}
+          ${td('', '<button type="button" class="btn small">查看会话</button>', 'cell-action')}
+        </tr>`);
         tr.querySelector('button').addEventListener('click', () => openDetail(u.uid, u.email));
         ubody.appendChild(tr);
       });
     } catch (err) {
-      showErr('#sess-error', err.message);
-      ubody.innerHTML = emptyCell(5, '读取失败', '稍后重试；如果一直失败，把上面的提示语发给管理员。');
+      if (!showDenial('#sess-denied', err, { retry: loadUsers, backHref: '/web/console', backLabel: '回到概览' })) {
+        showErr('#sess-error', err.message);
+      }
+      ubody.innerHTML = emptyCell(7, '读取失败', '稍后重试；如果一直失败，把上面的提示语发给管理员。');
+    } finally {
+      setListBusy(ubody, false);
     }
   }
 
@@ -3014,9 +3515,12 @@ function initAdminSessions() {
     const panel = $('#sess-detail');
     const wasHidden = panel.classList.contains('hidden');
     panel.classList.remove('hidden');
-    if (wasHidden) slideIn(panel);   // 页内钻取：右滑进入
+    if (wasHidden) slideIn(panel);
     $('#sd-title').textContent = email;
     $('#sd-meta').textContent = `uid ${uid} · 点击「退出」可逐条退出会话。`;
+    $('#sd-region').classList.add('hidden');
+    $('#sd-kick-all').classList.add('hidden');
+    $('#sd-scope-hint').hidden = true;
     $('#sd-body').innerHTML = '<div class="empty">读取中…</div>';
     panel.scrollIntoView({ block: 'nearest' });
     try {
@@ -3028,23 +3532,49 @@ function initAdminSessions() {
       // 页头必须报**真实总数**：此前硬编码 limit=100 且不显示总数，>100 会话的
       // 用户被静默截断——管理员踢完 100 条以为清干净了。
       $('#sd-meta').textContent = `uid ${uid} · 共 ${total} 条会话 · 点击「退出」可逐条退出`;
+      // 全量退出端点 requireSuper：平台管理员出钮（数据条数带进确认文案），
+      // 项目管理员的 HTML 里不出现这个按钮，换成范围说明
+      const allBtn = $('#sd-kick-all');
+      if (IS_SUPER) {
+        allBtn.classList.remove('hidden');
+        allBtn.dataset.uid = String(uid);
+        allBtn.dataset.email = email;
+        allBtn.dataset.count = String(total);
+      } else {
+        $('#sd-scope-hint').hidden = false;
+      }
       if (!items.length) {
         $('#sd-body').innerHTML = emptyState('该用户已无活跃会话', '会话被退出或过期后不再列出；该用户重新登录会再次出现。');
         return;
       }
+      // 归属地分布用同一份回执的服务端聚合（{name,count}）；与列表同筛选，
+      // 不是从本页几十行里现数出来的。
+      const regions = (res.regions || []).map(r => ({ region: r.name, count: Number(r.count) || 0 }));
+      const regionWrap = $('#sd-region');
+      const max = Math.max(1, ...regions.map(r => r.count));
+      $('#sd-region-bars').innerHTML = regions.map(r => `
+        <div class="bar-row">
+          <span class="dim truncate" title="${esc(r.region)}">${esc(r.region)}</span>
+          <span class="bar-track"><span class="bar-fill" style="width:${Math.round(r.count / max * 100)}%"></span></span>
+          <span class="bar-num">${r.count}</span>
+        </div>`).join('');
+      regionWrap.classList.remove('hidden');
+      swapIn(regionWrap);
+
       $('#sd-body').innerHTML = '';
       if (total > items.length) {
-        // 截断要说出来，别让管理员以为列表是全集
         $('#sd-body').appendChild(node(
           `<p class="hint">共 ${total} 条会话，这里只显示最近 ${items.length} 条；更早的会话请到「会话总览」按 uid 检索。</p>`));
       }
       items.sort((a, b) => Number(b.lastSeenAt || 0) - Number(a.lastSeenAt || 0)).forEach(s => {
+        const absExp = Number(s.expiresAt) > 0 ? fmtTime(s.expiresAt) : '—';
+        const idleExp = Number(s.idleExpiresAt) > 0 ? fmtTime(s.idleExpiresAt) : '—';
         const el = node(`
           <div class="item" data-id="${esc(s.id)}">
             <span class="ico-wrap">${deviceIcon(s.device)}</span>
             <span class="grow">
               <span class="title">${esc(s.device)}</span>
-              <br><span class="meta">${esc(appLabel(s.app))} · ${ipWithRegion(s.ip, s.ipRegion)} · 最近活跃 ${esc(relTime(s.lastSeenAt))}</span>
+              <br><span class="meta">${esc(appLabel(s.app))} · ${ipWithRegion(s.ip, s.ipRegion)} · 最近活跃 <span data-rel="${esc(s.lastSeenAt)}">${esc(relTime(s.lastSeenAt))}</span> · 绝对到期 ${esc(absExp)} · 空闲到期 ${esc(idleExp)}</span>
             </span>
             <button type="button" class="btn small danger">退出</button>
           </div>`);
@@ -3063,7 +3593,7 @@ function initAdminSessions() {
 
   $('#sd-close').addEventListener('click', () => {
     $('#sess-detail').classList.add('hidden');
-    const back = $('#sess-body tr button, #sess-body button');   // 焦点还给触发钻取的行
+    const back = $('#sess-users-body tr:last-child button');   // 焦点还给触发行
     if (back) back.focus();
   });
   $('#sess-user-search-form').addEventListener('submit', e => {
@@ -3083,9 +3613,8 @@ function initAdminSessions() {
   loadUsers();
 }
 
-/* ---------- 后台：审计 ---------- */
-/* 详情列的可读排版：{k:v, k:v} 代替裸 JSON——审计行的 detail 是小对象，
-   键值平铺一眼能读，不用先在脑子里 parse。 */
+/* ---------- 后台：审计 ----------
+   详情列的可读排版：{k:v} 平铺代替裸 JSON。 */
 function detailText(d) {
   if (d == null || d === '') return '—';
   if (typeof d !== 'object') return esc(String(d));
@@ -3119,7 +3648,6 @@ function initAdminAudit() {
     if (from) p.set('from', String(new Date(from + 'T00:00:00').getTime()));
     const to = $('#audit-to').value;
     if (to) p.set('to', String(new Date(to + 'T23:59:59').getTime()));
-    // 项目切换器的 app 过滤器（?app=，空 = 全部/全部授权）
     const app = new URLSearchParams(location.search).get('app');
     if (app) p.set('app', app);
     p.set('limit', String(pager.state.limit));
@@ -3136,17 +3664,16 @@ function initAdminAudit() {
 
   async function load() {
     showErr('#audit-error', '');
+    setListBusy(body, true);
     try {
       const res = await api('/admin/audit?' + filters());
       pager.set(res.total, res.items.length);
-      // 页头的「共 N 条」此前从未被填充（pager 的标签是另一个元素），永远空白，
-      // 与用户页/会话总览页头不一致。
       $('#audit-total').textContent = `共 ${res.total} 条`;
       const uq = new URLSearchParams(location.search);
       body.innerHTML = '';
       if (!res.items.length) {
         // 有筛选时说「换条件」，没筛选时说「表里还没有事件」——一句灰字分不清
-        // 「没数据」和「筛没了」（筛选刚被同步进地址栏，读 URL 即当前条件）
+        // 「没数据」和「筛没了」
         const filtered = ['action', 'actor', 'target', 'ip', 'result', 'from', 'to', 'app']
           .some(k => uq.get(k));
         body.innerHTML = emptyCell(7,
@@ -3156,29 +3683,29 @@ function initAdminAudit() {
         return;
       }
       res.items.forEach(it => {
-        // 操作者/对象：**邮箱是人读的主信息**，uid 是技术标识放次行（此前两者挤一格，
-        // 19 位雪花 + 邮箱被 break-all 劈开）。匿名 = 无邮箱也无 uid。
-        // uid 做成链接钻进用户页（日志要能顺着线索走，Cloudflare 同款）
+        // 操作者/对象：**邮箱是人读的主信息**，uid 是技术标识放次行；uid 做成
+        // 链接钻进用户页（日志要能顺着线索走）
         const uidLink = (uid) => `<a class="mono" href="/web/admin?uid=${encodeURIComponent(String(uid))}"
           title="在用户页打开 #${esc(uid)}">#${esc(uid)}</a>`;
         const actor = it.actorEmail
           ? `<span class="cell-stack"><span class="t">${esc(it.actorEmail)}</span>${it.actorUid ? `<span class="s">${uidLink(it.actorUid)}</span>` : ''}</span>`
           : (it.actorUid ? `<span class="s">${uidLink(it.actorUid)}</span>` : '匿名');
         const target = it.targetUid ? uidLink(it.targetUid) : '—';
-        body.appendChild(node(`
-          <tr>
-            <td>${esc(fmtTime(it.ts))}</td>
-            <td class="mono">${esc(it.action)}</td>
-            <td>${it.result === 'ok' ? '<span class="badge on">成功</span>' : '<span class="badge warn">失败</span>'}</td>
-            <td class="wrap-cell">${actor}</td>
-            <td class="wrap-cell">${target}</td>
-            <td class="mono">${esc(it.ip || '—')}</td>
-            <td class="wrap-cell detail-cell">${detailText(it.detail)}</td>
-          </tr>`));
+        body.appendChild(node(`<tr>
+          ${td('', esc(fmtTime(it.ts)), 'cell-title')}
+          ${td('事件', `<span class="mono">${esc(it.action)}</span>`)}
+          ${td('结果', it.result === 'ok' ? '<span class="badge on">成功</span>' : '<span class="badge warn">失败</span>')}
+          ${td('操作者', actor, 'wrap-cell')}
+          ${td('对象', target, 'wrap-cell')}
+          ${td('IP', `<span class="mono">${esc(it.ip || '—')}</span>`)}
+          ${td('详情', detailText(it.detail), 'wrap-cell detail-cell')}
+        </tr>`));
       });
     } catch (err) {
       showErr('#audit-error', err.message);
       body.innerHTML = emptyCell(7, '读取失败', '稍后重试。');
+    } finally {
+      setListBusy(body, false);
     }
   }
 
@@ -3196,9 +3723,9 @@ function initAdminAudit() {
     if (q.get('action') || q.get('result') || q.get('from') || q.get('to')) rangeChipSync('custom');
   })();
   $('#audit-filter-form').addEventListener('submit', e => { e.preventDefault(); pager.state.offset = 0; load(); });
-  // ---- W8③ 时间范围重做：快捷档位 chips（今天 / 近 7 天 / 近 30 天 / 自定义）+
-  // 两枚站内样式日期输入。档位选中即填 from/to 并查询；直接改日期输入则回落到
-  // 「自定义」高亮。选中环沿用 app-chip 的 primary-soft 态，无新动效面。 ----
+
+  // 时间范围：快捷档位 chips（今天/近 7 天/近 30 天/自定义）+ 两枚日期输入。
+  // 档位选中即填 from/to 并查询；直接改日期则回落到「自定义」高亮。
   const p2 = n => String(n).padStart(2, '0');
   const dayStr = d => `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`;
   function rangeChipSync(active) {
@@ -3238,7 +3765,7 @@ function initAdminAudit() {
     pager.state.offset = 0; load();
   });
   pager.wire(load);
-  // 导出：带上当前筛选，用浏览器原生下载（同源、带 cookie，无需额外鉴权头）
+  // 导出：带上当前筛选，浏览器原生下载（同源、带 cookie）
   const exportBtn = $('#audit-export');
   if (exportBtn) exportBtn.addEventListener('click', () => {
     const p = new URLSearchParams(filters());
@@ -3270,21 +3797,21 @@ function initAdminConfig() {
 
   async function load() {
     showErr('#cfg-error', '');
+    setListBusy(wrap, true);
     try {
       const items = await api('/admin/config');
       wrap.innerHTML = '';
       let rendered = 0;
       GROUPS.forEach(g => {
-        // **三个已知键恒渲染**，哪怕库里一条都没有：旧逻辑只渲染库里已存在的键，
-        // 新部署（从未写入 llm_*）整页「暂无配置项。」，管理员没有任何途径创建——
-        // 而 PUT 端点本就支持 upsert，这是纯粹的前端死胡同。
+        // **三个已知键恒渲染**，哪怕库里一条都没有：只渲染库里已存在的键会让
+        // 新部署整页「暂无配置项」，而 PUT 端点本就支持 upsert——纯前端死胡同。
         const fromStore = items.filter(it => it.key.indexOf(g.prefix) === 0);
         const byKey = new Map(fromStore.map(it => [it.key, it]));
         Object.keys(LABELS).forEach(k => {
           if (!byKey.has(k)) byKey.set(k, { key: k, configured: false, secret: k === 'llm_api_key' });
         });
         const mine = [...byKey.values()];
-        if (!mine.length) return;   // forEach 回调内，return 即跳过本组
+        if (!mine.length) return;
         rendered += 1;
         const card = node(`<section class="card"><h2>${esc(g.title)}</h2><div class="stack" style="margin-top:8px"></div></section>`);
         const stack = card.querySelector('.stack');
@@ -3296,8 +3823,8 @@ function initAdminConfig() {
             <div class="item" data-key="${esc(it.key)}">
               <span class="grow">
                 <span class="title">${esc(LABELS[it.key] || it.key)}</span>
-                <span class="badge">${esc(it.key)}</span>
-                ${it.secret ? '<span class="badge">凭据</span>' : ''}
+                <span class="badge plain">${esc(it.key)}</span>
+                ${it.secret ? '<span class="badge plain">凭据</span>' : ''}
                 <br><span class="meta">${stateText}</span>
               </span>
               <span class="row" style="gap:6px">
@@ -3308,9 +3835,8 @@ function initAdminConfig() {
             </div>`);
           row.querySelector('[data-act=save]').addEventListener('click', async () => {
             const input = row.querySelector('input');
-            // **必须 trim 后判空**：服务端把空串当「清除该键」处理，只判 !value 时
-            // 误敲的一个空格就能绕过「清除」的确认弹窗、把 mail_api_key 之类静默删掉，
-            // toast 还报「已保存」。留空的语义是「不修改」，清除请走清除按钮。
+            // **必须 trim 后判空**：服务端把空串当「清除该键」处理，误敲一个空格
+            // 就会绕过「清除」的确认弹窗把凭据静默删掉。留空的语义是「不修改」。
             const value = input.value.trim();
             if (!value) { toast('留空表示不修改；要清空请点「清除」', true); return; }
             try {
@@ -3335,6 +3861,7 @@ function initAdminConfig() {
       });
       if (!rendered) wrap.innerHTML = emptyState('暂无配置项', '本页只显示服务端登记过的配置键。');
     } catch (err) { showErr('#cfg-error', err.message); }
+    finally { setListBusy(wrap, false); }
   }
 
   $('#cfg-cancel').addEventListener('click', () => closeDialog($('#cfg-dialog')));
@@ -3355,7 +3882,6 @@ function initAdminConfig() {
 }
 
 /* ---------- 后台：AI 用量（KPI + 趋势 + 用户表 + 钻取 + 编辑限额） ---------- */
-/* 占比列：share 是服务端算好的 0..1 比例（区间用量 / 全站区间合计）。 */
 function pctText(share) {
   return Math.round(Number(share || 0) * 100) + '%';
 }
@@ -3365,8 +3891,7 @@ function initAdminAI() {
   if (!bars) return;
   let lastDetailUID = 0;
 
-  /* 迷你走势：近 7 根竖条（纯 div，高度按天数占比；零值给 2px 保底可见）。
-     days 是日期升序（服务端铺满窗口、缺日补 0），近 7 天 = 末尾 7 项。 */
+  /* 迷你走势：近 7 根竖条（纯 div；零值给 4% 保底可见） */
   function renderSpark(days) {
     const spark = $('#kpi-spark');
     const last7 = (days || []).slice(-7);
@@ -3420,11 +3945,10 @@ function initAdminAI() {
       renderSpark(rep.days);
 
       // ---- 每日趋势 ----
-      // 今日合计取 rep.today（今天没打点就如实显示 0），不拿 days[0] 冒充
       $('#ai-today').textContent = `今日（${todayStr()}）合计 ${today} 次`;
       const list = rep.days || [];
-      // 空态判据是**区间内有没有用量**，不是「有没有条目」：后端恒回满区间的天数，
-      // 零用量时会铺成一面 30 行全 0 的空条形图——正是「半成品感」的来源。
+      // 空态判据是**区间内有没有用量**：后端恒回满区间天数，零用量时会铺成
+      // 一面全 0 的空条形图——正是「半成品感」的来源。
       const dayTotal = list.reduce((a, d) => a + Number(d.count || 0), 0);
       if (!list.length || dayTotal === 0) {
         bars.innerHTML = '';
@@ -3435,7 +3959,7 @@ function initAdminAI() {
         bars.innerHTML = '';
         list.forEach(d => {
           const n = Number(d.count || 0);
-          // 0 值不画条：Math.max(2,…) 会给每一天都留一小截蓝头，看着像「有数据」
+          // 0 值不画条：给每一天都留一小截蓝头会看着像「有数据」
           const pct = n === 0 ? 0 : Math.round(n / max * 100);
           bars.appendChild(node(`
             <div class="bar-row">
@@ -3446,7 +3970,7 @@ function initAdminAI() {
         });
       }
 
-      // ---- 用户表（服务端已按区间用量降序，原样渲染不再重排——提示文案与实现同口径） ----
+      // ---- 用户表（服务端已按区间用量降序，原样渲染不再重排） ----
       const ubody = $('#ai-users-body');
       const users = rep.users || [];
       ubody.innerHTML = '';
@@ -3460,17 +3984,14 @@ function initAdminAI() {
         const uLimit = Number(u.limitToday || 0);
         const left = uLimit > 0 ? Math.max(0, uLimit - uToday) : 0;
         const leftPct = uLimit > 0 ? Math.round(left / uLimit * 100) : 0;
-        const tr = node(`
-          <tr class="ai-user-row" data-uid="${esc(u.uid)}" tabindex="0" role="button" aria-label="查看 ${esc(u.email)} 的用量明细">
-            <td class="wrap-cell">${esc(u.email)} <span class="mono dim">${esc(u.uid)}</span></td>
-            <td>${uToday}</td>
-            <td>${Number(u.range || 0)}</td>
-            <td>${esc(pctText(u.share))}</td>
-            <td>
-              <span class="bar-track" style="min-width:120px;display:inline-block;vertical-align:middle"><span class="bar-fill" style="width:${leftPct}%"></span></span>
-              <span class="dim">${uLimit > 0 ? `剩 ${left}/${uLimit}` : '—'}</span>
-            </td>
-          </tr>`);
+        const tr = node(`<tr class="ai-user-row" data-uid="${esc(u.uid)}" tabindex="0" role="button" aria-label="查看 ${esc(u.email)} 的用量明细">
+          ${td('', `${esc(u.email)} <span class="mono dim">${esc(u.uid)}</span>`, 'cell-title wrap-cell')}
+          ${td('今日', esc(uToday))}
+          ${td('区间合计', esc(Number(u.range || 0)))}
+          ${td('占比', esc(pctText(u.share)))}
+          ${td('每日限额余量', `<span class="bar-track" style="min-width:120px;display:inline-block;vertical-align:middle"><span class="bar-fill" style="width:${leftPct}%"></span></span>
+            <span class="dim">${uLimit > 0 ? `剩 ${left}/${uLimit}` : '—'}</span>`)}
+        </tr>`);
         const open = () => openDetail(u.uid, u.email);
         tr.addEventListener('click', open);
         tr.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
@@ -3496,8 +4017,6 @@ function initAdminAI() {
       const list = d.days || [];
       const box = $('#aid-bars');
       const total = list.reduce((a, x) => a + Number(x.count || 0), 0);
-      // 空态判据是**区间内有没有用量**，不是「有没有条目」：后端恒回满区间的天数，
-      // 零用量时 30 条全 0 会铺成一面空条形图——那正是「半成品感」的来源。
       if (!list.length || total === 0) {
         box.innerHTML = '';
         $('#aid-empty').classList.remove('hidden');
@@ -3523,9 +4042,9 @@ function initAdminAI() {
     const panel = $('#ai-detail');
     const wasHidden = panel.classList.contains('hidden');
     panel.classList.remove('hidden');
-    if (wasHidden) slideIn(panel);   // 页内钻取：右滑进入
+    if (wasHidden) slideIn(panel);
     $('#aid-title').textContent = email + ' 的用量';
-    // 打开即重置状态：清掉上一个用户的明细（否则新数据回来前挂着旧的）
+    // 打开即重置状态：清掉上一个用户的明细
     $('#aid-meta').textContent = '读取中…';
     $('#aid-bars').innerHTML = '';
     $('#aid-empty').classList.add('hidden');
@@ -3534,14 +4053,13 @@ function initAdminAI() {
   }
   $('#aid-close').addEventListener('click', () => {
     $('#ai-detail').classList.add('hidden');
-    const back = $('#ai-users-body tr[role=button]');            // 焦点还给触发行
+    const back = $('#ai-users-body tr[role=button]');
     if (back) back.focus();
   });
   $('#aid-days').addEventListener('change', loadDetail);
 
   // ---- 编辑限额（super only，按钮在模板层由 .IsSuper 门控） ----
-  // 四键一处定义：预填、校验、报错文案全部从它派生——报错说中文名，
-  // 不把配置键名甩给管理员（模板里的四个 field label 与这里同名）
+  // 四键一处定义：预填、校验、报错文案全部从它派生
   const QUOTA_FIELDS = [
     { key: 'ai_rate_per_minute', sel: '#q-input-rate', label: '每用户每分钟次数' },
     { key: 'ai_concurrency', sel: '#q-input-conc', label: '全站并发' },
@@ -3552,14 +4070,13 @@ function initAdminAI() {
   if (quotaBtn) {
     quotaBtn.addEventListener('click', async () => {
       showErr('#quota-error', '');
-      // 预填当前配置值（未配置的键留空）
       QUOTA_FIELDS.forEach(f => { $(f.sel).value = ''; });
       try {
         const items = await api('/admin/config');
         const byKey = Object.fromEntries(QUOTA_FIELDS.map(f => [f.key, f]));
         items.filter(it => byKey[it.key] && it.configured)
           .forEach(it => { $(byKey[it.key].sel).value = it.value; });
-      } catch (_) { /* 预填失败不拦打开：可直接填新值 */ }
+      } catch (_) { /* 预填失败不拦打开 */ }
       openDialog($('#quota-dialog'), '#q-input-rate');
     });
     $('#quota-cancel').addEventListener('click', () => closeDialog($('#quota-dialog')));
@@ -3578,8 +4095,7 @@ function initAdminAI() {
       if (!todo.length) { closeDialog($('#quota-dialog')); return; }
       const btn = $('#quota-ok');
       setBusy(btn, true);
-      // 逐键保存：中途失败必须说清「哪几项已生效、哪项失败、其余未保存」——
-      // 只说一句 err.message 会让管理员以为整批都没动，回头重复保存。
+      // 逐键保存：中途失败必须说清「哪几项已生效、哪项失败、其余未保存」
       let done = 0;
       try {
         for (const [key, v] of todo) {
@@ -3611,7 +4127,81 @@ function initAdminAI() {
   load();
 }
 
-/* ---------- 小工具 ---------- */
+/* ---------- 403 页：报障时间戳 + 重试（同一 URL 再走一次门禁判定） ---------- */
+function initDenied() {
+  stampDeniedAt();
+  const retry = $('#denied-retry');
+  if (retry) retry.addEventListener('click', () => location.reload());
+}
+
+/* ---------- 授权（同意）页 ----------
+   主流程是零 JS 表单（decision 分流）；这里只接「换账号」：登出 → 带 tx 回
+   登录页。tx 是服务端一次性事务号，登录后经 /oauth/resume?tx= 续跑回本页
+   ——与未登录首次进来是同一条路，登录↔授权的流转闭环不变。 */
+function initAuthorize() {
+  // 错误变体：报障时间戳 + 「返回上一页」（history 无处可回时落回控制台）
+  stampDeniedAt();
+  const back = $('#auth-back');
+  if (back) back.addEventListener('click', () => {
+    if (history.length > 1) history.back(); else location.href = '/web/console';
+  });
+  const btn = $('#auth-switch');
+  if (!btn) return;
+  const txInput = $('#authorize-card input[name="tx"]');
+  const tx = txInput ? txInput.value : '';
+  btn.addEventListener('click', async () => {
+    setBusy(btn, true);
+    try { stopSessionRefresh(); await api('/web/logout', { method: 'POST', body: {} }); } catch (_) { /* 已登出也要跳 */ }
+    location.href = '/web/login' + (tx ? '?tx=' + encodeURIComponent(tx) : '');
+  });
+}
+
+/* ---------- Caps Lock 提示（密码框） ----------
+   NIST/认证 UX 通用做法：未解释的密码失败里相当一部分是 Caps Lock——在密码框
+   下方给一条 role=status 的静默提示，key 状态变化即播报，失焦即收。 */
+function decorateCapsLock() {
+  $$('input[type=password]').forEach(inp => {
+    if (inp.__caps) return;
+    inp.__caps = true;
+    const hint = document.createElement('span');
+    hint.className = 'hint caps-hint';
+    hint.hidden = true;
+    hint.setAttribute('role', 'status');
+    hint.textContent = 'Caps Lock 已开启';
+    const host = inp.closest('.field') || inp.parentElement;
+    if (host) host.appendChild(hint);
+    const upd = e => { hint.hidden = !(e.getModifierState && e.getModifierState('CapsLock')); };
+    inp.addEventListener('keydown', upd);
+    inp.addEventListener('keyup', upd);
+    inp.addEventListener('blur', () => { hint.hidden = true; });
+  });
+}
+
+/* ---------- 验证码粘贴清洗 ----------
+   OTP 常见手输形态带空格/连字符（123-456）；粘进 one-time-code 框时剥掉分隔符，
+   用户不用先去编辑粘贴内容（OpenCTEM 同款口径：paste 时忽略空格与连字符）。 */
+document.addEventListener('paste', e => {
+  const t = e.target;
+  if (!t || t.tagName !== 'INPUT' || t.getAttribute('autocomplete') !== 'one-time-code') return;
+  const cd = e.clipboardData || window.clipboardData;
+  if (!cd || !cd.getData) return;
+  const text = cd.getData('text') || '';
+  const clean = text.replace(/[\s-]+/g, '');
+  if (clean && clean !== text) {
+    e.preventDefault();
+    const max = Number(t.getAttribute('maxlength')) || 64;
+    t.value = clean.slice(0, max);
+    t.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+});
+
+/* ---------- 网络状态提示 ---------- */
+function wireNetworkStatus() {
+  window.addEventListener('offline', () => toast('网络已断开，恢复连接后可重试', true));
+  window.addEventListener('online', () => toast('网络已恢复'));
+}
+
+/* ================= 通用控件装饰 ================= */
 async function copyText(text) {
   try {
     await navigator.clipboard.writeText(text);
@@ -3628,10 +4218,9 @@ async function copyText(text) {
   }
 }
 
-/* openDialog 打开弹层并把初始焦点钉在**安全侧控件**（WAI-ARIA APG：破坏性对话框
-   的初始焦点不得落在危险提交钮上）。focusSel 缺省时靠 DOM 顺序（取消钮在危险钮前）
-   兜底——显式传参把这件事从「恰好如此」变成「规定如此」。原生 showModal 的模态性
-   同时保证 Tab 循环留在弹层内。 */
+/* openDialog 打开弹层并把初始焦点钉在**安全侧控件**（WAI-ARIA APG：破坏性
+   对话框的初始焦点不得落在危险提交钮上）。原生 showModal 的模态性同时保证
+   Tab 循环留在弹层内；关闭后浏览器自动把焦点还给触发行。 */
 function openDialog(dlg, focusSel) {
   if (!dlg) return;
   if (typeof dlg.showModal === 'function') dlg.showModal(); else dlg.setAttribute('open', '');
@@ -3643,8 +4232,7 @@ function closeDialog(dlg) {
   if (dlg.open && typeof dlg.close === 'function') dlg.close(); else dlg.removeAttribute('open');
 }
 
-/* tablist 的键盘行为：左右键与 Home/End 在同组标签间移动焦点并切换，
-   否则 role=tab 只能用 Tab 一个个跳，读屏/键盘用户拿不到「一组控件」的语义。 */
+/* tablist 键盘行为：左右键与 Home/End 在同组标签间移动焦点并切换 */
 function wireTabs() {
   $$('.tabs[role="tablist"]').forEach(list => {
     const tabs = $$('[role="tab"]', list);
@@ -3662,16 +4250,8 @@ function wireTabs() {
   });
 }
 
-/* W9 下拉（站内 miuix 风）：把原生 <select> 装成「按钮 + 浮层菜单」（fade-scale
-   进场走既有 swapIn）。原 select 保留为**值载体**（.hidden）：表单逻辑读
-   .value / 改 .innerHTML 的代码一字不动；菜单每次打开按 当前 option 重建，
-   openInvite/openBulk 这类后填选项的场景天然成立。
-   键盘与无障碍：按钮 aria-haspopup=listbox + aria-expanded；Enter/空格/↓ 打开，
-   ↑/↓ 移动高亮，Enter/空格 选中，Esc 关闭回焦；点外部关闭。 */
-/* ---------- 密码「显示/隐藏」开关（NIST SP 800-63B §3.1.1.2） ----------
-   规范原文是 SHOULD：允许用户看清自己输的密码，长密码与手机键盘下尤其必要。
-   形态复用仓内既有的「输入 + 行内按钮」（.code-line 发码钮同款），**不叠在输入框
-   右缘**——那一带是浏览器密码管理器徽章的保留区（见 AGENTS 坑位），叠上去会打架。 */
+/* 密码「显示/隐藏」开关（NIST SP 800-63B §3.1.1.2）：形态复用「输入 + 行内
+   按钮」，**不叠在输入框右缘**——那一带是密码管理器徽章保留区。 */
 const PW_EYE = {
   on: '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>',
   off: '<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></svg>',
@@ -3706,9 +4286,9 @@ function decoratePasswords(root) {
   });
 }
 
-/* 全站只挂**一个** document 监听来关下拉：此前每装饰一个 <select> 就 document
-   .addEventListener 一次且永不移除，后台用户详情反复开合会累积几十个监听，
-   每次点击都要把它们全跑一遍。这里用单例登记「当前打开的那个」。 */
+/* 站内下拉（按钮 + 浮层菜单）：原生 <select> 保留为**隐藏值载体**——表单逻辑
+   读 .value / 改 .innerHTML 的代码一字不动；菜单每次打开按当前 option 重建。
+   键盘：Enter/空格/↓ 打开，↑/↓ 移动高亮，Enter 选中，Esc 关闭回焦。 */
 let openSelectMenu = null;
 document.addEventListener('click', e => {
   const cur = openSelectMenu;
@@ -3717,7 +4297,7 @@ document.addEventListener('click', e => {
 
 function decorateSelect(sel) {
   if (!sel) return null;
-  if (sel.__dropSync) { sel.__dropSync(); return sel; }   // 已装饰：只同步按钮文案
+  if (sel.__dropSync) { sel.__dropSync(); return sel; }
   const wrap = document.createElement('span');
   wrap.className = 'select-drop';
   const btn = document.createElement('button');
@@ -3725,16 +4305,14 @@ function decorateSelect(sel) {
   btn.className = 'select-btn';
   btn.setAttribute('aria-haspopup', 'listbox');
   btn.setAttribute('aria-expanded', 'false');
-  // 可访问名：装饰后真正可点的是这个 <button>，而字段名在 <label class="field">
-  // 的 <span> 里（<span> 不是 <label for>，本身不构成关联）。取字段名挂 aria-label，
-  // 否则读屏只念当前值「全部」，用户不知道这个下拉是筛什么。
+  // 可访问名：装饰后真正可点的是这个 button，字段名在 label.field 的 span 里——
+  // 取字段名（或 select 自身的 aria-label）挂上去，否则读屏只念当前值。
   const fieldSpan = sel.closest && sel.closest('.field') ? sel.closest('.field').querySelector('span') : null;
-  const fieldName = fieldSpan ? (fieldSpan.textContent || '').trim() : '';
+  const fieldName = (fieldSpan && fieldSpan.textContent || '').trim() || sel.getAttribute('aria-label') || '';
   if (fieldName) btn.setAttribute('aria-label', fieldName);
   const label = document.createElement('span');
   label.setAttribute('aria-hidden', 'true');
   btn.appendChild(label);
-  // 展开箭头：与站内图标同 viewBox/线宽（ico 类），旋转动效由 CSS 接管
   const chev = node('<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg>');
   btn.appendChild(chev);
   const menu = document.createElement('ul');
@@ -3745,7 +4323,7 @@ function decorateSelect(sel) {
   wrap.appendChild(btn);
   wrap.appendChild(menu);
   wrap.appendChild(sel);
-  sel.classList.add('hidden');   // 值载体不参与视觉（.hidden !important 盖得住任何 UA display）
+  sel.classList.add('hidden');
   let activeIdx = -1;
 
   function sync() {
@@ -3764,9 +4342,9 @@ function decorateSelect(sel) {
       menu.appendChild(li);
     });
     menu.hidden = false;
-    openSelectMenu = { wrap, close };   // 登记为「当前打开的那个」
+    openSelectMenu = { wrap, close };
     btn.setAttribute('aria-expanded', 'true');
-    swapIn(menu);   // 浮层进场：fade-scale（popIn 语义的区块动效）
+    swapIn(menu);
     mark();
   }
   function mark() {
@@ -3806,41 +4384,58 @@ function decorateSelects(root) {
   $$('select', root || document).forEach(decorateSelect);
 }
 
-/* ---------- theme-color 跟随系统明暗（E-8）----------
-   <meta name="theme-color"> 写死 #3482FF 时，暗色下浏览器地址栏/标签仍是亮蓝，
-   与 #000 画布打架。这里按 prefers-color-scheme 同步切换（浅色用 miuix 主色，
-   暗色用画布黑）。无 matchMedia 的老浏览器跳过，不影响功能。 */
-function syncThemeColor() {
-  const meta = document.querySelector('meta[name="theme-color"]');
-  if (!meta || !window.matchMedia) return;
-  const mq = window.matchMedia('(prefers-color-scheme: dark)');
-  const apply = () => { meta.setAttribute('content', mq.matches ? '#000000' : '#3482FF'); };
-  apply();
-  (mq.addEventListener ? mq.addEventListener('change', apply) : mq.addListener(apply));
-}
+/* ================= 启动：按 data-page 分发 ================= */
+const PAGE_CONTROLLERS = {
+  login: initLogin,
+  authorize: initAuthorize,
+  console: initConsole,
+  sessions: initSessions,
+  passkeys: initPasskeys,
+  security: initSecurity,
+  account: initAccount,
+  denied: initDenied,
+  'admin-users': initAdminUsers,
+  'admin-access': initAdminAccess,
+  'admin-sessions': initAdminSessions,
+  'admin-audit': initAdminAudit,
+  'admin-config': initAdminConfig,
+  'admin-ai': initAdminAI,
+  // invite / setup-password 是零 JS 纯表单页，无需控制器
+};
 
-/* ---------- 入口 ---------- */
 document.addEventListener('DOMContentLoaded', () => {
-  drainFlash();   // 跨页提示先出（注销撤销 / 强制改密成功 / 注销已提交）
-  syncThemeColor();
+  drainFlash();                 // 跨页提示先出（注销撤销 / 强制改密成功 / 注销已提交）
   wireReauth();
   wireTabs();
-  decorateSelects(document);   // W9：静态 <select> 全部换站内下拉（值载体保留）
-  decoratePasswords(document); // NIST：全站密码框提供「显示密码」
-  initAdminGuard();
+  decorateSelects(document);    // 静态 <select> 全部换站内下拉（值载体保留）
+  decoratePasswords(document);  // 全站密码框提供「显示密码」
+  decorateCapsLock();           // 密码框 Caps Lock 提示
+  wireNetworkStatus();
+  // 防重复提交：原生表单（invite/setup-password/authorize 的零 JS POST）在提交
+  // 后立刻禁用被点的按钮——慢网下双击不会发两次（页面导航失败时刷新即恢复）。
+  // **带 name 的按钮必须先把 name/value 抄进隐藏域再禁用**：表单条目表在 submit
+  // 事件之后才构造，被禁用的按钮不再算「成功控件」，于是 authorize 的
+  // decision=allow/deny 整个丢掉——服务端把缺 decision 一律按拒绝走，点「继续授权」
+  // 会静默变成 access_denied。隐藏域不禁用，值照常随表单提交一次。
+  $$('form[method=post]').forEach(f => f.addEventListener('submit', e => {
+    const b = (e && e.submitter) || f.querySelector('button[type=submit], button:not([type])');
+    if (!b || b.disabled) return;
+    if (b.name) {
+      const keep = document.createElement('input');
+      keep.type = 'hidden';
+      keep.name = b.name;
+      keep.value = b.value;
+      f.appendChild(keep);
+    }
+    b.disabled = true;
+    b.setAttribute('aria-busy', 'true');
+  }));
   initAppSwitch();
-  initLogin();
-  initConsole();
-  initSessions();
-  initPasskeys();
-  initSecurity();
-  initAccount();
-  initProfile();
-  initLoginNotify();
-  initAdminUsers();
-  initAdminAccess();
-  initAdminSessions();
-  initAdminAudit();
-  initAdminConfig();
-  initAdminAI();
+  startRelClock();
+  // 登录/授权错误页是极简壳（无 .topbar），没有会话可换；其余页面都在登录态里
+  if ($('.topbar')) startSessionRefresh();
+  const page = document.body.dataset.page || '';
+  if (page.indexOf('admin-') === 0) initAdminGuard();
+  const boot = PAGE_CONTROLLERS[page];
+  if (boot) boot();
 });

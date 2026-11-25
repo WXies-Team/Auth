@@ -4,20 +4,58 @@
   <span class="dim" id="users-total" aria-live="polite"></span>
 </div>
 
-<p class="hint">项目管理员只能管理授权范围内的会话、用量与审计；平台管理员可管理全部项目、用户目录与全局配置。仅平台管理员能调整角色与授权。</p>
+<p class="hint">项目管理员只能管理授权范围内的会话、用量与审计；平台管理员可管理全部项目、用户目录与全局配置。仅平台管理员能调整角色与授权——授予项目即让该账号豁免这个项目的登录限制。</p>
 
-<!-- 搜索收进工具条卡（与审计页同款）：搜索框自适应、按钮贴右侧。
-     邀请与批量操作并入同一张卡的第二行——它们都是「作用于这张表」的动作，
-     分散在画布上时与表格没有归属关系。 -->
+<!-- 角色层级图例：任命能力的边界（谁能任命谁）与各层职责——与后端能力矩阵同源
+     （root 唯一 → 只有 root 任命平台管理员 → 平台管理员任命项目管理员 →
+     不能授予高于自己的角色、项目管理员不跨项目）。 -->
+<section class="card" id="role-ladder" aria-labelledby="role-ladder-title">
+  <h2 id="role-ladder-title">角色层级与任命权限</h2>
+  <p class="hint">任命只能逐级向下：不能授予高于自己的角色，撤销同理。</p>
+  <div class="access-exempt">
+    <div class="item">
+      <span class="grow"><span class="title">根管理员</span><br>
+        <span class="meta">唯一账号；只有他能任命/回收平台管理员，其账号也只有本人能调整</span></span>
+      <span class="badge on">任命平台管理员</span>
+    </div>
+    <div class="item">
+      <span class="grow"><span class="title">平台管理员</span><br>
+        <span class="meta">管理全部项目、用户目录与全局配置；可任命项目管理员与普通用户</span></span>
+      <span class="badge on">任命项目管理员</span>
+    </div>
+    <div class="item">
+      <span class="grow"><span class="title">项目管理员</span><br>
+        <span class="meta">只管理被授予的项目、授权不跨项目；不能任命任何角色</span></span>
+      <span class="badge plain">不参与任命</span>
+    </div>
+    <div class="item">
+      <span class="grow"><span class="title">普通用户</span><br>
+        <span class="meta">无后台管理权限</span></span>
+      <span class="badge off">无管理权</span>
+    </div>
+  </div>
+  <p class="hint">角色调整在下方用户详情里操作；任命/撤销入口按你的能力实时可用或禁用，禁用时会说明原因。</p>
+</section>
+
+<!-- 工具条：搜索 + 邀请 + 批量操作同属「作用于这张表」的动作，收进一张卡。
+     角色/封禁筛选走 /admin/users 的 role/banned 参数，服务端跨页过滤；选择同步到 URL。 -->
 <div class="toolbar">
   <form class="toolbar-inline" id="user-search-form" role="search">
     <label class="field grow" style="margin:0"><span class="sr-only">搜索用户</span>
       <input type="search" id="user-query" placeholder="按邮箱片段或 uid 搜索" autocomplete="off">
     </label>
   </form>
+  <div class="toolbar-inline" role="group" aria-label="按角色与封禁状态筛选">
+    <span class="dim" style="font-size:13px">筛选</span>
+    <button type="button" class="app-chip on" data-role-facet="all" aria-pressed="true">全部</button>
+    <button type="button" class="app-chip" data-role-facet="super" aria-pressed="false">平台管理员</button>
+    <button type="button" class="app-chip" data-role-facet="admin" aria-pressed="false">项目管理员</button>
+    <button type="button" class="app-chip" data-role-facet="user" aria-pressed="false">普通用户</button>
+    <button type="button" class="app-chip" data-status-facet="banned" aria-pressed="false">封禁中</button>
+  </div>
   <div class="toolbar-inline">
     <button type="button" class="btn" id="invite-open">{{icon "mail"}} 邀请用户</button>
-    <!-- 批量工具条：N 实时；选中为空整条收起（显隐必须走 .hidden 类） -->
+    <!-- 批量工具条：N 实时；选中为空整条收起（显隐走 .hidden 类） -->
     <span class="toolbar-inline hidden" id="bulk-bar" style="gap:8px;margin-left:auto">
       <span class="dim" id="bulk-count"></span>
       <button type="button" class="btn danger small" id="bulk-reset">批量重置密码</button>
@@ -26,34 +64,35 @@
       <button type="button" class="btn ghost small" id="bulk-clear">清空选择</button>
     </span>
   </div>
+  <span class="hint" id="users-facet-note" hidden style="grid-column:1/-1"></span>
 </div>
 
 <p class="err" id="users-error" role="alert" hidden></p>
+<!-- 拒绝态内联面板（403 分级 + 下一步动作），由 app.js 注入 -->
+<div class="denied-slot" id="users-denied" hidden></div>
 
+<!-- 表格宽屏为表、窄屏（≤760px）由 CSS 降级为卡片列表（td 带 data-label） -->
 <div class="table-wrap">
   <table>
     <caption class="sr-only">用户列表</caption>
     <thead>
-      <!-- 列数压到 7：原来 9 列（含独立的两步验证/Passkey/注册时间）会把表格撑过
-           容器宽度，行尾的「管理」按钮被**横向溢出裁掉**——主操作藏在横滚后面。
-           安全状态合并成一列；注册时间属于低频信息，移进详情面板。 -->
-      <tr><th style="width:42px"><input type="checkbox" id="users-selall" aria-label="选择本页全部用户"></th><th>用户</th><th>uid</th><th>角色</th><th>项目授权</th><th>安全</th><th style="width:1%"></th></tr>
+      <tr><th style="width:42px"><input type="checkbox" id="users-selall" aria-label="选择本页全部用户"></th><th>用户</th><th>uid</th><th>角色</th><th>登录豁免</th><th>安全</th><th style="width:1%"></th></tr>
     </thead>
     <tbody id="users-body">
       <tr><td colspan="7"><span class="skeleton sk-line w60"></span><span class="skeleton sk-line w40"></span></td></tr>
-<tr><td colspan="7"><span class="skeleton sk-line w60"></span><span class="skeleton sk-line w40"></span></td></tr>
-<tr><td colspan="7"><span class="skeleton sk-line w60"></span><span class="skeleton sk-line w40"></span></td></tr>
+      <tr><td colspan="7"><span class="skeleton sk-line w60"></span><span class="skeleton sk-line w40"></span></td></tr>
+      <tr><td colspan="7"><span class="skeleton sk-line w60"></span><span class="skeleton sk-line w40"></span></td></tr>
     </tbody>
   </table>
 </div>
 
-<div class="row" style="justify-content:flex-end;margin-top:10px">
+<div class="pager" style="margin-top:10px">
   <button type="button" class="btn small" id="users-prev">上一页</button>
   <span class="dim" id="users-page">—</span>
   <button type="button" class="btn small" id="users-next">下一页</button>
 </div>
 
-<!-- 待处理邀请（B9）：折叠的次级表，四态徽标 + 行内重发/撤销；过滤复用上面的搜索框 -->
+<!-- 待处理邀请：折叠的次级表，四态徽标 + 行内重发/撤销；过滤复用上面的搜索框 -->
 <details class="section" id="invites-wrap">
   <summary>邀请记录 <span class="dim" id="invites-count"></span></summary>
   <div class="table-wrap" style="margin-top:10px">
@@ -64,14 +103,14 @@
       </thead>
       <tbody id="invites-body">
         <tr><td colspan="5"><span class="skeleton sk-line w60"></span><span class="skeleton sk-line w40"></span></td></tr>
-<tr><td colspan="5"><span class="skeleton sk-line w60"></span><span class="skeleton sk-line w40"></span></td></tr>
-<tr><td colspan="5"><span class="skeleton sk-line w60"></span><span class="skeleton sk-line w40"></span></td></tr>
+        <tr><td colspan="5"><span class="skeleton sk-line w60"></span><span class="skeleton sk-line w40"></span></td></tr>
+        <tr><td colspan="5"><span class="skeleton sk-line w60"></span><span class="skeleton sk-line w40"></span></td></tr>
       </tbody>
     </table>
   </div>
 </details>
 
-<!-- 详情面板：凭证摘要 + 角色调整 + 应用授权开关 + 会话管理 -->
+<!-- 详情面板：凭证摘要 + 角色与登录豁免 + 会话 + 资料 + 高风险操作（危险区） -->
 <section class="card detail hidden" id="user-detail" aria-labelledby="ud-title" aria-live="polite">
   <div class="row between">
     <h2 id="ud-title">用户详情</h2>
@@ -85,16 +124,16 @@
     <h2 id="ud-dlg-title">确认操作</h2>
     <p class="dim" id="ud-dlg-desc"></p>
     <p class="err" id="ud-dlg-error" role="alert" hidden></p>
-    <div class="row end">
+    <div class="dlg-actions">
       <button type="button" class="btn" id="ud-dlg-cancel">取消</button>
       <button type="submit" class="btn primary" id="ud-dlg-ok">确认</button>
     </div>
   </form>
 </dialog>
 
-<!-- 邀请用户弹层（B9）：邮箱 + 项目（super 见全部与「不限项目」，项目管理员只能选授权项） -->
+<!-- 邀请用户弹层：邮箱 + 项目（super 见全部与「不限项目」，项目管理员只能选授权项） -->
 <dialog class="dlg" id="invite-dialog" aria-labelledby="inv-dlg-title">
-  <form method="dialog" id="invite-form">
+  <form method="dialog" id="invite-form" novalidate>
     <h2 id="inv-dlg-title">邀请用户</h2>
     <p class="dim">链接 24 小时内有效，仅可使用一次；收件人设置密码即完成注册。</p>
     <label class="field"><span>邮箱</span>
@@ -104,14 +143,14 @@
       <select id="invite-app" aria-label="邀请加入的项目"></select>
     </label>
     <p class="err" id="invite-error" role="alert" hidden></p>
-    <div class="row end">
+    <div class="dlg-actions">
       <button type="button" class="btn" id="invite-cancel">取消</button>
       <button type="submit" class="btn primary" id="invite-ok">发送邀请</button>
     </div>
   </form>
 </dialog>
 
-<!-- 批量操作弹层（B9）：确认视图（邮箱清单 + 后果逐条 + 一次配置）与结果视图同层切换 -->
+<!-- 批量操作弹层：确认视图（邮箱清单 + 后果逐条 + 一次配置）与结果视图同层切换 -->
 <dialog class="dlg" id="bulk-dialog" aria-labelledby="bulk-dlg-title">
   <div id="bulk-dlg-confirm">
     <h2 id="bulk-dlg-title">批量操作</h2>
@@ -141,7 +180,7 @@
       <input type="text" id="bulk-typed" autocomplete="off" placeholder="确认">
     </div>
     <p class="err" id="bulk-error" role="alert" hidden></p>
-    <div class="row end" style="margin-top:8px">
+    <div class="dlg-actions">
       <button type="button" class="btn" id="bulk-cancel">取消</button>
       <button type="button" class="btn danger" id="bulk-ok">确认执行</button>
     </div>
@@ -150,21 +189,21 @@
     <h2>执行结果</h2>
     <p class="dim" id="bulk-result-summary"></p>
     <div class="list" id="bulk-result-list" style="max-height:260px;overflow:auto;margin-top:8px"></div>
-    <div class="row end" style="margin-top:12px">
+    <div class="dlg-actions">
       <button type="button" class="btn hidden" id="bulk-retry-failed">重试勾选的失败项</button>
       <button type="button" class="btn primary" id="bulk-result-close">完成</button>
     </div>
   </div>
 </dialog>
 
-<!-- 重置密码的回执层（W3）：一次性临时密码展示，关层即清零 -->
+<!-- 重置密码的回执层：一次性临时密码展示，关层即清零 -->
 <dialog class="dlg" id="rp-done" aria-labelledby="rp-done-title">
   <h2 id="rp-done-title">重置完成</h2>
   <p class="dim" id="rp-done-hint"></p>
   <p class="secret-line" style="margin-top:8px"><code class="mono" id="rp-done-pw"></code>
     <button type="button" class="btn small" id="rp-done-copy">{{icon "copy"}} 复制</button>
   </p>
-  <div class="row end" style="margin-top:12px">
+  <div class="dlg-actions">
     <button type="button" class="btn primary" id="rp-done-close">我已保存</button>
   </div>
 </dialog>

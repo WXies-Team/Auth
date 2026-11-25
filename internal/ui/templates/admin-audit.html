@@ -4,78 +4,74 @@
   <span class="dim" id="audit-total" aria-live="polite"></span>
 </div>
 
-<!-- 筛选收进一张卡（.toolbar）：字段 grid 自适应，快捷档位与日期独占一行，
-     查询/重置靠右——筛选与下方表格有了明确的归属关系。 -->
+<!-- 筛选收进一张卡：字段 grid 自适应，快捷档位与日期独占一行，查询/重置靠右 -->
 <form class="toolbar" id="audit-filter-form">
- <div class="toolbar-row">
-  <label class="field"><span>事件</span>
-    <select id="audit-action">
-      <option value="">全部</option>
-      <option value="register">register</option>
-      <option value="login.success">login.success</option>
-      <option value="login.fail">login.fail</option>
-      <option value="logout">logout</option>
-      <option value="password.change">password.change</option>
-      <option value="password.reset">重置密码</option>
-      <option value="email.change">email.change</option>
-      <option value="account.delete">account.delete</option>
-      <option value="session.kick">session.kick</option>
-      <option value="passkey.create">passkey.create</option>
-      <option value="passkey.rename">passkey.rename</option>
-      <option value="passkey.delete">passkey.delete</option>
-      <option value="totp.setup">totp.setup</option>
-      <option value="totp.enable">totp.enable</option>
-      <option value="totp.disable">totp.disable</option>
-      <option value="recovery.generate">recovery.generate</option>
-      <option value="recovery.consume">recovery.consume</option>
-      <option value="reauth">reauth</option>
-      <option value="profile.update">profile.update</option>
-      <option value="admin.user.role_change">admin.user.role_change</option>
-      <option value="admin.user.session_revoke">admin.user.session_revoke</option>
-      <option value="admin.session.revoke">admin.session.revoke</option>
-      <option value="admin.config.set">admin.config.set</option>
-      <option value="admin.audit.view">admin.audit.view</option>
-      <option value="admin.role.grant">admin.role.grant</option>
-      <option value="admin.role.revoke">admin.role.revoke</option>
-      <option value="admin.role.change">admin.role.change</option>
-      <!-- B4 OAuth：管理端接入配置登记/更新 -->
-      <option value="admin.oauth_client.write">接入配置</option>
-      <option value="internal.ensure">internal.ensure</option>
-      <!-- W4 新增操作（value 英文串 ↔ 服务端审计事件名，label 中文） -->
-      <option value="user.ban">封禁账号</option>
-      <option value="user.unban">解除封禁</option>
-      <option value="project.access_grant">加入项目名单</option>
-      <option value="project.access_revoke">移出项目名单</option>
-      <option value="project.restrict_on">开启项目限制</option>
-      <option value="project.restrict_off">关闭项目限制</option>
-      <option value="account.delete_requested">提交注销</option>
-      <option value="account.delete_cancelled">撤销注销</option>
-      <!-- B5 管理员换邮/重置资料 -->
-      <option value="user.email_change">更换邮箱</option>
-      <option value="user.profile_reset">重置资料</option>
-      <!-- B9 邀请建号与批量操作（邀请四事件按 创建/重发/撤销/接受 排；全集对拍见
-           internal/auth 的 TestAuditFilterOptionsMatchAuditConstants） -->
-      <option value="user.invite">邀请用户</option>
-      <option value="user.invite_resend">重发邀请</option>
-      <option value="user.invite_revoke">撤销邀请</option>
-      <option value="user.invite_accept">接受邀请</option>
-      <option value="admin.bulk_action">批量操作</option>
-    </select>
-  </label>
-  <label class="field"><span>操作者 uid</span>
-    <input type="text" id="audit-actor" inputmode="numeric" autocomplete="off" placeholder="全部">
-  </label>
-  <label class="field"><span>对象 uid</span>
-    <input type="text" id="audit-target" inputmode="numeric" autocomplete="off" placeholder="全部">
-  </label>
-  <label class="field"><span>结果</span>
-    <select id="audit-result">
-      <option value="">全部</option>
-      <option value="ok">成功</option>
-      <option value="fail">失败</option>
-    </select>
-  </label>
- </div><!-- /toolbar-row（事件 + 两个 uid + 结果） -->
+  <div class="toolbar-row">
+    <label class="field"><span>事件</span>
+      <select id="audit-action">
+        <option value="">全部</option>
+        <option value="register">register</option>
+        <option value="login.success">login.success</option>
+        <option value="login.fail">login.fail</option>
+        <option value="logout">logout</option>
+        <option value="password.change">password.change</option>
+        <option value="password.reset">重置密码</option>
+        <option value="email.change">email.change</option>
+        <option value="account.delete">account.delete</option>
+        <option value="session.kick">session.kick</option>
+        <option value="passkey.create">passkey.create</option>
+        <option value="passkey.rename">passkey.rename</option>
+        <option value="passkey.delete">passkey.delete</option>
+        <option value="totp.setup">totp.setup</option>
+        <option value="totp.enable">totp.enable</option>
+        <option value="totp.disable">totp.disable</option>
+        <option value="recovery.generate">recovery.generate</option>
+        <option value="recovery.consume">recovery.consume</option>
+        <option value="reauth">reauth</option>
+        <option value="profile.update">profile.update</option>
+        <option value="admin.user.role_change">admin.user.role_change</option>
+        <option value="admin.user.session_revoke">admin.user.session_revoke</option>
+        <option value="admin.session.revoke">admin.session.revoke</option>
+        <option value="admin.config.set">admin.config.set</option>
+        <option value="admin.audit.view">admin.audit.view</option>
+        <option value="admin.role.grant">admin.role.grant</option>
+        <option value="admin.role.revoke">admin.role.revoke</option>
+        <option value="admin.role.change">admin.role.change</option>
+        <option value="admin.oauth_client.write">接入配置</option>
+        <option value="internal.ensure">internal.ensure</option>
+        <option value="user.ban">封禁账号</option>
+        <option value="user.unban">解除封禁</option>
+        <option value="project.access_grant">加入项目名单</option>
+        <option value="project.access_revoke">移出项目名单</option>
+        <option value="project.restrict_on">开启项目限制</option>
+        <option value="project.restrict_off">关闭项目限制</option>
+        <option value="account.delete_requested">提交注销</option>
+        <option value="account.delete_cancelled">撤销注销</option>
+        <option value="user.email_change">更换邮箱</option>
+        <option value="user.profile_reset">重置资料</option>
+        <!-- 邀请四事件按 创建/重发/撤销/接受 排；全集对拍见 internal/auth 的
+             TestAuditFilterOptionsMatchAuditConstants -->
+        <option value="user.invite">邀请用户</option>
+        <option value="user.invite_resend">重发邀请</option>
+        <option value="user.invite_revoke">撤销邀请</option>
+        <option value="user.invite_accept">接受邀请</option>
+        <option value="admin.bulk_action">批量操作</option>
+      </select>
+    </label>
+    <label class="field"><span>操作者 uid</span>
+      <input type="text" id="audit-actor" inputmode="numeric" autocomplete="off" placeholder="全部">
+    </label>
+    <label class="field"><span>对象 uid</span>
+      <input type="text" id="audit-target" inputmode="numeric" autocomplete="off" placeholder="全部">
+    </label>
+    <label class="field"><span>结果</span>
+      <select id="audit-result">
+        <option value="">全部</option>
+        <option value="ok">成功</option>
+        <option value="fail">失败</option>
+      </select>
+    </label>
+  </div>
 
   <!-- 快捷档位：标签 + chips，独占一行不进字段网格 -->
   <div class="toolbar-inline">
@@ -88,17 +84,17 @@
     </span>
   </div>
 
- <div class="toolbar-row">
-  <label class="field"><span>IP（前缀）</span>
-    <input type="text" id="audit-ip" placeholder="如 114.86 或 2408:" autocomplete="off">
-  </label>
-  <label class="field"><span>起始日期</span>
-    <input type="date" id="audit-from">
-  </label>
-  <label class="field"><span>结束日期</span>
-    <input type="date" id="audit-to">
-  </label>
- </div><!-- /toolbar-row（IP + 日期） -->
+  <div class="toolbar-row">
+    <label class="field"><span>IP（前缀）</span>
+      <input type="text" id="audit-ip" placeholder="如 114.86 或 2408:" autocomplete="off">
+    </label>
+    <label class="field"><span>起始日期</span>
+      <input type="date" id="audit-from">
+    </label>
+    <label class="field"><span>结束日期</span>
+      <input type="date" id="audit-to">
+    </label>
+  </div>
 
   <div class="toolbar-actions">
     <button type="button" class="btn ghost" id="audit-reset">重置</button>
@@ -107,8 +103,7 @@
 </form>
 
 <!-- 限流命中的去向：429 只落结构化日志（cmd/server limit429 的既定口径——攻击者
-     能无限触发，写进 audit_logs 会把审计表灌爆）；管理员拿着日志里的来源 IP，
-     用上面的 IP 筛选把该地址的失败尝试折回这张表，日志与审计由此对得上。 -->
+     能无限触发，写进 audit_logs 会把审计表灌爆）；按来源追查用上面的 IP 筛选。 -->
 <p class="hint">429 不进审计表，只记服务端结构化日志（关键字「限流命中」，含来源 IP）；按来源追查请用上方 IP 筛选。</p>
 
 <p class="err" id="audit-error" role="alert" hidden></p>
@@ -121,8 +116,8 @@
     </thead>
     <tbody id="audit-body">
       <tr><td colspan="7"><span class="skeleton sk-line w60"></span><span class="skeleton sk-line w40"></span></td></tr>
-<tr><td colspan="7"><span class="skeleton sk-line w60"></span><span class="skeleton sk-line w40"></span></td></tr>
-<tr><td colspan="7"><span class="skeleton sk-line w60"></span><span class="skeleton sk-line w40"></span></td></tr>
+      <tr><td colspan="7"><span class="skeleton sk-line w60"></span><span class="skeleton sk-line w40"></span></td></tr>
+      <tr><td colspan="7"><span class="skeleton sk-line w60"></span><span class="skeleton sk-line w40"></span></td></tr>
     </tbody>
   </table>
 </div>
@@ -130,7 +125,7 @@
 <div class="row between" style="margin-top:10px">
   <!-- 导出走同一套筛选（format=csv，跳过分页取全量，上限 5000 行） -->
   <button type="button" class="btn small" id="audit-export">导出 CSV</button>
-  <span class="row" style="gap:8px">
+  <span class="pager">
     <button type="button" class="btn small" id="audit-prev">上一页</button>
     <span class="dim" id="audit-page">—</span>
     <button type="button" class="btn small" id="audit-next">下一页</button>
