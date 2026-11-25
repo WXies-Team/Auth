@@ -57,18 +57,21 @@
 <dialog class="dlg" id="member-dlg" aria-labelledby="member-dlg-title">
   <h2 id="member-dlg-title">添加成员</h2>
   <p class="dim" id="member-dlg-desc"></p>
-  <label class="field"><span>搜索已注册用户（至少 2 个字符）</span>
-    <input type="search" id="member-query" autocomplete="off" placeholder="输入邮箱片段或 uid">
-  </label>
-  <div class="list" id="member-results" style="margin-top:8px;max-height:320px;overflow:auto"></div>
-  <p class="hint" id="member-empty" hidden>没有匹配的已注册用户。可到「用户」页发出邀请。</p>
-  <p class="err" id="member-error" role="alert" hidden></p>
+  <!-- 角色放在结果列表之前：原生 select 的弹层不会被下方滚动列表裁切，
+       成员列表再长也不会把角色选择顶出对话框。 -->
   <label class="field" id="member-role-field"><span>项目角色</span>
     <select id="member-role">
       <option value="member">可登录（登录名单）</option>
       <option value="admin">项目管理员（可管理本项目）</option>
     </select>
   </label>
+  <label class="field"><span>筛选用户（可选）</span>
+    <input type="search" id="member-query" autocomplete="off" placeholder="默认列出最近注册的用户，输入邮箱片段或 uid 筛选">
+  </label>
+  <p class="hint" id="member-count" hidden></p>
+  <div class="list" id="member-results" style="margin-top:8px;max-height:300px;overflow:auto"></div>
+  <p class="hint" id="member-empty" hidden>没有匹配的已注册用户。可到「用户」页发出邀请。</p>
+  <p class="err" id="member-error" role="alert" hidden></p>
   <div class="dlg-actions">
     <button type="button" class="btn" id="member-cancel">取消</button>
     <button type="button" class="btn primary" id="member-add" disabled>添加</button>

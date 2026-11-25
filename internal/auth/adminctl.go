@@ -550,10 +550,10 @@ type AdminUserCandidate struct {
 	Role  string `json:"role"`
 }
 
-// AdminProjectCandidates 供项目成员选择器搜索**已注册用户**（GET
-// /admin/projects/{app}/candidates?query=）：项目管理员只能搜自己有权管理的
-// 项目，避免把全站用户目录暴露给项目级管理员；super 可搜全部项目。
-// 只回前 20 条，空查询回空数组（不把整个用户表倒出来）。
+// AdminProjectCandidates 供项目成员选择器列出/搜索**已注册用户**（GET
+// /admin/projects/{app}/candidates?query=）：项目管理员只能看自己有权管理的
+// 项目，避免把全站用户目录暴露给项目级管理员；super 可看全部项目。
+// 空查询回最近注册的 100 人（列表选择），有关键词再按邮箱片段/uid 过滤。
 func (s *Service) AdminProjectCandidates(scope AdminScope, app, rawQuery string) ([]AdminUserCandidate, error) {
 	if !allowedApps[app] {
 		return nil, badRequest("未知项目，请重新选择后重试")
@@ -562,15 +562,16 @@ func (s *Service) AdminProjectCandidates(scope AdminScope, app, rawQuery string)
 		return nil, err
 	}
 	q := strings.TrimSpace(rawQuery)
-	// 至少 2 个字符：项目级管理员只能按片段定位，不能靠 1 个字符把用户目录
-	// 一页页翻出来；uid 精确查询通常也 ≥2 位。
-	if len([]rune(q)) < 2 {
-		return []AdminUserCandidate{}, nil
+	// 添加成员默认就是列表选择：空查询回最近注册的一页（上限 100），
+	// 有关键词再按邮箱片段/uid 过滤。项目级管理员看不到 super。
+	query := `SELECT id, email, role FROM users WHERE role <> 'super'`
+	args := []any{}
+	if q != "" {
+		query += ` AND (LOWER(email) LIKE LOWER(?) OR id = ?)`
+		args = append(args, "%"+q+"%", numericOrZero(q))
 	}
-	rows, err := s.pool.QueryContext(db.QueryCtx(),
-		`SELECT id, email, role FROM users
-		 WHERE role <> 'super' AND (LOWER(email) LIKE LOWER(?) OR id = ?)
-		 ORDER BY id LIMIT 20`, "%"+q+"%", numericOrZero(q))
+	query += ` ORDER BY id DESC LIMIT 100`
+	rows, err := s.pool.QueryContext(db.QueryCtx(), query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("查项目候选用户: %w", err)
 	}

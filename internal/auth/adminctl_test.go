@@ -432,11 +432,14 @@ func TestProjectRestrictionAndAccess(t *testing.T) {
 	}
 
 	// 项目成员选择器：空查询不倒全表；按邮箱片段能搜到；app-admin 只能搜自己的项目。
-	if cands, err := svc.AdminProjectCandidates(superScope, "CalorieDiary", "  "); err != nil || len(cands) != 0 {
-		t.Errorf("空查询应回空数组，得到 %+v err=%v", cands, err)
+	allCands, err := svc.AdminProjectCandidates(superScope, "CalorieDiary", "  ")
+	if err != nil || len(allCands) == 0 {
+		t.Fatalf("空查询应默认回一页已注册用户（列表选择），得到 %+v err=%v", allCands, err)
 	}
-	if cands, err := svc.AdminProjectCandidates(superScope, "CalorieDiary", "w"); err != nil || len(cands) != 0 {
-		t.Errorf("单字符查询应回空数组（防翻目录），得到 %+v err=%v", cands, err)
+	for _, c := range allCands {
+		if c.Role == adminRoleSuper {
+			t.Errorf("候选列表不应包含平台管理员: %+v", c)
+		}
 	}
 	cands, err := svc.AdminProjectCandidates(superScope, "CalorieDiary", "w5-member")
 	if err != nil || len(cands) != 1 || cands[0].UID != member.UID || cands[0].Email != member.Email {

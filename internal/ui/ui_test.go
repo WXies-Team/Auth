@@ -1870,6 +1870,11 @@ func TestAdminAccessMembersAndPicker(t *testing.T) {
 	if !strings.Contains(tpl, `id="access-stats" aria-live="polite"`) {
 		t.Error("access-stats 应带 aria-live=polite（计数变化可被读屏感知）")
 	}
+	// 角色选择必须在结果列表之前：否则成员列表的滚动容器/对话框高度会把
+	// 原生 select 弹层挤到可视区外。
+	if strings.Index(tpl, `id="member-role-field"`) > strings.Index(tpl, `id="member-results"`) {
+		t.Error("项目角色选择应排在成员列表之前")
+	}
 	if strings.Contains(tpl, "oauth-secret-dlg") {
 		t.Error("Web 接入的一次性 Secret 层不应随重写回来")
 	}

@@ -3225,6 +3225,9 @@ function initAdminAccess() {
     $('#member-role-field').hidden = !IS_SUPER;
     updateAddBtn();
     openDialog($('#member-dlg'), '#member-query');
+    // 打开即列出一页已注册用户（列表选择），搜索框只是可选筛选——不要求
+    // 管理员记住 uid；聚焦搜索框但仍先渲染列表。
+    searchCandidates();
     setTimeout(() => $('#member-query').focus(), 30);
   }
 
@@ -3240,17 +3243,20 @@ function initAdminAccess() {
     const q = $('#member-query').value.trim();
     const box = $('#member-results');
     const empty = $('#member-empty');
+    const count = $('#member-count');
     showErr('#member-error', '');
     picker.selected.clear();
     updateAddBtn();
     box.innerHTML = '';
-    if (!q) { empty.hidden = true; return; }
+    count.hidden = true;
     try {
       const res = await api(`/admin/projects/${encodeURIComponent(picker.p.app)}/candidates?query=${encodeURIComponent(q)}`);
       const existing = new Map(peopleOf(picker.p).map(x => [String(x.email).toLowerCase(), x.role]));
       const items = res.items || [];
       if (!items.length) { empty.hidden = false; return; }
       empty.hidden = true;
+      count.hidden = false;
+      count.textContent = q ? `找到 ${items.length} 个匹配用户` : `最近注册的 ${items.length} 个用户（输入关键词可筛选）`;
       items.forEach(u => {
         const role = existing.get(String(u.email).toLowerCase());
         const disabled = !!role;
