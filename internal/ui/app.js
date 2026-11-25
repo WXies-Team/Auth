@@ -3826,6 +3826,7 @@ function initAdminConfig() {
                 <span class="badge plain">${esc(it.key)}</span>
                 ${it.secret ? '<span class="badge plain">凭据</span>' : ''}
                 <br><span class="meta">${stateText}</span>
+                ${it.key === 'llm_base_url' ? '<br><span class="meta">可填 Base URL（…/v1）或完整端点（…/chat/completions）</span>' : ''}
               </span>
               <span class="row" style="gap:6px">
                 <input type="text" style="min-width:200px" aria-label="新的值" autocomplete="off" placeholder="${it.secret ? '输入新值替换' : '留空则不修改'}">
