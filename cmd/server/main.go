@@ -122,8 +122,11 @@ func main() {
 	// 抽出来才能被路由级回归测试钉住（老客户端契约见 routes_test.go）。
 	registerRoutes(mux, authSvc, cfg, pool)
 
-	// 兜底：未知错误 500 + ApiError 体，而不是让 Go 把栈吐给客户端
-	handler := withRecover(mux)
+	// 安全响应头挂在最外层：静态页、JSON、错误页都覆盖（OWASP HTTP Headers CS：
+	// 这些头要在所有响应上，而不只是首页）。CSP 只声明 frame-ancestors /
+	// object-src / base-uri，不限制 script-src——现有页面有内联脚本（注销撤销页），
+	// 收紧 script-src 需要先做 nonce 改造，属于 UI 批次，不能在这里静默打破页面。
+	handler := withSecurityHeaders(withRecover(mux))
 
 	// 默认只绑回环：对外一律经 nginx TLS 反代，直连 8868 会把 JWT 走明文。
 	addr := envOr("BIND_ADDR", "127.0.0.1:8868")
@@ -434,6 +437,24 @@ func writeError(w http.ResponseWriter, code int, message string) {
 	writeJSON(w, code, protocol.ApiError{Message: message})
 }
 
+// writeErrorReason 是「message + 机器可读 reason」的统一出口。reason 的值域按
+// 状态码分段：403 = policy / permission（下一步是联系管理员还是申请权限），
+// 400 = origin / challenge / verification，404 = ceremony_expired（Passkey 仪式
+// 失败的分级）。401/429 这类「下一步唯一」的拒绝不带 reason——多一个字段只会让
+// 前端多一条无意义分支。
+// 5xx 一律丢掉 reason：服务故障给不出可执行的下一步，分级反而是误导。
+func writeErrorReason(w http.ResponseWriter, code int, message, reason string) {
+	if code < 400 || code >= 500 {
+		reason = ""
+	}
+	writeJSON(w, code, protocol.ApiError{Message: message, Reason: reason})
+}
+
+// writeDenied 是路由层 403 的快捷方式（reason 由调用方给 policy/permission）。
+func writeDenied(w http.ResponseWriter, message, reason string) {
+	writeErrorReason(w, http.StatusForbidden, message, reason)
+}
+
 // writeResult 把业务结果翻译成「状态码 + ApiError 体」。
 func writeResult(w http.ResponseWriter, v any, err error) {
 	if err == nil {
@@ -442,13 +463,67 @@ func writeResult(w http.ResponseWriter, v any, err error) {
 	}
 	var he *auth.HTTPError
 	if errors.As(err, &he) {
-		writeError(w, he.Code, he.Message)
+		writeErrorReason(w, he.Code, he.Message, he.Reason)
 		return
 	}
 	// 内部错误（含 SQL 与路径）全进日志，客户端只拿固定文案——排障信息不丢，
 	// 但不再外泄
 	slog.Error("handler failed", "err", err, "cause", err.Error())
 	writeError(w, http.StatusInternalServerError, "服务出了点问题，请稍后重试")
+}
+
+// contentSecurityPolicy 是统一 CSP（nonce 为空 = 一律不放行内联脚本）。
+//
+// 页面结构已经适配严格 CSP：所有可执行脚本都在外部 /app.js（`<script src>`），
+// 模板里的 `<script type="application/json">` 是数据块、不执行；没有内联事件属性
+// （onclick= 之类）也没有 javascript: 链接。仍保留两处放宽，各有明确理由：
+//   - style-src 'unsafe-inline'：模板有 style="…" 属性与 <style> 块，样式注入不
+//     构成脚本执行面；
+//   - img-src data:：档案头像是 data:image/jpeg;base64 内联。
+//
+// 唯一的内联**可执行**脚本是「注销撤销页」（cmd/server/web.go 自渲染、脚本里带
+// 一次性 token），它走 contentSecurityPolicy(nonce) 并把同一个 nonce 写在 <script>
+// 上——token 是每请求变化的，哈希白名单不适用。
+func contentSecurityPolicy(nonce string) string {
+	script := "script-src 'self'"
+	if nonce != "" {
+		script += " 'nonce-" + nonce + "'"
+	}
+	return "default-src 'self'; " + script + "; style-src 'self' 'unsafe-inline'; " +
+		"img-src 'self' data:; connect-src 'self'; form-action 'self'; " +
+		"frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
+}
+
+// withSecurityHeaders 给所有响应加基线安全头（OWASP HTTP Headers Cheat Sheet）：
+//
+//	X-Content-Type-Options  nosniff（禁止 MIME 嗅探；withLogging 里也有一份，
+//	                        这里覆盖 429/404 等不走 withLogging 的分支）
+//	X-Frame-Options         DENY（旧浏览器兜底）
+//	Content-Security-Policy frame-ancestors 'none'（现代浏览器的点击劫持主防线）、
+//	                        default-src/script-src 'self'（XSS 纵深：注入的脚本没有
+//	                        nonce 就不执行）、object-src 'none'、base-uri 'self'、
+//	                        form-action 'self'（外站提交不了本站表单）
+//	Referrer-Policy         strict-origin-when-cross-origin（query 里的 token 不随
+//	                        外链 Referer 泄露）
+//	Permissions-Policy      camera/microphone/geolocation 全关（本服务不需要）
+//	Strict-Transport-Security 仅在确认走 HTTPS 时发（TLS 直连或受信反代声明）；
+//	                        HSTS 在 HTTP 上无效，误发只会让本地调试困惑。
+//
+// 不放 script-src 'unsafe-inline'：那一条等于让 CSP 对 XSS 完全失效。页面自带的
+// 内联脚本只有注销撤销页，它按请求发 nonce（见 contentSecurityPolicy）。
+func withSecurityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Content-Security-Policy", contentSecurityPolicy(""))
+		h.Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		h.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+		if r.TLS != nil || strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")), "https") {
+			h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func withRecover(next http.Handler) http.Handler {
@@ -510,6 +585,8 @@ func withUID(svc *auth.Service, next http.Handler) http.Handler {
 		}
 		wc.Meta = sessMeta(r)
 		if wc.ViaCookie && !readMethod(r.Method) && !wc.CheckCSRF(r.Header.Get("X-CSRF-Token")) {
+			// 不带 reason：CSRF 失配是「页面/请求过期」，既不是 policy（策略拦截）
+			// 也不是 permission（授权不足），前端按 message 提示刷新即可。
 			writeError(w, http.StatusForbidden, "请求校验失败，请刷新页面后重试")
 			return
 		}
@@ -682,7 +759,9 @@ func limit(scope string, next http.Handler) http.Handler {
 // 拒绝分支因此要自带 nosniff 与访问日志，否则 429 轮次在运维侧不可见。
 func limitN(scope string, max int, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		bucket := scope + ":" + clientIP(r)
+		// 桶键按 auth.RateKey 归一（IPv6 → /64）：同一客户端换主机位不能换出新预算。
+		// 日志里的 ip 仍是完整地址，取证不受影响。
+		bucket := scope + ":" + auth.RateKey(clientIP(r))
 		if !limiter.allow(bucket, max, time.Minute) {
 			limit429(w, r, scope, bucket)
 			return
@@ -765,7 +844,7 @@ func (l *rateLimiter) observe(key string, win time.Duration) int {
 //
 // 想改信任范围用 TRUSTED_PROXIES（逗号分隔 CIDR/IP，默认环回+内网）。
 func clientIP(r *http.Request) string {
-	remote := hostOnly(r.RemoteAddr)
+	remote := normalizeClientIP(r.RemoteAddr)
 	trusted := trustedProxies()
 	if !containsIP(trusted, remote) {
 		return remote
@@ -773,8 +852,8 @@ func clientIP(r *http.Request) string {
 	for _, header := range r.Header.Values("X-Forwarded-For") {
 		parts := strings.Split(header, ",")
 		for i := len(parts) - 1; i >= 0; i-- {
-			ip := strings.TrimSpace(parts[i])
-			if ip == "" || net.ParseIP(ip) == nil {
+			ip := normalizeClientIP(parts[i])
+			if ip == "" {
 				continue // 空串/非 IP（伪造垃圾）跳过，继续往左找
 			}
 			if !containsIP(trusted, ip) {
@@ -782,10 +861,43 @@ func clientIP(r *http.Request) string {
 			}
 		}
 	}
-	if real := strings.TrimSpace(r.Header.Get("X-Real-IP")); net.ParseIP(real) != nil {
+	if real := normalizeClientIP(r.Header.Get("X-Real-IP")); real != "" {
 		return real
 	}
 	return remote
+}
+
+// normalizeClientIP 把各种来源写法归一成一个可比较的 IP：
+//
+//	host:port（含 [::1]:443）→ 去端口；IPv6 zone（fe80::1%eth0）→ 去 zone；
+//	IPv4-mapped（::ffff:203.0.113.7）→ 还原成 v4 点分十进制。
+//
+// 为什么必须归一：限流桶、会话 IP、GeoIP 三处都拿这个值做键/判定；同一客户端
+// 在 XFF 里写成 ::ffff:1.2.3.4、在 RemoteAddr 写成 1.2.3.4，不归一会分成两个
+// 桶（绕过限流）并在设备页显示成两个地址。非法/空值回空串，由调用方跳过。
+func normalizeClientIP(raw string) string {
+	v := strings.TrimSpace(raw)
+	if v == "" {
+		return ""
+	}
+	// IPv6 zone：RFC 4007 的 %zone 不是地址的一部分
+	if i := strings.LastIndexByte(v, '%'); i > 0 && strings.Contains(v, ":") {
+		v = v[:i]
+	}
+	// 去端口：先按 host:port 试，再处理裸 IPv6（SplitHostPort 对裸 v6 会失败）
+	if host, _, err := net.SplitHostPort(v); err == nil {
+		v = host
+	} else {
+		v = strings.Trim(v, "[]")
+	}
+	parsed := net.ParseIP(v)
+	if parsed == nil {
+		return ""
+	}
+	if v4 := parsed.To4(); v4 != nil {
+		return v4.String()
+	}
+	return parsed.String()
 }
 
 // hostOnly 去掉 RemoteAddr 的端口；SplitHostPort 失败时按原样返回。

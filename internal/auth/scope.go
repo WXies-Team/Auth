@@ -38,6 +38,59 @@ func IsAdminRole(role string) bool { return role == adminRoleAdmin || role == ad
 // IsSuperRole 判定平台管理员（绕过 scope、可授予角色）。
 func IsSuperRole(role string) bool { return role == adminRoleSuper }
 
+// roleRank 是角色的能力等级（user < admin < super）：授权判定的唯一排序来源。
+// 「只能授予低于/等于自己的角色」由它表达——super 能授 admin/user、admin 只能
+// 收自己的项目 scope、user 什么都不能授；root 是 super 中的一个**身份**而非更高
+// 的 role 值（root 的额外能力 = 授/收 super，见 AdminSetRole）。
+func roleRank(role string) int {
+	switch role {
+	case adminRoleSuper:
+		return 2
+	case adminRoleAdmin:
+		return 1
+	default:
+		return 0
+	}
+}
+
+// roleAssignAllowed 是「谁能把谁改成什么角色」的**纯函数**（可无库测试，能力矩阵
+// 逐格钉在 capability_test.go）：
+//
+//	user            → 谁都不能改（路由 requireSuper + 这里双重拒绝）
+//	admin(app-admin) → 谁都不能改（项目管理员只管项目数据，不碰平台角色）
+//	super(非根)     → 只能改 user / admin；碰 super（授予或回收）一律拒
+//	root(super + uid) → user / admin / super 全可改
+//
+// 「不能授予高于自己」由 roleRank 表达；root 是**同一 role 上的额外身份**，不是
+// 第四个 role 值。target==actor 的自指变更由 AdminSetRole 在更前面拒绝。
+func roleAssignAllowed(actorRole string, actorIsRoot bool, currentRole, newRole string) error {
+	if !IsSuperRole(actorRole) {
+		return permissionDenied("只有平台管理员可以调整角色，请联系平台管理员操作")
+	}
+	// 涉 super 的调整（升到 super 或从 super 降下）只认根管理员。
+	if newRole == adminRoleSuper || IsSuperRole(currentRole) {
+		if !actorIsRoot {
+			return permissionDenied("只有根管理员可以授予或取消 super 角色")
+		}
+	}
+	// 非根管理员只能授予严格低于自己的角色（super 授 admin/user 合法；
+	// admin 已在上面的 IsSuperRole 分支被拒，这里再兜一层防未来角色值扩展）。
+	if !actorIsRoot && roleRank(newRole) >= roleRank(actorRole) {
+		return permissionDenied("不能授予不低于自己的角色，请联系根管理员操作")
+	}
+	return nil
+}
+
+// scopeGrantAllowed 是「谁能授予/回收项目管理员」的纯函数：
+// 任一平台管理员（super，含 root）都可以；app-admin 与普通用户都不行。
+// 目标是 super 时由 AdminSetScope 先拒绝（super 已覆盖全部项目，授 scope 无意义）。
+func scopeGrantAllowed(actorRole string) error {
+	if !IsSuperRole(actorRole) {
+		return permissionDenied("只有平台管理员可以授予或回收项目权限，请联系平台管理员开通")
+	}
+	return nil
+}
+
 // AdminScopes 查一个 uid 的 app 授权清单（app-admin 的数据过滤范围）。
 // super 的调用方不该走到这里（路由层已按 role 分流）；查错上报、查无回空切片。
 func (s *Service) AdminScopes(uid int64) ([]string, error) {
@@ -77,23 +130,40 @@ func (s *Service) AdminSetScope(actor Caller, targetUID int64, app string, grant
 		s.Audit(AuditEvent{
 			Action: action, OK: err == nil, ActorUID: uidPtr(actor.UID),
 			ActorEmail: maskEmail(actor.Email), TargetUID: uidPtr(targetUID), Meta: actor.Meta,
-			Detail: map[string]string{"app": app},
+			Detail: withDenyReason(map[string]string{"app": app}, err),
 		})
 	}()
 	if !allowedApps[app] {
 		return badRequest("未知项目，请重新选择后重试")
 	}
+	// 业务层二次收口（路由 requireSuper 之外）：授予/回收项目权限**只属于平台
+	// 管理员**，且不能给自己授（自指提升一律拒，避免「自己给自己开项目」绕过
+	// 另一位管理员）。角色每请求现查，撤销资格当场生效。
+	var actorRole string
+	if err := s.pool.QueryRowContext(db.QueryCtx(),
+		"SELECT role FROM users WHERE id = ?", actor.UID).Scan(&actorRole); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return unauthorized("登录已过期，请重新登录")
+		}
+		return fmt.Errorf("查操作者角色: %w", err)
+	}
+	if err := scopeGrantAllowed(actorRole); err != nil {
+		return err
+	}
 	var role string
 	scanErr := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT role FROM users WHERE id = ?", targetUID).Scan(&role)
 	if errors.Is(scanErr, sql.ErrNoRows) {
-		return &HTTPError{404, "该用户不存在，请刷新用户列表后重试"}
+		return &HTTPError{Code: 404, Message: "该用户不存在，请刷新用户列表后重试"}
 	}
 	if scanErr != nil {
 		return fmt.Errorf("查目标用户: %w", scanErr)
 	}
 	if IsSuperRole(role) {
 		return badRequest("平台管理员的权限覆盖全部项目，无需按项目授权")
+	}
+	if targetUID == actor.UID {
+		return badRequest("不能给自己授予项目权限，请让另一位平台管理员操作")
 	}
 
 	tx, err := s.pool.BeginTx(db.SlowCtx(), nil)
@@ -142,7 +212,7 @@ func placeholders(n int) string {
 	return strings.TrimSuffix(strings.Repeat("?,", n), ",")
 }
 
-// containsStr 是 []string 的线性查找（清单最多两个 app，建 map 纯属浪费）。
+// containsStr 是 []string 的线性查找（清单个位数，建 map 纯属浪费）。
 func containsStr(list []string, v string) bool {
 	for _, s := range list {
 		if s == v {

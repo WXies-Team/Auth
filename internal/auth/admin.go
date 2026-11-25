@@ -34,14 +34,29 @@ const (
 	adminMaxConfigValue = 4096
 )
 
-// RootSuperEmail 是**根平台管理员**的钉死邮箱。super 的授予与回收只认这一个身份
-//（见 AdminSetRole）——改这个值等于移交根权限，**改需慎重**：动它之前确认新邮箱
-// 的持有者身份，且库里至少还有一个有效 super。
+// 根平台管理员的身份锚点（2026-11 作者拍板：auth uid 5939716 为根管理员）。
 //
-// **W7-2 定案：root 判定按 uid**——启动时把 RootSuperEmail 解析成 uid 缓存
-//（resolveRootSuper），此后 root 换绑邮箱不再失权；解析未成功（空库 / 查询失败，
-// 失败打 Error 日志）才回退邮箱比对。回退态是兜底而非常态。
-const RootSuperEmail = "horatioxs@outlook.com"
+// **按 uid 钉死，不按邮箱**：uid 是账号的权威标识（改绑邮箱不改 uid），而邮箱
+// 在「换绑/规范化/大小写」上都有漂移面。业界同类系统的破窗账号（Google Cloud
+// super admin、AWS root user）也是「一个唯一的、预先指定的主体」，不是「谁先
+// 注册/谁叫 admin 谁就是」；差别在于我们**只钉身份标识、不钉任何凭据**——没有
+// 硬编码口令（CWE-798 禁止的是凭据，不是主体 id），登录仍走密码/验证码/
+// Passkey + MFA + 2 小时强认证窗。
+//
+// 出处：Google Cloud《Super administrator account best practices》
+// https://cloud.google.com/resource-manager/docs/super-admin-best-practices
+// （super admin 应当唯一、受 MFA 保护、与日常账号分离）；
+// CWE-798 只把「硬编码凭据」列为缺陷，身份常量本身不是凭据。
+//
+// RootSuperEmail 是**兜底**：仅在库里还没有 RootUID 行时（空库首启、测试先建
+// 服务后建号、历史部署尚未迁到 5939716）按邮箱解析一次并缓存 uid。解析成功后
+// 一律以缓存 uid 为准——根账号之后换绑邮箱不失权，所以这里**不**要求库里的
+// RootUID 行当前仍用兜底邮箱。部署前的一次性核对（确认 5939716 这一行确实是
+// 根账号，而不是某个恰好抽到该号的存量账号）见 docs/backend-research-2026-11.md。
+const (
+	RootUID        int64  = 5939716
+	RootSuperEmail string = "hs@horatio.cn"
+)
 
 // AdminUser 是后台用户列表/详情的一行。
 //
@@ -65,6 +80,9 @@ type AdminUser struct {
 	HasAvatar   bool   `json:"hasAvatar"`
 	// Ban：列表前置状态——被封的账号不该点进详情才发现。UntilMs=0 表示永久。
 	Ban *UserBanInfo `json:"ban,omitempty"`
+	// IsRoot 标记该行是不是根平台管理员（唯一）。判定在服务端按 uid 做
+	//（isRootAccount），UI 据此渲染「根管理员」徽标并锁定目标，不再抄 uid。
+	IsRoot bool `json:"isRoot"`
 }
 
 type UserBanInfo struct {
@@ -74,7 +92,7 @@ type UserBanInfo struct {
 }
 
 // AdminUserDetail 是用户详情：加凭证摘要、应用授权清单与活跃会话，够管理员判断
-//「要不要踢、该不该给权限」，不回任何口令散列。
+// 「要不要踢、该不该给权限」，不回任何口令散列。
 // Bans 是 W2 封禁清单（契约 6 追加字段）：恒为数组（无封禁回 []，不回 null）。
 // AvatarImage 是 B5 的全量头像（详情页 48px 头像用；空串 = 无头像，与列表的
 // hasAvatar 同一事实的两种粒度）。
@@ -102,17 +120,21 @@ type BanInfo struct {
 // Nickname / AvatarColor（B5）：会话总览聚合行带昵称展示（无昵称前端回退邮箱，
 // 无档案行回零值）；头像图不进会话行——同样出于载荷考虑（列表行只带色不带图）。
 type AdminSession struct {
-	ID          string `json:"id"`
-	UID         int64  `json:"uid"`
-	Email       string `json:"email"`
-	App         string `json:"app"`
-	Device      string `json:"device"`
-	IP          string `json:"ip"`
-	IPRegion    string `json:"ipRegion"`
-	CreatedAt   int64  `json:"createdAt"`
-	LastSeenAt  int64  `json:"lastSeenAt"`
-	Nickname    string `json:"nickname"`
-	AvatarColor int    `json:"avatarColor"`
+	ID         string `json:"id"`
+	UID        int64  `json:"uid"`
+	Email      string `json:"email"`
+	App        string `json:"app"`
+	Device     string `json:"device"`
+	IP         string `json:"ip"`
+	IPRegion   string `json:"ipRegion"`
+	CreatedAt  int64  `json:"createdAt"`
+	LastSeenAt int64  `json:"lastSeenAt"`
+	// ExpiresAt / IdleExpiresAt 与 SessionInfo 同名同义（会话子系统重写新增的
+	// 只增字段）：后台既要能按「谁快到期」排查，也要能解释为什么某行会消失。
+	ExpiresAt     int64  `json:"expiresAt,omitempty"`
+	IdleExpiresAt int64  `json:"idleExpiresAt,omitempty"`
+	Nickname      string `json:"nickname"`
+	AvatarColor   int    `json:"avatarColor"`
 }
 
 // ConfigItem 是配置中心的一条：secret 只回 configured + 末 4 位 hint，
@@ -182,7 +204,21 @@ type AIUsageUserDetail struct {
 // AdminSearchUsers 按邮箱片段或精确 uid 搜用户，倒序分页。
 // query 为空 = 列全部（后台首页的默认形态）。
 func (s *Service) AdminSearchUsers(query string, limit, offset int) ([]AdminUser, int, error) {
+	return s.AdminSearchUsersFiltered(query, "", nil, limit, offset)
+}
+
+// AdminSearchUsersFiltered 在 AdminSearchUsers 之上加两个**可选**过滤（契约缺口
+// #2）：role 取 user/admin/super 三值（空 = 不限），banned 非 nil 时只回生效封禁
+// /未封禁的用户。判定口径与 gate.go 的 denyIfBanned 同源：until_ms=0 永久或
+// until_ms > now 才算生效，过期行不参与过滤（也不会被误报成封禁）。
+//
+// 条件全部占位符；role 先过白名单再进 SQL，非法值 400——不给 ?role=xxx 一个
+// 静默回全量或 500 的入口。
+func (s *Service) AdminSearchUsersFiltered(query, role string, banned *bool, limit, offset int) ([]AdminUser, int, error) {
 	limit, offset = clampPage(limit, offset)
+	if role != "" && role != adminRoleUser && role != adminRoleAdmin && role != adminRoleSuper {
+		return nil, 0, badRequest("role 只能是 user、admin 或 super，请重新选择后重试")
+	}
 	const cols = "SELECT id, email, role, created_at FROM users"
 	var (
 		args []any
@@ -201,6 +237,22 @@ func (s *Service) AdminSearchUsers(query string, limit, offset int) ([]AdminUser
 			cond = " WHERE email LIKE ?"
 			args = append(args, "%"+q+"%")
 		}
+	} else {
+		cond = " WHERE 1=1"
+	}
+	if role != "" {
+		cond += " AND role = ?"
+		args = append(args, role)
+	}
+	if banned != nil {
+		now := time.Now().UnixMilli()
+		exists := "(SELECT 1 FROM user_bans b WHERE b.uid = users.id AND (b.until_ms = 0 OR b.until_ms > ?))"
+		if *banned {
+			cond += " AND EXISTS " + exists
+		} else {
+			cond += " AND NOT EXISTS " + exists
+		}
+		args = append(args, now)
 	}
 	var total int
 	if err := s.pool.QueryRowContext(db.QueryCtx(), "SELECT COUNT(*) FROM users"+cond, args...).
@@ -264,7 +316,7 @@ func (s *Service) fillUserBans(users []AdminUser) error {
 			return fmt.Errorf("读封禁: %w", err)
 		}
 		if prev, ok := found[uid]; ok && prev.App == "*" {
-			continue   // 已有全站封，项目封不覆盖
+			continue // 已有全站封，项目封不覆盖
 		}
 		found[uid] = b
 	}
@@ -285,6 +337,9 @@ func (s *Service) fillUserBans(users []AdminUser) error {
 func (s *Service) fillUserSummaries(users []AdminUser) error {
 	if len(users) == 0 {
 		return nil
+	}
+	for i := range users {
+		users[i].IsRoot = s.isRootAccount(users[i].UID)
 	}
 	ids := make([]any, 0, len(users))
 	placeholders := make([]string, 0, len(users))
@@ -409,7 +464,7 @@ func (s *Service) AdminUserDetail(uid int64) (*AdminUserDetail, error) {
 		"SELECT id, email, role, created_at, password_hash FROM users WHERE id = ?", uid).
 		Scan(&u.UID, &u.Email, &u.Role, &u.CreatedAt, &password)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, &HTTPError{404, "该用户不存在，请刷新用户列表后重试"}
+		return nil, &HTTPError{Code: 404, Message: "该用户不存在，请刷新用户列表后重试"}
 	}
 	if err != nil {
 		return nil, fmt.Errorf("查用户: %w", err)
@@ -445,7 +500,11 @@ func (s *Service) AdminUserDetail(uid int64) (*AdminUserDetail, error) {
 		detail.Sessions = append(detail.Sessions, protocol.SessionInfo{
 			ID: it.ID, App: it.App, Device: it.Device, IP: it.IP, IPRegion: it.IPRegion,
 			CreatedAt: it.CreatedAt, LastSeenAt: it.LastSeenAt,
-			Current: false, // 后台视角没有「本机」概念
+			// 会话总览与用户详情必须同形：总览行带绝对/空闲到期，详情行漏了会让
+			// 「为什么这台设备消失了」在详情页无法解释（只增字段，老调用方忽略）。
+			ExpiresAt:     it.ExpiresAt,
+			IdleExpiresAt: it.IdleExpiresAt,
+			Current:       false, // 后台视角没有「本机」概念
 		})
 	}
 	passkeys, err := s.ListPasskeys(uid, 0)
@@ -519,11 +578,24 @@ func (s *Service) AdminSetRole(actor Caller, targetUID int64, role string) (err 
 		s.Audit(AuditEvent{
 			Action: action, OK: err == nil, ActorUID: uidPtr(actor.UID),
 			ActorEmail: maskEmail(actor.Email), TargetUID: uidPtr(targetUID), Meta: actor.Meta,
-			Detail: map[string]string{"role": role},
+			Detail: withDenyReason(map[string]string{"role": role}, err),
 		})
 	}()
 	if role != adminRoleUser && role != adminRoleAdmin && role != adminRoleSuper {
 		return badRequest("角色只能是 user、admin 或 super，请重新选择后重试")
+	}
+	// 业务层二次收口（路由 requireSuper 之外）：角色调整只属于平台管理员。
+	// 角色每请求现查——撤掉 super 后下一次调用当场失效，不留进程内缓存窗口。
+	var actorRole string
+	if err := s.pool.QueryRowContext(db.QueryCtx(),
+		"SELECT role FROM users WHERE id = ?", actor.UID).Scan(&actorRole); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return unauthorized("登录已过期，请重新登录")
+		}
+		return fmt.Errorf("查操作者角色: %w", err)
+	}
+	if !IsSuperRole(actorRole) {
+		return permissionDenied("只有平台管理员可以调整角色，请联系平台管理员操作")
 	}
 	if targetUID == actor.UID {
 		return badRequest("不能修改自己的角色，请让另一位平台管理员操作")
@@ -532,18 +604,19 @@ func (s *Service) AdminSetRole(actor Caller, targetUID int64, role string) (err 
 	scanErr := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT role FROM users WHERE id = ?", targetUID).Scan(&current)
 	if errors.Is(scanErr, sql.ErrNoRows) {
-		return &HTTPError{404, "该用户不存在，请刷新用户列表后重试"}
+		return &HTTPError{Code: 404, Message: "该用户不存在，请刷新用户列表后重试"}
 	}
 	if scanErr != nil {
 		return fmt.Errorf("查目标用户: %w", scanErr)
 	}
 	// super 的授予与回收收进根 su：涉 super 的调整（无论升降）非根 su 一律 403，
-	// 且审计落到 admin.role.change 这个「平台角色调整」事件上
+	// 且审计落到 admin.role.change 这个「平台角色调整」事件上。
+	// 判定本身是纯函数 roleAssignAllowed（能力矩阵逐格测试）。
 	if role == adminRoleSuper || IsSuperRole(current) {
 		action = AuditRoleChange
-		if !s.isRootSuper(actor) {
-			return &HTTPError{403, "只有根管理员可以授予或取消 super 角色"}
-		}
+	}
+	if err := roleAssignAllowed(actorRole, s.isRootSuper(actor), current, role); err != nil {
+		return err
 	}
 	if current == role {
 		return nil // 幂等：已是目标角色，不写不报错
@@ -574,11 +647,9 @@ func (s *Service) AdminSetRole(actor Caller, targetUID int64, role string) (err 
 
 // isRootSuper 判定操作者是不是根 su（W7-2：**按 uid 判定**）。
 //
-// uid 在启动时由 resolveRootSuper 解析缓存：root 换绑邮箱不再失权。缓存为空
-//（空库首启 / 查询失败，失败已打 Error 日志）回退邮箱比对——管理端点只收 cookie
-// 会话、邮箱每次请求从 users 表现查，回退态与旧实现同口径。
-// 惰性补解析：启动时根账号还没入库的形态（测试先建服务后建号、首装后补号）
-// 在第一次判定时补齐，此后走 uid 路。
+// uid 在启动时由 resolveRootSuper 解析缓存：root 换绑邮箱不再失权。缓存为空时
+// 惰性补解析一次（测试先建服务后建号、首装后补号）；仍解析不出就 fail closed，
+// 不再按邮箱字符串放行（否则「注册兜底邮箱」就是一条提权路径）。
 func (s *Service) isRootSuper(actor Caller) bool {
 	if s.rootUID.Load() == 0 {
 		s.resolveRootSuper()
@@ -586,33 +657,66 @@ func (s *Service) isRootSuper(actor Caller) bool {
 	if root := s.rootUID.Load(); root != 0 {
 		return actor.UID == root
 	}
-	return strings.EqualFold(strings.TrimSpace(actor.Email), RootSuperEmail)
+	// 解析失败 = fail closed：不再按邮箱/常量 uid 放行。邮箱兜底只发生在
+	// resolveRootSuper 内部（且要求该行 role=super），避免「有人注册了兜底邮箱
+	// 就自动变成根」的提权路径。
+	return false
 }
 
 // isRootAccount 判定**目标账号**是不是根 su（W1/W2 的收口）：目标 uid 命中缓存的
-// 根 uid 即根（换绑邮箱后仍算）；缓存为空才回退钉死邮箱比对。
-func (s *Service) isRootAccount(uid int64, email string) bool {
+// 根 uid 即根（换绑邮箱后仍算）。
+//
+// 保护侧必须 **fail closed = 当作根**：`resolveRootSuper` 失败（DB 抖动、兜底邮箱
+// 尚未入库）时返回 false 等于「根账号不再受保护」，任何非根 su 都能在那一刻重置
+// 根的口令/邮箱——那是提权面，不是降级。所以保留号 RootUID 先直接判真，再看缓存。
+// 这个方向只会多拦/多标，不会多授权：`isRootAccount` 只用于「目标保护」与展示位，
+// 授权侧一律走 `isRootSuper`（那里解析失败仍然是 false，不放行）。
+func (s *Service) isRootAccount(uid int64) bool {
+	if uid == RootUID {
+		return true
+	}
+	if s.rootUID.Load() == 0 {
+		s.resolveRootSuper()
+	}
 	if root := s.rootUID.Load(); root != 0 {
 		return uid == root
 	}
-	return strings.EqualFold(strings.TrimSpace(email), RootSuperEmail)
+	return false
 }
 
-// resolveRootSuper 解析 RootSuperEmail → uid 并缓存（NewService 启动时跑一次，
-// isRootSuper 惰性补跑）。查不到行 / 查询失败都算**解析失败**：回退邮箱比对并打
-// Error 日志（W7-2 原文）——回退态下 root 换绑邮箱会失权，这不是能悄悄吃的降级。
-// 读写走 atomic：惰性补解析可能来自并发请求。
+// IsRootUID 是对外（路由层 /web/session 的 isRoot 位）的根判定：与 isRootSuper 的
+// 模型同源——一律读 resolveRootSuper 的缓存，不在 UI 层再抄一份 uid。
+func (s *Service) IsRootUID(uid int64) bool { return s.isRootAccount(uid) }
+
+// resolveRootSuper 解析根身份并缓存（NewService 启动时跑一次，isRootSuper 惰性补跑）。
+//
+// 顺序钉死：**先按 RootUID 查行**（权威锚点，换绑邮箱不失权），查无此 uid 才按
+// RootSuperEmail 兜底（空库首启 / 测试先建服务后建号 / 历史部署）；两条都查不到
+// 才视为解析失败并打 Error 日志。读写走 atomic：惰性补解析可能来自并发请求。
 func (s *Service) resolveRootSuper() {
 	var id int64
+	// 两个条件都必需：身份锚点（uid）且 role=super。只有 uid 行但 role 被改成
+	// user/admin 的账号不是根——根权限不能靠「占着这个 id」复活。
 	err := s.pool.QueryRowContext(db.QueryCtx(),
-		"SELECT id FROM users WHERE email = ?", normalizeEmail(RootSuperEmail)).Scan(&id)
+		"SELECT id FROM users WHERE id = ? AND role = ?", RootUID, adminRoleSuper).Scan(&id)
+	if err == nil {
+		s.rootUID.Store(id)
+		return
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		slog.Error("按 RootUID 解析根管理员失败，尝试邮箱兜底", "uid", RootUID, "err", err)
+	}
+	err = s.pool.QueryRowContext(db.QueryCtx(),
+		"SELECT id FROM users WHERE email = ? AND role = ?",
+		normalizeEmail(RootSuperEmail), adminRoleSuper).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		// 空库首启 / 测试先建服务后建号：回退态，直到根账号入库后的下一次判定补上
-		slog.Error("根管理员账号未入库，root 判定暂按邮箱比对", "email", RootSuperEmail)
+		slog.Error("根管理员账号未入库，root 判定 fail closed（尚无根）",
+			"uid", RootUID, "email", RootSuperEmail)
 		return
 	}
 	if err != nil {
-		slog.Error("解析根管理员 uid 失败，root 判定回退邮箱比对", "err", err)
+		slog.Error("解析根管理员 uid 失败，root 判定 fail closed", "err", err)
 		return
 	}
 	s.rootUID.Store(id)
@@ -620,17 +724,9 @@ func (s *Service) resolveRootSuper() {
 
 // ---- 会话总览 ----
 
-// AdminListSessions 列活跃会话；uid > 0 时只看该用户；apps 非空时只回这些
-// app 的行（app-admin 的数据边界——sessions.app 列天然承载归属，过滤成本一次
-// 条件而已），空 = 不限（super 的全量视图）。展示的 device 与 ListSessions 同源：
-// 读取时按 user_agent 现算（shortDevice），device 列快照不参与展示。
-//
-// query 是搜索框的**服务端**口径（A4#3）：纯数字按 uid 精确匹配，其余按邮箱片段
-// LIKE，与 AdminSearchUsers 同一套分流——在前端拿到的本页数据上本地过滤会漏掉
-// 本页之外的用户。total 是同条件下的会话条数（分页按会话 offset 走），totalUsers
-// 是同条件下去重后的用户数（会话总览的表格一行一位用户，页码文案按用户数说）。
-func (s *Service) AdminListSessions(uid int64, apps []string, query, ipFilter string, limit, offset int) ([]AdminSession, int, int, error) {
-	limit, offset = clampPage(limit, offset)
+// adminSessionWhere 是会话列表 / 聚合共用的筛选条件（**同一份**，避免两处口径
+// 漂移：列表有行但聚合少算，管理员会以为汇总坏了）。参数全占位符。
+func adminSessionWhere(uid int64, apps []string, query, ipFilter string) (string, []any) {
 	cond := " WHERE s.revoked_at IS NULL"
 	args := []any{}
 	if uid > 0 {
@@ -659,6 +755,92 @@ func (s *Service) AdminListSessions(uid int64, apps []string, query, ipFilter st
 			args = append(args, "%"+q+"%")
 		}
 	}
+	return cond, args
+}
+
+// SessionAggregate 是会话总览的一个汇总桶（app 或地区）：name + count。
+// JSON 字段名按前端现有命名风格（小驼峰）；数组恒非 nil。
+type SessionAggregate struct {
+	Name  string `json:"name"`
+	Count int    `json:"count"`
+}
+
+// AdminSessionAggregates 回当前筛选条件下的 app / 地区汇总（契约缺口 #3）。
+// 与列表吃**同一套** adminSessionWhere：筛选变了汇总跟着变，不会各说各话。
+// 地区由离线库现算（不外发 IP）；算不出地区的行不进展汇总（空值不渲染口径），
+// 只由 app 汇总覆盖，避免出现「未知地区」这种比不显示更糟的桶。
+func (s *Service) AdminSessionAggregates(uid int64, apps []string, query, ipFilter string) ([]SessionAggregate, []SessionAggregate, error) {
+	cond, args := adminSessionWhere(uid, apps, query, ipFilter)
+	from := " FROM sessions s JOIN users u ON u.id = s.user_id" + cond
+	appAgg := make([]SessionAggregate, 0, len(apps)+2)
+	rows, err := s.pool.QueryContext(db.QueryCtx(),
+		"SELECT s.app, COUNT(*)"+from+" GROUP BY s.app ORDER BY COUNT(*) DESC, s.app", args...)
+	if err != nil {
+		return nil, nil, fmt.Errorf("聚合会话 app: %w", err)
+	}
+	for rows.Next() {
+		var a SessionAggregate
+		if err := rows.Scan(&a.Name, &a.Count); err != nil {
+			_ = rows.Close()
+			return nil, nil, fmt.Errorf("读会话 app 聚合: %w", err)
+		}
+		appAgg = append(appAgg, a)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return nil, nil, fmt.Errorf("遍历会话 app 聚合: %w", err)
+	}
+	_ = rows.Close()
+
+	// 按 IP 分组在 SQL 里做（去重后再过 GeoIP，避免同一地区被逐行重复解析）；
+	// 5000 个不同 IP 的上限只防病态数据，正常单用户设备数远小于它。
+	ipRows, err := s.pool.QueryContext(db.QueryCtx(),
+		"SELECT s.ip, COUNT(*)"+from+" GROUP BY s.ip ORDER BY COUNT(*) DESC LIMIT 5000", args...)
+	if err != nil {
+		return nil, nil, fmt.Errorf("聚合会话地区: %w", err)
+	}
+	byRegion := map[string]int{}
+	for ipRows.Next() {
+		var ip string
+		var n int
+		if err := ipRows.Scan(&ip, &n); err != nil {
+			_ = ipRows.Close()
+			return nil, nil, fmt.Errorf("读会话 IP 聚合: %w", err)
+		}
+		if region := geoip.Region(ip); region != "" {
+			byRegion[region] += n
+		}
+	}
+	if err := ipRows.Err(); err != nil {
+		_ = ipRows.Close()
+		return nil, nil, fmt.Errorf("遍历会话 IP 聚合: %w", err)
+	}
+	_ = ipRows.Close()
+	regionAgg := make([]SessionAggregate, 0, len(byRegion))
+	for name, count := range byRegion {
+		regionAgg = append(regionAgg, SessionAggregate{Name: name, Count: count})
+	}
+	sort.Slice(regionAgg, func(i, j int) bool {
+		if regionAgg[i].Count != regionAgg[j].Count {
+			return regionAgg[i].Count > regionAgg[j].Count
+		}
+		return regionAgg[i].Name < regionAgg[j].Name
+	})
+	return appAgg, regionAgg, nil
+}
+
+// AdminListSessions 列活跃会话；uid > 0 时只看该用户；apps 非空时只回这些
+// app 的行（app-admin 的数据边界——sessions.app 列天然承载归属，过滤成本一次
+// 条件而已），空 = 不限（super 的全量视图）。展示的 device 与 ListSessions 同源：
+// 读取时按 user_agent 现算（shortDevice），device 列快照不参与展示。
+//
+// query 是搜索框的**服务端**口径（A4#3）：纯数字按 uid 精确匹配，其余按邮箱片段
+// LIKE，与 AdminSearchUsers 同一套分流——在前端拿到的本页数据上本地过滤会漏掉
+// 本页之外的用户。total 是同条件下的会话条数（分页按会话 offset 走），totalUsers
+// 是同条件下去重后的用户数（会话总览的表格一行一位用户，页码文案按用户数说）。
+func (s *Service) AdminListSessions(uid int64, apps []string, query, ipFilter string, limit, offset int) ([]AdminSession, int, int, error) {
+	limit, offset = clampPage(limit, offset)
+	cond, args := adminSessionWhere(uid, apps, query, ipFilter)
 	// count 与 list 必须吃同一个 from：query 的邮箱条件在 users 侧，少了 join 数不对。
 	// user_profile 是 LEFT JOIN（无档案行的账号照样出现在会话总览），主键一对一
 	// 不改变行数——两个 COUNT 的口径不受影响。
@@ -676,6 +858,7 @@ func (s *Service) AdminListSessions(uid int64, apps []string, query, ipFilter st
 	listArgs := append(append([]any{}, args...), limit, offset)
 	rows, err := s.pool.QueryContext(db.QueryCtx(),
 		"SELECT s.id, s.user_id, u.email, s.app, s.user_agent, s.ip, s.created_at, s.last_seen_at,"+
+			" s.absolute_expires_at, (s.web_token_hash IS NOT NULL),"+
 			" COALESCE(p.nickname, ''), COALESCE(p.avatar_color, 0)"+
 			from+" ORDER BY s.last_seen_at DESC, s.id DESC LIMIT ? OFFSET ?", listArgs...)
 	if err != nil {
@@ -685,15 +868,18 @@ func (s *Service) AdminListSessions(uid int64, apps []string, query, ipFilter st
 	out := make([]AdminSession, 0, limit)
 	for rows.Next() {
 		var it AdminSession
-		var id int64
+		var id, absExp int64
 		var ua string
+		var isWeb bool
 		if err := rows.Scan(&id, &it.UID, &it.Email, &it.App, &ua, &it.IP,
-			&it.CreatedAt, &it.LastSeenAt, &it.Nickname, &it.AvatarColor); err != nil {
+			&it.CreatedAt, &it.LastSeenAt, &absExp, &isWeb, &it.Nickname, &it.AvatarColor); err != nil {
 			return nil, 0, 0, fmt.Errorf("读会话行: %w", err)
 		}
 		it.ID = strconv.FormatInt(id, 10)
 		it.Device = shortDevice(ua)
 		it.IPRegion = geoip.Region(it.IP)
+		it.ExpiresAt = sessionAbsoluteExpiry(it.CreatedAt, absExp)
+		it.IdleExpiresAt = sessionIdleExpiry(it.LastSeenAt, isWeb)
 		out = append(out, it)
 	}
 	if err := rows.Err(); err != nil {
@@ -706,7 +892,7 @@ func (s *Service) AdminListSessions(uid int64, apps []string, query, ipFilter st
 // 不该看到 404）。owner 只为了审计里能带 target_uid。
 //
 // apps 非空时是 app-admin 的收权边界：目标会话的 app 不在授权清单内一律 403
-//（不能踢别的 app 的会话）；空 = 不限（super）。越界尝试照记审计（fail）。
+// （不能踢别的 app 的会话）；空 = 不限（super）。越界尝试照记审计（fail）。
 func (s *Service) AdminRevokeSession(actor Caller, sid int64, apps []string) (err error) {
 	var owner sql.NullInt64
 	var sessApp string
@@ -716,13 +902,13 @@ func (s *Service) AdminRevokeSession(actor Caller, sid int64, apps []string) (er
 		s.Audit(AuditEvent{
 			Action: AuditAdminSession, OK: err == nil, ActorUID: uidPtr(actor.UID),
 			ActorEmail: maskEmail(actor.Email), TargetUID: uidPtr(owner.Int64), Meta: actor.Meta,
-			Detail: map[string]string{"session": fmt.Sprint(sid)},
+			Detail: withDenyReason(map[string]string{"session": fmt.Sprint(sid)}, err),
 		})
 	}()
 	// 查无此行（含 appErr=ErrNoRows）维持幂等成功语义：不存在的会话没有可越界的
 	// app，下面的 UPDATE 也是 0 行命中
 	if appErr == nil && len(apps) > 0 && !containsStr(apps, sessApp) {
-		err = &HTTPError{403, "没有该项目的管理权限，请联系平台管理员开通"}
+		err = permissionDenied("没有该项目的管理权限，请联系平台管理员开通")
 		return err
 	}
 	if _, err = s.pool.ExecContext(db.QueryCtx(),
@@ -739,8 +925,15 @@ func (s *Service) AdminRevokeUserSessions(actor Caller, targetUID int64) (err er
 		s.Audit(AuditEvent{
 			Action: AuditAdminUserKick, OK: err == nil, ActorUID: uidPtr(actor.UID),
 			ActorEmail: maskEmail(actor.Email), TargetUID: uidPtr(targetUID), Meta: actor.Meta,
+			Detail: withDenyReason(nil, err),
 		})
 	}()
+	// 与封禁/重置口令/换邮箱同一条收口：目标必须存在，且根账号只认根管理员。
+	// 少了这一道，非根 su 能把根账号的全部设备踢下线（对破窗账号的定向 DoS），
+	// 也不符合「只有根能操作该账号」的既有口径。
+	if _, err = s.adminTarget(actor, targetUID); err != nil {
+		return err
+	}
 	if err = revokeUserSessions(db.QueryCtx(), s.pool, targetUID, 0, nil); err != nil {
 		return err
 	}
@@ -852,7 +1045,7 @@ func (s *Service) AdminSetConfig(actor Caller, key, value string) (err error) {
 		return badRequest("此键由迁移脚本写入，不可在后台编辑，请勿重复执行迁移脚本")
 	}
 	if !allowedConfigKey(key) {
-		return &HTTPError{404, "该配置键不在可编辑范围内，请确认键名后重试"}
+		return &HTTPError{Code: 404, Message: "该配置键不在可编辑范围内，请确认键名后重试"}
 	}
 	if len(value) > adminMaxConfigValue {
 		return badRequest(fmt.Sprintf("配置值过长（最多 %d 字节），请精简后重试", adminMaxConfigValue))
@@ -1107,7 +1300,7 @@ func (s *Service) AdminAIUsageUser(days int, apps []string, uid int64) (*AIUsage
 	err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT u.email FROM users u WHERE u.id = ?"+cond, args...).Scan(&email)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, &HTTPError{404, "该用户不存在，请刷新用户列表后重试"}
+		return nil, &HTTPError{Code: 404, Message: "该用户不存在，请刷新用户列表后重试"}
 	}
 	if err != nil {
 		return nil, fmt.Errorf("查用户: %w", err)

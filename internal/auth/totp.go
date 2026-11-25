@@ -32,8 +32,8 @@ import (
 const (
 	// totpIssuer 是二维码里的应用名（Google Authenticator Key Uri Format 的 issuer 字段），
 	// 与邮件品牌同口径取中性名 Auth。
-	totpIssuer       = "Auth"
-	totpPeriod       = 30
+	totpIssuer        = "Auth"
+	totpPeriod        = 30
 	totpMaxLoginTries = 5
 	// recoveryCodeCount / 格式：16 位 Crockford 风格（去掉 I L O U，32 字符表）≈ 80 位熵，
 	// 分四段连字符便于手抄。恢复码是 TOTP 丢失时的唯一后路，数量对齐主流厂商的量级。
@@ -63,7 +63,7 @@ type TOTPStatus struct {
 }
 
 // TOTPSetup 是 setup 的回执：二维码 data URI、otpauth URI 与明文 secret 三件套
-//（Supabase 同做法——扫码之外永远留手输，扫不了码的人也要能绑）。
+// （Supabase 同做法——扫码之外永远留手输，扫不了码的人也要能绑）。
 type TOTPSetup struct {
 	Secret     string `json:"secret"`
 	OTPAuthURI string `json:"otpauthUri"`
@@ -72,12 +72,12 @@ type TOTPSetup struct {
 
 // totpFactor 是 totp_factors 一行的解码结果。
 type totpFactor struct {
-	Secret          string
-	Pending         string // 非空 = 正在重置，验码目标是它而不是 Secret
-	Enabled         bool
-	LastUsedStep    int64
-	ConfirmedAt     sql.NullInt64
-	CreatedAt       int64
+	Secret       string
+	Pending      string // 非空 = 正在重置，验码目标是它而不是 Secret
+	Enabled      bool
+	LastUsedStep int64
+	ConfirmedAt  sql.NullInt64
+	CreatedAt    int64
 }
 
 // sealSecret AES-256-GCM 加密 secret 明文，落库形态 nonce||ciphertext。
@@ -339,7 +339,7 @@ func (s *Service) EnableTOTP(c Caller, code string) (codes []string, err error) 
 
 // DisableTOTP 关闭两步验证：当前 TOTP 码或恢复码任一可解（TOTP 手机丢了就靠
 // 恢复码收尾，堵死「丢了手机+没恢复码」之外的任何死锁）。解绑同时删恢复码
-//（恢复码属 2FA 配置的一部分，随关闭一起作废）。
+// （恢复码属 2FA 配置的一部分，随关闭一起作废）。
 //
 // **不吊销其它会话、不动 token_version**（GitHub 口径：关闭 2FA 的后果只有失去
 // 组织访问，不登出其它设备；通行做法=关闭只删 2FA 配置本身）。旧行为是
@@ -466,7 +466,7 @@ func (s *Service) RegenerateRecoveryCodes(c Caller, code string) (codes []string
 //
 // 重放闸是**一条原子 UPDATE**：`WHERE last_used_timestep < step` 按 RowsAffected
 // 判定归属——并发提交同一个码时 InnoDB 行锁让两个事务串行，后者 WHERE 不再命中
-//（0 行）自然落败。旧实现「SELECT 看账再 UPDATE 覆盖写」两步之间有窗口，
+// （0 行）自然落败。旧实现「SELECT 看账再 UPDATE 覆盖写」两步之间有窗口，
 // 并发同码可双双放行（ASVS 6.5.1「一次一用」失守）。
 func (s *Service) VerifyTOTPCode(uid int64, code string) (bool, error) {
 	if strings.TrimSpace(code) == "" {
@@ -499,11 +499,11 @@ func (s *Service) VerifyTOTPCode(uid int64, code string) (bool, error) {
 }
 
 // verifyTOTPAt 校验码并回**命中的步进序号**（0 = 没通过），附带两条闸：±1 步进
-//（库默认的 Google Authenticator 兼容参数）、同步进已用过则拒（抓「录一次码反复放」）。
+// （库默认的 Google Authenticator 兼容参数）、同步进已用过则拒（抓「录一次码反复放」）。
 //
 // 不用 totp.ValidateCustom 的 bool——它不告诉你命中的步进，重放就没法按步进挡。
 // 这里按相邻三个步进各自**生成**预期码再比对：既拿到精确步进，比较也走常数时间
-//（逐字符相等会让「差几位」变成计时信号）。
+// （逐字符相等会让「差几位」变成计时信号）。
 func (s *Service) verifyTOTPAt(secret, code string, lastStep int64) (int64, bool) {
 	code = strings.TrimSpace(code)
 	if len(code) != 6 {
@@ -539,7 +539,7 @@ func (s *Service) verifyTOTPAt(secret, code string, lastStep int64) (int64, bool
 //
 // 只有**命中**才落 recovery.consume 审计：拿乱码试的失败轮次已经在
 // login.fail 里计着，逐次记只会让表被爆破尝试灌满。actor 带 uid 与掩码邮箱
-//（m5：恢复码消费是安全事件，审计行要能独立归因）。
+// （m5：恢复码消费是安全事件，审计行要能独立归因）。
 func (s *Service) consumeRecoveryCode(uid int64, email, code string, meta SessionMeta) (bool, error) {
 	norm := normalizeRecoveryCode(code)
 	if norm == "" {
@@ -666,7 +666,7 @@ func deriveRecoveryPepper(jwtSecret string) []byte {
 // requireTOTPEncKey 读并规范化 TOTP 加密密钥：接受 32 字节裸值，或 supervisord
 // 环境里惯用的 64 位 hex 表示（=32 字节，可读且无 ini 转义风险——生产即此形态，
 // 曾因直接裸转致 aes 报 invalid key size 64、2FA 开启恒 500）。其余形态一律拒启
-//（与 JWT_SECRET 同口径——坏密钥等于没加密，而 TOTP secret 只能存原值）。
+// （与 JWT_SECRET 同口径——坏密钥等于没加密，而 TOTP secret 只能存原值）。
 // 丢失该密钥 = 已绑用户的 TOTP 全部作废（只剩恢复码），运维要单独备份它。
 func requireTOTPEncKey() ([]byte, error) {
 	key := os.Getenv("TOTP_ENC_KEY")

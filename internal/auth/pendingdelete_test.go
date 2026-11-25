@@ -15,7 +15,7 @@ import (
 // ---- 纯单测（无 DB）----
 
 // 撤销链接 JWT：签发/验签回环；篡改 / 登录形态冒充 / 异密钥 / 过期统一 400 同文案
-//（不给「哪一步错了」的探针面）。
+// （不给「哪一步错了」的探针面）。
 func TestDeleteCancelTokenRoundTrip(t *testing.T) {
 	s := &Service{secret: testSecret}
 	tok, err := s.createDeleteCancelToken(1234567)
@@ -180,7 +180,7 @@ func TestDeleteCancelPageFlow(t *testing.T) {
 }
 
 // 到期清扫：pending 拨到 8 天前 → sweepPendingDeletes 走完整注销管线
-//（users/按 uid 存的行全清 + 完成信 + account.delete 审计）。
+// （users/按 uid 存的行全清 + 完成信 + account.delete 审计）。
 func TestSweepExecutesDueDeletes(t *testing.T) {
 	svc, mailer := newTestService(t)
 	c := newPasskeyUser(t, svc, mailer, "w3-sweep@example.com")

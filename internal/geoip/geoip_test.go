@@ -7,7 +7,7 @@ import "testing"
 func TestRegionNeverGuesses(t *testing.T) {
 	for _, ip := range []string{
 		"", "127.0.0.1", "10.1.2.3", "192.168.1.1", "172.16.0.1",
-		"::1", "fe80::1", "not-an-ip",   // 回环/链路本地/非法
+		"::1", "fe80::1", "not-an-ip", // 回环/链路本地/非法
 		// TEST-NET 保留段：上游标 Reserved，曾被渲染成「Reserved Reserved」
 		"192.0.2.1", "198.51.100.7", "203.0.113.9",
 	} {
@@ -42,11 +42,11 @@ func TestRegionPublicV6(t *testing.T) {
 // formatRegion 的收敛规则：丢 0 占位、国内省掉「中国」、省市重名只留一份。
 func TestFormatRegion(t *testing.T) {
 	cases := map[string]string{
-		"中国|江苏省|南京市|0|CN":  "江苏省 南京市",
-		"中国|北京市|北京市|0|CN":  "北京市",
+		"中国|江苏省|南京市|0|CN":    "江苏省 南京市",
+		"中国|北京市|北京市|0|CN":    "北京市",
 		"美国|加利福尼亚州|洛杉矶|0|US": "美国 加利福尼亚州 洛杉矶",
-		"0|0|0|0|0":            "",
-		"中国|0|0|0|CN":         "",
+		"0|0|0|0|0":                "",
+		"中国|0|0|0|CN":              "",
 		"Reserved|Reserved|0|0|ZZ": "",
 		"Reserved|0|0|0|ZZ":        "",
 	}
@@ -73,4 +73,33 @@ func contains(s, sub string) bool {
 		}
 	}
 	return false
+}
+
+// IPv4-mapped / NAT64 / 隐私地址归一化：v4 目的地必须还原成 v4 再查；IPv6 的
+// 缓存键是 /64（同一前缀内的隐私地址结果一致，不因主机位轮换前后矛盾）。
+func TestRegionCacheKeyNormalization(t *testing.T) {
+	if got := RegionCacheKey("::ffff:114.114.114.114"); got != "114.114.114.114" {
+		t.Errorf("IPv4-mapped 应还原成 v4 key，得到 %q", got)
+	}
+	if got := RegionCacheKey("64:ff9b::114.114.114.114"); got != "114.114.114.114" {
+		t.Errorf("NAT64 应还原成内嵌 v4 key，得到 %q", got)
+	}
+	a := RegionCacheKey("2400:3200::1")
+	b := RegionCacheKey("2400:3200::2")
+	if a == "" || a != b {
+		t.Errorf("同一 /64 的 IPv6 应共用缓存键，得到 %q / %q", a, b)
+	}
+	if !contains(a, "/64") {
+		t.Errorf("IPv6 缓存键应是 /64 前缀，得到 %q", a)
+	}
+	if got := RegionCacheKey("fe80::1%eth0"); got == "" {
+		t.Error("带 zone 的地址应能剥 zone 后归一化")
+	}
+	if got := RegionCacheKey("not-an-ip"); got != "" {
+		t.Errorf("非法地址应回空 key，得到 %q", got)
+	}
+	// NAT64 的实际查询也应命中 v4 库（114.114.114.114 是江苏南京）
+	if got := Region("64:ff9b::114.114.114.114"); got == "" {
+		t.Error("NAT64 地址应能还原成 v4 并解析出归属地")
+	}
 }

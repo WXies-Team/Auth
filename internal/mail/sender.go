@@ -18,6 +18,8 @@
 // **正文是完整 RFC 5322 信件**：信封头 + multipart/alternative 双部件
 // （text/plain 降级 + text/html，见 buildMIME），由 sendSMTP 原样写进 DATA。
 // 品牌 logo 走 https 托管图（auth.horatio.cn/brand/…），不内嵌 CID。
+// 信头带 `Auto-Submitted: auto-generated`（RFC 3834）：本服务的信全部自动触发，
+// 声明出来可挡住对端自动回信的回环，也是交易信的规范形态。
 package mail
 
 import (
@@ -78,9 +80,20 @@ func base64CTE(s string) string {
 	return b.String()
 }
 
+// headerSafe 拒绝带 CR/LF 的信封头字段值：信封头是逐行拼出来的，一个换行就能
+// 注入额外的信头（Bcc: / Content-Type: / 伪造第二个 To）。业务侧的邮箱都过
+// validateEmail，这里是邮件层自己的最后一道闩——发件地址与显示名来自 app_config，
+// 同样不赌上游校验。
+func headerSafe(field, v string) error {
+	if strings.ContainsAny(v, "\r\n") {
+		return fmt.Errorf("邮件头 %s 含换行，拒绝发信", field)
+	}
+	return nil
+}
+
 // buildMIME 拼出完整 RFC 5322 信件：信封头（Date/From/To/Subject/MIME-Version/
-// Content-Type）+ multipart/alternative 正文（text/plain 在前、text/html 在后，
-// 两部件均 base64 传输编码），所有行尾 CRLF。
+// Auto-Submitted/Content-Type）+ multipart/alternative 正文（text/plain 在前、
+// text/html 在后，两部件均 base64 传输编码），所有行尾 CRLF。
 //
 // fromName 是发件显示名（品牌名，来自 email.go 注册表、随 Send 入参传入），
 // fromAddr 是发件地址——取 mail_smtp_user，发件地址没有独立键。Subject/From
@@ -89,6 +102,13 @@ func base64CTE(s string) string {
 // **为什么必须补信封头**：收件人与主题只能从信封头来——缺 To/Subject 的 MIME
 // 会被邮件服务器拒、要么丢收件人。
 func buildMIME(fromName, fromAddr, to, subject, html, text string, now time.Time) (string, error) {
+	for _, f := range []struct{ name, value string }{
+		{"From 显示名", fromName}, {"From 地址", fromAddr}, {"To", to}, {"Subject", subject},
+	} {
+		if err := headerSafe(f.name, f.value); err != nil {
+			return "", err
+		}
+	}
 	var body bytes.Buffer
 	w := multipart.NewWriter(&body)
 	plain, err := w.CreatePart(textproto.MIMEHeader{
@@ -123,6 +143,9 @@ func buildMIME(fromName, fromAddr, to, subject, html, text string, now time.Time
 	fmt.Fprintf(&msg, "To: %s\r\n", to)
 	fmt.Fprintf(&msg, "Subject: %s\r\n", rfc2047B(subject))
 	msg.WriteString("MIME-Version: 1.0\r\n")
+	// RFC 3834：自动触发的信声明 Auto-Submitted，对端自动回信器据此不回，
+	// 避免「支持邮箱自动回复 ↔ 系统通知」的回环。
+	msg.WriteString("Auto-Submitted: auto-generated\r\n")
 	fmt.Fprintf(&msg, "Content-Type: multipart/alternative; boundary=%q\r\n\r\n", w.Boundary())
 	msg.Write(body.Bytes())
 	return msg.String(), nil

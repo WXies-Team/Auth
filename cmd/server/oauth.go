@@ -25,7 +25,7 @@ import (
 // 15/分/IP（limitN 同名桶），token 端点单独一桶 15/分/IP。
 // confirm 是纯 HTML 表单 POST（无 JS、设不了 X-CSRF-Token）：走 originGuard +
 // SameSite=Strict cookie 双闸——跨站表单根本不带 cookie，Origin 不同源再挡一道
-//（与登录端点同款守卫组合，不进 withUID 的 CSRF 头闸）。
+// （与登录端点同款守卫组合，不进 withUID 的 CSRF 头闸）。
 func registerOAuthRoutes(mux *http.ServeMux, svc *auth.Service) {
 	const scope = "oauth-authorize"
 	mux.Handle("GET /oauth/authorize", withLogging(limitN(scope, 15,

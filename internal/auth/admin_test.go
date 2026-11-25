@@ -97,14 +97,29 @@ func TestAdminSearchUsers(t *testing.T) {
 	}
 }
 
+// 用户行的 isRoot 由服务端按 uid 判定（UI 不再硬编码 5939716）：
+// 根行 true、其它 false，与 /web/session.isRoot 同一判定。
+func TestAdminUserRowsExposeIsRoot(t *testing.T) {
+	svc, _ := newTestService(t)
+	svc.rootUID.Store(RootUID)
+	rows := []AdminUser{{UID: RootUID}, {UID: 424242}}
+	if err := svc.fillUserSummaries(rows); err != nil {
+		t.Fatalf("回填摘要: %v", err)
+	}
+	if !rows[0].IsRoot || rows[1].IsRoot {
+		t.Errorf("isRoot 应按 uid 判定，得到 %+v", rows)
+	}
+}
+
 // 角色变更（合并端点 POST /admin/users/{uid}/role 的业务层）：user↔admin 直改、
 // super 只有根 su 能授予/回收、不能改自己、非法角色拒绝、查无此 uid 回 404，
 // 且全部进审计（涉 super 落 admin.role.change，其余落 admin.user.role_change）。
 func TestAdminSetRole(t *testing.T) {
 	svc, mailer := newTestService(t)
-	actor := newPasskeyUser(t, svc, mailer, "admin-actor@example.com")
+	// 业务层现在会二次校验操作者角色（路由 requireSuper 之外的第二道闸）：
+	// 直接用真正的 super 造 actor，而不是靠「测试只打业务层」跳过闸门。
+	actor := seedAdminUser(t, svc, mailer, "admin-actor@example.com", adminRoleSuper)
 	target := newPasskeyUser(t, svc, mailer, "admin-target@example.com")
-	actor.Meta = testMeta
 
 	if err := svc.AdminSetRole(actor, target.UID, adminRoleAdmin); err != nil {
 		t.Fatalf("升目标为 admin: %v", err)

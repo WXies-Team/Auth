@@ -64,10 +64,10 @@ func TestIsNewDeviceDecision(t *testing.T) {
 // 提醒信里「项目」一行：App 登录 = 品牌名，web 登录 = Auth 控制台。
 func TestLoginNotifyAppLabel(t *testing.T) {
 	cases := map[string]string{
-		"":              "Auth 控制台",
+		"":             "Auth 控制台",
 		"CalorieDiary": "热量日记",
 		"ExpenseDiary": "开支日记",
-		"evil-app":      "Auth", // 未知 app 兜底中性品牌（上游已挡，这里只验不 panic）
+		"evil-app":     "Auth", // 未知 app 兜底中性品牌（上游已挡，这里只验不 panic）
 	}
 	for app, want := range cases {
 		if got := loginNotifyAppLabel(app); got != want {
@@ -113,7 +113,7 @@ func TestLoginNotifyEmailTemplate(t *testing.T) {
 		// security 是正文内联文字链（仅锚点 href = 1）——任何 ≥+1 都意味着又挂了裸 URL 显示文本；
 		// 纯文本部件两枚完整 URL 都必须在（降级 URL 的家）。
 		for url, want := range map[string]int{
-			siteBase + "/web/console/security":  1,
+			siteBase + "/web/console/security": 1,
 			siteBase + "/web/console/sessions": 2,
 		} {
 			if n := strings.Count(htmlBody, url); n != want {

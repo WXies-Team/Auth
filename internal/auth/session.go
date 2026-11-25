@@ -15,12 +15,29 @@ import (
 	"github.com/WXies-Team/Auth/internal/protocol"
 )
 
+// 会话子系统的设计出处（2026-11 调研）：
+//
+//   - OWASP Session Management Cheat Sheet — idle timeout / absolute timeout /
+//     renewal timeout 都必须服务端强制：
+//     https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html
+//   - OWASP ASVS 5.0 V7.2.4（认证与再认证轮换会话标识）、V7.3.1/V7.3.2（空闲/绝对
+//     超时）、V7.4.1（终止后立即不可用）、V7.4.5（管理员可批量终止）：
+//     https://github.com/OWASP/ASVS/blob/master/5.0/en/0x16-V7-Session-Management.md
+//   - Auth0 Refresh Token Rotation / Automatic Reuse Detection（旧 token 重用即
+//     吊销整个 token family）：https://auth0.com/docs/secure/tokens/refresh-token-rotation
+//
+// 本仓是「stateless JWT + 服务端会话行」的混合态：JWT 负责无状态验签与 aud
+// 划界，sessions 行负责**即时吊销**（sid 不存在/revoked_at 非空即 401）。纯
+// stateless 无法做到「踢一台设备当场生效」，纯服务端 session 又会给每个业务
+// 请求加一次同构查询——现有混合折中在「verify 本来就要查 token_version」的
+// 基础上只多一条主键查询，是这两条路线之间成本最低的交点。
+
 // SessionMeta 是一次登录请求的来源信息：ip 进列表（限流口径同一个 clientIP），
 // User-Agent 用来解析设备标签。由路由层从 *http.Request 取，业务层不碰 HTTP。
 //
 // CHPlatform / CHModel 是 UA Client Hints 采到的浏览器平台与机型（请求头
 // Sec-CH-UA-Platform / Sec-CH-UA-Model）：**只有 web 登录路的路由层填值**
-//（cmd/server.webSessMeta），App 端点走 sessMeta 恒为空——建会话时并进
+// （cmd/server.webSessMeta），App 端点走 sessMeta 恒为空——建会话时并进
 // user_agent 存储串，审计仍只落 IP/UA 原文（audit.go 不读这两个字段）。
 type SessionMeta struct {
 	IP        string
@@ -35,6 +52,33 @@ type SessionMeta struct {
 // sessionTouchInterval 是 last_seen_at 的回写节流：verify 是每个业务请求的必经点，
 // 不节流就是每请求一次 UPDATE，把一个展示字段变成写放大。
 const sessionTouchInterval = time.Minute
+
+// 会话寿命的**服务端强制**口径（OWASP Session Management CS：idle + absolute
+// 两种超时都必须服务端判，客户端计时只能当提示）：
+//
+//	absolute = created_at + 90 天（与 JWT exp 同一个 tokenTTL，App 与 web 一致）
+//	idle      = last_seen_at + 7 天（仅 web 会话；App 的 JWT 是无状态 bearer，
+//	           不引入空闲闸以免改变已发布客户端的行为——见 webIdleTTL 注释）
+//
+// 存量行 absolute_expires_at=0（补列前的行）按 created_at + tokenTTL 兜底，
+// 不出现「0 = 永不过期」的静默放行。
+func sessionAbsoluteExpiry(createdAt, stored int64) int64 {
+	base := createdAt + tokenTTL.Milliseconds()
+	// 存列只允许**提前**到期（未来若做「管理员强制某会话提前失效」）；晚于
+	// created_at+90 天的一律按 90 天收口——绝对寿命不能被一行脏数据/回拨放宽。
+	if stored > 0 && stored < base {
+		return stored
+	}
+	return base
+}
+
+// sessionIdleExpiry 回 web 会话的空闲截止时刻；App 会话不设空闲闸，回 0。
+func sessionIdleExpiry(lastSeen int64, web bool) int64 {
+	if !web || lastSeen <= 0 {
+		return 0
+	}
+	return lastSeen + webIdleTTL.Milliseconds()
+}
 
 // execer 让会话吊销既能用 *sql.DB（单条语句）也能用 *sql.Tx（与 token_version+1
 // 同批提交）——Logout 两个动作必须一起成一起败。
@@ -56,9 +100,12 @@ func (s *Service) createSessionOn(ex execer, userID int64, app string, meta Sess
 	sid := s.ids.Generate().Int64()
 	ua := meta.uaWithCH() // web 登录带 CH 就并进后缀；App 调用方无 CH，原样落库
 	if _, err := ex.ExecContext(db.QueryCtx(),
-		"INSERT INTO sessions (id, user_id, app, device, ip, user_agent, created_at, last_seen_at) VALUES (?,?,?,?,?,?,?,?)",
+		`INSERT INTO sessions (id, user_id, app, device, ip, user_agent, created_at, last_seen_at,
+		                       absolute_expires_at, family_id)
+		 VALUES (?,?,?,?,?,?,?,?,?,?)`,
 		sid, userID, app, truncateRunes(shortDevice(ua), 191),
-		meta.IP, truncateRunes(ua, 512), now, now); err != nil {
+		meta.IP, truncateRunes(ua, 512), now, now,
+		now+tokenTTL.Milliseconds(), sid); err != nil {
 		return 0, fmt.Errorf("建登录会话: %w", err)
 	}
 	return sid, nil
@@ -75,11 +122,11 @@ func (s *Service) sessionAlive(userID, sid int64) (bool, error) {
 		return false, nil
 	}
 	ctx := db.QueryCtx()
-	var owner, lastSeen int64
+	var owner, lastSeen, createdAt, absExpires int64
 	var revokedAt sql.NullInt64
 	err := s.pool.QueryRowContext(ctx,
-		"SELECT user_id, last_seen_at, revoked_at FROM sessions WHERE id = ?", sid).
-		Scan(&owner, &lastSeen, &revokedAt)
+		"SELECT user_id, last_seen_at, created_at, absolute_expires_at, revoked_at FROM sessions WHERE id = ?", sid).
+		Scan(&owner, &lastSeen, &createdAt, &absExpires, &revokedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
@@ -89,7 +136,16 @@ func (s *Service) sessionAlive(userID, sid int64) (bool, error) {
 	if owner != userID || revokedAt.Valid {
 		return false, nil
 	}
-	if now := time.Now().UnixMilli(); now-lastSeen >= sessionTouchInterval.Milliseconds() {
+	now := time.Now().UnixMilli()
+	// 绝对寿命是服务端硬闸：JWT 的 exp 与它同值，但会话行可能被回拨/伪造测试
+	// 数据绕过 exp——两边都判，任何一边到期都当场失效（ASVS 7.3.2）。
+	if now > sessionAbsoluteExpiry(createdAt, absExpires) {
+		// 惰性标记：只在本行仍活着时写一次；失败不拦判定（返回 false 已经够）
+		_, _ = s.pool.ExecContext(ctx,
+			"UPDATE sessions SET revoked_at = ? WHERE id = ? AND revoked_at IS NULL", now, sid)
+		return false, nil
+	}
+	if now-lastSeen >= sessionTouchInterval.Milliseconds() {
 		if _, err := s.pool.ExecContext(ctx,
 			"UPDATE sessions SET last_seen_at = ? WHERE id = ? AND revoked_at IS NULL", now, sid); err != nil {
 			slog.Warn("回写会话活跃时间失败（不影响请求）", "sid", sid, "err", err)
@@ -126,7 +182,8 @@ func (s *Service) ListSessions(userID, currentSID int64, apps []string) ([]proto
 		}
 	}
 	rows, err := s.pool.QueryContext(db.QueryCtx(),
-		"SELECT id, app, user_agent, ip, created_at, last_seen_at FROM sessions"+cond+
+		"SELECT id, app, user_agent, ip, created_at, last_seen_at, absolute_expires_at,"+
+			" (web_token_hash IS NOT NULL) FROM sessions"+cond+
 			" ORDER BY last_seen_at DESC, id DESC", args...)
 	if err != nil {
 		return nil, fmt.Errorf("查登录会话: %w", err)
@@ -136,16 +193,21 @@ func (s *Service) ListSessions(userID, currentSID int64, apps []string) ([]proto
 	out := make([]protocol.SessionInfo, 0, 8)
 	for rows.Next() {
 		var (
-			it protocol.SessionInfo
-			id int64
-			ua string
+			it     protocol.SessionInfo
+			id     int64
+			ua     string
+			absExp int64
+			isWeb  bool
 		)
-		if err := rows.Scan(&id, &it.App, &ua, &it.IP, &it.CreatedAt, &it.LastSeenAt); err != nil {
+		if err := rows.Scan(&id, &it.App, &ua, &it.IP, &it.CreatedAt, &it.LastSeenAt,
+			&absExp, &isWeb); err != nil {
 			return nil, fmt.Errorf("读登录会话: %w", err)
 		}
 		it.ID = strconv.FormatInt(id, 10)
 		it.Device = shortDevice(ua)
 		it.IPRegion = geoip.Region(it.IP)
+		it.ExpiresAt = sessionAbsoluteExpiry(it.CreatedAt, absExp)
+		it.IdleExpiresAt = sessionIdleExpiry(it.LastSeenAt, isWeb)
 		it.Current = id == currentSID
 		out = append(out, it)
 	}
@@ -164,7 +226,7 @@ func (s *Service) RevokeSession(userID, sid int64, apps []string) error {
 	err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT user_id, app FROM sessions WHERE id = ?", sid).Scan(&owner, &sessApp)
 	if errors.Is(err, sql.ErrNoRows) || (err == nil && (owner != userID || (len(apps) > 0 && !containsStr(apps, sessApp)))) {
-		return &HTTPError{404, msgSessionGone}
+		return &HTTPError{Code: 404, Message: msgSessionGone}
 	}
 	if err != nil {
 		return fmt.Errorf("查会话归属: %w", err)
@@ -229,7 +291,7 @@ func (s *Service) RevokeSessions(userID int64, ids []int64, apps []string) (int,
 	_ = rows.Close()
 	if bad || len(seen) != len(ids) {
 		// 缺行（别人会话 / 超范围 / 已被清理）一律 404，与单踢同口径
-		return 0, &HTTPError{404, msgSessionGone}
+		return 0, &HTTPError{Code: 404, Message: msgSessionGone}
 	}
 	res, err := s.pool.ExecContext(db.QueryCtx(),
 		"UPDATE sessions SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL AND id IN ("+holders+")",
@@ -278,7 +340,7 @@ func revokeUserSessions(ctx context.Context, ex execer, userID, keepSID int64, a
 //
 // 第 ④ 条是本批收紧的：早先认不出就存 UA 原文，于是 Ktor/OkHttp 这类**库名 UA**
 // 被当成设备名显示（「ktor-client/2.0」根本不是一台设备）。原文不丢——完整 UA
-//（含 CH 后缀）仍按 512 字截断落在 user_agent 列，排障时照查。
+// （含 CH 后缀）仍按 512 字截断落在 user_agent 列，排障时照查。
 //
 // 调用口径：**展示时现算**——ListSessions / AdminListSessions 读取时按 user_agent
 // 调它（存量行随规则升级自愈，device 列快照不参与展示）；插入时（createSessionOn /
@@ -335,7 +397,7 @@ const (
 // 不留空后缀噪音。无 CH 时原样返回——App 调用方（/auth/*）与老行为一字节不变。
 //
 // 截断顺序要紧：base 先按 512-后缀长度截断再拼，保证后缀一定落进 512 字内
-//（先拼再截会把排在尾部的后缀切掉，机型信息白采）。
+// （先拼再截会把排在尾部的后缀切掉，机型信息白采）。
 func (m SessionMeta) uaWithCH() string {
 	model := sanitizeCHValue(m.CHModel)
 	if model == "" {
@@ -367,7 +429,7 @@ func splitCH(ua string) (base, platform, model string, ok bool) {
 }
 
 // sanitizeCHValue 清一个 Client Hints 头值：去首尾空白与结构化头的成对引号
-//（Sec-CH-UA-* 是 quoted-string：`"Pixel 5"`），剔除后缀的两个分隔符（| ;）与
+// （Sec-CH-UA-* 是 quoted-string：`"Pixel 5"`），剔除后缀的两个分隔符（| ;）与
 // 控制字符——分隔符留着会被 splitCH 当成后缀边界，等于把解析交给客户端摆布。
 // 空值保持空串（桌面 Chrome 的 `Sec-CH-UA-Model: ""` → 不拼后缀）。
 func sanitizeCHValue(v string) string {
@@ -396,7 +458,7 @@ func sanitizeCHValue(v string) string {
 //
 // 认定条件（缺一即不是 App UA）：头部必须是 `字母数字连字符/数点版本`，必须带
 // 平台段，且 UA 里不能出现 Mozilla——浏览器 UA 的头部同样是 `名字/版本`
-//（Mozilla/5.0），不挡它会把整张设备表都判成 App UA。ktor/okhttp 这类库名 UA
+// （Mozilla/5.0），不挡它会把整张设备表都判成 App UA。ktor/okhttp 这类库名 UA
 // 通常没有平台段，天然落不进来。
 func parseAppUA(ua string) (ok bool, osName, model string) {
 	if strings.Contains(ua, "Mozilla") {

@@ -17,11 +17,26 @@ import (
 	"time"
 
 	"github.com/WXies-Team/Auth/internal/db"
+	"github.com/go-sql-driver/mysql"
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
-	"github.com/go-sql-driver/mysql"
 )
 
+// Passkey 服务端的核对清单与出处（2026-11 调研）：
+//
+//   - OWASP Passkey Security Cheat Sheet：challenge ≥16 字节、单次、短期、绑定
+//     仪式/账号/RP/origin；origin 用**精确 allowlist**；计数器只当风险信号
+//     （同步型 passkey 常年报 0，不能据此硬拒）：
+//     https://cheatsheetseries.owasp.org/cheatsheets/Passkey_Security_Cheat_Sheet.html
+//   - W3C WebAuthn Level 3（2026-08-25 REC）注册/断言校验步骤：
+//     https://www.w3.org/TR/2026/REC-webauthn-3-20260825
+//   - web.dev discoverable credentials（allowCredentials 留空 = 系统选人 UI）：
+//     https://web.dev/articles/webauthn-discoverable-credentials
+//
+// 性能口径：challenge 落库（多实例/重启不丢）用主键事务取走即删；凭证列表在
+// 读取时一次取回 credential_id（不再每行点查）；注册 finish 不读已有凭证——
+// 库的 CreateCredential 只校验 WebAuthnID 与 SessionData，凭证去重由唯一键兜。
+//
 // Passkey（WebAuthn）的口径，逐条对齐规格 A1.1：
 //
 //	RP ID = horatio.cn（auth.horatio.cn 的 eTLD+1）——两个子域与两个日记 App 共用
@@ -33,6 +48,10 @@ const (
 	// 认这里的登录，这是 WebAuthn 的硬规则，不是本仓的偏好。
 	passkeyRPID = "horatio.cn"
 	// challengeTTL 对齐邮箱验证码的 5 分钟：仪式是「扫码/弹窗」这一下，久等无益。
+	// **跨端约束**：客户端在 options 回执里拿到 challenge 后 180 秒内必须完成
+	// 仪式（预取/自动填充的最长新鲜度）；超过 180 秒就重新请求 options，不要拿
+	// 旧 challenge 硬试。两端差值 120 秒是留给网络与用户操作的余量——服务端
+	// 仍以 300 秒为硬上限，客户端的 180 秒只是体验口径（不是安全边界）。
 	challengeTTL = 5 * time.Minute
 	// PasskeyCeremonyRegister / Login / Reauth 是 webauthn_challenges.kind 的三值。
 	PasskeyCeremonyRegister = "register"
@@ -51,13 +70,61 @@ type PasskeyInfo struct {
 	Current    bool   `json:"current"`
 }
 
+// maxOpaqueOrigins 是 Android 原生 origin 的上限：两个日记 App × debug/release
+// 两条构建通道 = 最多 4 条；留到 8 条容纳证书轮换期的并行指纹。超出即配置错误，
+// 宁可拒启降级为「仅网页端」，也不做静默截断（截断会让某条指纹的 App 突然登不进）。
+const maxOpaqueOrigins = 8
+
+// normalizeOpaqueOrigins 清洗/校验 Android 原生仪式的 `android:apk-key-hash:<指纹>`
+// 清单：去空白、去重、前缀必须是 `android:apk-key-hash:`、指纹非空且长度合理。
+//
+// **覆盖口径**：两个 App（CalorieDiary / ExpenseDiary）各至少一条——签名证书的
+// SHA-256 指纹经 base64url 编码后的串（与 assetlinks.json 的 sha256_cert_fingerprints
+// 同值）。WebAuthn 的 origin 校验是**精确串相等**（库的 IsOpaqueOriginInHaystack
+// 用 `==`，没有前缀/通配），所以指纹写错只会让那个 App 的仪式被拒，不会放行
+// 别的 App；启动日志与这里的选择是「配错即降级为仅网页端」，不是崩溃。
+//
+// 新配置键（按 App 分键、或读 assetlinks.json）暂不引入：现有单键 +
+// 逗号分隔已能表达两条通道，新增键属于配置面变更，留待作者拍板（报告里列了）。
+func normalizeOpaqueOrigins(raw []string) ([]string, error) {
+	const prefix = "android:apk-key-hash:"
+	out := make([]string, 0, len(raw))
+	seen := make(map[string]bool, len(raw))
+	for _, item := range raw {
+		v := strings.TrimSpace(item)
+		if v == "" {
+			continue
+		}
+		if !strings.HasPrefix(v, prefix) {
+			return nil, fmt.Errorf("Passkey 原生 origin 必须以 %q 开头: %q", prefix, v)
+		}
+		fp := strings.TrimSpace(strings.TrimPrefix(v, prefix))
+		if len(fp) < 32 || len(fp) > 128 {
+			return nil, fmt.Errorf("Passkey 原生 origin 的证书指纹长度不合理（应为 32~128 字符）: %q", v)
+		}
+		if seen[v] {
+			continue
+		}
+		seen[v] = true
+		out = append(out, v)
+	}
+	if len(out) > maxOpaqueOrigins {
+		return nil, fmt.Errorf("Passkey 原生 origin 最多 %d 条，当前 %d 条", maxOpaqueOrigins, len(out))
+	}
+	return out, nil
+}
+
 // NewWebAuthn 组装 RP 实例，配置逐字段按规格 A1.1。
 //
 // opaqueOrigins 是 Android 原生仪式的 `android:apk-key-hash:<证书指纹>` 清单
-//（app_config 键 webauthn_opaque_origins，逗号分隔，指纹由 App 侧提供后灌库）：
+// （app_config 键 webauthn_opaque_origins，逗号分隔，指纹由 App 侧提供后灌库）：
 // 没配时网页端照常可用，只是两个日记 App 的原生仪式会被 origin 校验挡下——
 // 那是「配置还没到位」的可诊断状态，不是崩溃。
 func NewWebAuthn(opaqueOrigins []string) (*webauthn.WebAuthn, error) {
+	opaqueOrigins, err := normalizeOpaqueOrigins(opaqueOrigins)
+	if err != nil {
+		return nil, err
+	}
 	cfg := &webauthn.Config{
 		RPID:            passkeyRPID,
 		RPDisplayName:   "Auth",
@@ -151,7 +218,7 @@ func (s *Service) passkeyUserFor(uid int64) (*passkeyUser, error) {
 // 53 位精度，63 位雪花会被抹圆（实测 …734016 → …734000）：finish 查无此行恒 404
 // 「验证请求已过期」、列表删除/改名同样 404（网页 Passkey 自 B 批起从未真正通过；
 // Kotlin Long 无损故 App 端不受影响）。行量少、命短，53 位空间 9e15 随机+重摇足够
-//（复用 isDuplicateUID 的 1062 判别）。
+// （复用 isDuplicateUID 的 1062 判别）。
 func jsSafeID() (int64, error) {
 	var b [8]byte
 	for attempt := 0; attempt < 10; attempt++ {
@@ -201,7 +268,7 @@ func (s *Service) saveChallenge(kind string, userID *int64, sd *webauthn.Session
 }
 
 // takeChallenge 取出并**立刻删行**：单次性由删除保证，成功失败都已消费
-//（「失败可以再试一次」的余地不给——重放同一 ceremonyId 是最常见的绕过姿势）。
+// （「失败可以再试一次」的余地不给——重放同一 ceremonyId 是最常见的绕过姿势）。
 // 缺行、过期、kind 或 uid 不对，统一回 404（不区分，免得当探针）。
 func (s *Service) takeChallenge(ceremonyID int64, kind string, uid int64) (*webauthn.SessionData, error) {
 	ctx := db.SlowCtx()
@@ -218,7 +285,7 @@ func (s *Service) takeChallenge(ceremonyID int64, kind string, uid int64) (*weba
 		"SELECT session_data, user_id, expires_at FROM webauthn_challenges WHERE id = ? AND kind = ? FOR UPDATE",
 		ceremonyID, kind).Scan(&raw, &owner, &expires)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, &HTTPError{404, "验证请求已过期，请重新发起"}
+		return nil, &HTTPError{Code: 404, Message: "验证请求已过期，请重新发起", Reason: ReasonCeremonyExpired}
 	}
 	if err != nil {
 		return nil, fmt.Errorf("查仪式中间态: %w", err)
@@ -227,10 +294,10 @@ func (s *Service) takeChallenge(ceremonyID int64, kind string, uid int64) (*weba
 	// 即可冒验」的洞）；login（discoverable）行的 user_id 为 NULL，不参与比对——
 	// 认人靠 userHandle 反查，不靠建仪式时猜
 	if kind != PasskeyCeremonyLogin && (!owner.Valid || owner.Int64 != uid) {
-		return nil, &HTTPError{404, "验证请求已过期，请重新发起"}
+		return nil, &HTTPError{Code: 404, Message: "验证请求已过期，请重新发起", Reason: ReasonCeremonyExpired}
 	}
 	if time.Now().UnixMilli() > expires {
-		return nil, &HTTPError{404, "验证请求已过期，请重新发起"}
+		return nil, &HTTPError{Code: 404, Message: "验证请求已过期，请重新发起", Reason: ReasonCeremonyExpired}
 	}
 	if _, err := tx.ExecContext(ctx, "DELETE FROM webauthn_challenges WHERE id = ?", ceremonyID); err != nil {
 		return nil, fmt.Errorf("消费仪式中间态: %w", err)
@@ -256,12 +323,48 @@ func synthRequest(body []byte) *http.Request {
 	}
 }
 
+// Passkey 仪式失败的 reason 值域（只增 ApiError.reason，不改响应形状）：把
+// 「origin/RP 校验失败」（配置/域问题，换个浏览器也没用）与「仪式过期/验证失败」
+// （重新发起即可）拆开，前端与排障日志能给出不同下一步。
+const (
+	ReasonPasskeyOrigin       = "origin"
+	ReasonPasskeyChallenge    = "challenge"
+	ReasonPasskeyVerification = "verification"
+	ReasonCeremonyExpired     = "ceremony_expired"
+)
+
+// passkeyFinishError 把库的结构化错误翻成**分级**的 HTTPError。库的
+// protocol.Error.Type 粒度太粗（origin/challenge 都归 verification_error），
+// 所以按 Details 的稳定文案分流（go-webauthn@v0.18.2 protocol/client.go:158/170）：
+//
+//	Error validating origin / topOrigin → origin（含 RP/跨源校验）
+//	Error validating challenge           → challenge（challenge 不匹配/被换掉）
+//	Error validating ceremony type       → ceremony（get/create 混用）
+//	其余                                  → verification
+//
+// message 也按类分开：origin 类提示「从本站或已登记 App 重试」，challenge/过期类
+// 提示「重新发起」——用户不会因为一句泛化的「验证失败」反复点同一个死按钮。
+func passkeyFinishError(err error, fallback string) error {
+	var pe *protocol.Error
+	if errors.As(err, &pe) {
+		switch {
+		case strings.Contains(pe.Details, "origin") || strings.Contains(pe.Details, "Origin"):
+			return &HTTPError{Code: 400, Message: "Passkey 来源校验失败，请从 auth.horatio.cn 或已登记的 App 重试", Reason: ReasonPasskeyOrigin}
+		case strings.Contains(pe.Details, "challenge"):
+			return &HTTPError{Code: 400, Message: "Passkey 验证已过期，请重新发起", Reason: ReasonPasskeyChallenge}
+		case strings.Contains(pe.Details, "ceremony"):
+			return &HTTPError{Code: 400, Message: "Passkey 验证类型不匹配，请重新发起", Reason: ReasonPasskeyVerification}
+		}
+	}
+	return &HTTPError{Code: 400, Message: fallback, Reason: ReasonPasskeyVerification}
+}
+
 // ---- 注册 ----
 
 // BeginPasskeyRegistration 发起注册仪式：回库的 CredentialCreation 与 ceremonyId。
 func (s *Service) BeginPasskeyRegistration(c Caller) (*protocol.CredentialCreation, int64, error) {
 	if s.wa == nil {
-		return nil, 0, &HTTPError{503, "Passkey 服务暂不可用，请稍后重试"}
+		return nil, 0, &HTTPError{Code: 503, Message: "Passkey 服务暂不可用，请稍后重试"}
 	}
 	user, err := s.passkeyUserFor(c.UID)
 	if err != nil {
@@ -283,20 +386,21 @@ func (s *Service) BeginPasskeyRegistration(c Caller) (*protocol.CredentialCreati
 // 之后随时在列表里改。
 func (s *Service) FinishPasskeyRegistration(c Caller, ceremonyID int64, body []byte, meta SessionMeta) (*PasskeyInfo, error) {
 	if s.wa == nil {
-		return nil, &HTTPError{503, "Passkey 服务暂不可用，请稍后重试"}
+		return nil, &HTTPError{Code: 503, Message: "Passkey 服务暂不可用，请稍后重试"}
 	}
 	sd, err := s.takeChallenge(ceremonyID, PasskeyCeremonyRegister, c.UID)
 	if err != nil {
 		return nil, err
 	}
-	user, err := s.passkeyUserFor(c.UID)
-	if err != nil {
-		return nil, err
-	}
+	// 注册回落**不需要**读已有凭证：库的 CreateCredential 只用 WebAuthnID 与
+	// SessionData（见 go-webauthn@v0.18.2 registration.go:191），凭证去重由
+	// uq_passkeys_cred 唯一键兜住。这里省掉「查邮箱 + 查全部凭证」两次往返，
+	// 只构造身份壳；邮箱仅用于认证器选人 UI，不参与验签。
+	user := &passkeyUser{svc: s, uid: c.UID, email: c.Email}
 	cred, err := s.wa.FinishRegistration(user, *sd, synthRequest(body))
 	if err != nil {
 		slog.Warn("passkey 注册仪式失败", "uid", c.UID, "err", err)
-		return nil, &HTTPError{400, "Passkey 注册未通过校验，请重试"}
+		return nil, passkeyFinishError(err, "Passkey 注册未通过校验，请重试")
 	}
 	name := shortDevice(meta.UserAgent)
 	id, err := s.insertCredential(c.UID, name, cred)
@@ -317,7 +421,7 @@ func (s *Service) FinishPasskeyRegistration(c Caller, ceremonyID int64, body []b
 // 让系统弹「用通行密钥登录」而不是先要账号。
 func (s *Service) BeginPasskeyLogin() (*protocol.CredentialAssertion, int64, error) {
 	if s.wa == nil {
-		return nil, 0, &HTTPError{503, "Passkey 服务暂不可用，请稍后重试"}
+		return nil, 0, &HTTPError{Code: 503, Message: "Passkey 服务暂不可用，请稍后重试"}
 	}
 	assertion, sd, err := s.wa.BeginDiscoverableLogin()
 	if err != nil {
@@ -337,7 +441,7 @@ func (s *Service) BeginPasskeyLogin() (*protocol.CredentialAssertion, int64, err
 // 常年报 0，拒绝会误杀主流的手机通行密钥（业界通行做法，残余风险已声明）。
 func (s *Service) FinishPasskeyLogin(ceremonyID int64, body []byte) (int64, string, string, error) {
 	if s.wa == nil {
-		return 0, "", "", &HTTPError{503, "Passkey 服务暂不可用，请稍后重试"}
+		return 0, "", "", &HTTPError{Code: 503, Message: "Passkey 服务暂不可用，请稍后重试"}
 	}
 	sd, err := s.takeChallenge(ceremonyID, PasskeyCeremonyLogin, 0)
 	if err != nil {
@@ -353,11 +457,11 @@ func (s *Service) FinishPasskeyLogin(ceremonyID int64, body []byte) (int64, stri
 	user, cred, err := s.wa.FinishPasskeyLogin(handler, *sd, synthRequest(body))
 	if err != nil {
 		slog.Warn("passkey 登录仪式失败", "err", err)
-		return 0, "", "", &HTTPError{400, "Passkey 验证失败，请重试"}
+		return 0, "", "", passkeyFinishError(err, "Passkey 验证失败，请重试")
 	}
 	pu, ok := user.(*passkeyUser)
 	if !ok {
-		return 0, "", "", &HTTPError{400, "Passkey 验证失败，请重试"}
+		return 0, "", "", &HTTPError{Code: 400, Message: "Passkey 验证失败，请重试"}
 	}
 	if err := s.recordCredentialUse(pu.uid, cred); err != nil {
 		// 回写失败不拦登录：登录已经成立，丢的只是一次计数
@@ -402,7 +506,7 @@ func (s *Service) recordCredentialUse(uid int64, cred *webauthn.Credential) erro
 // 账号一把 Passkey 都没有时不发仪式，回 400 让前端改走验证码（能力探测之外的兜底）。
 func (s *Service) BeginPasskeyReauth(c Caller) (*protocol.CredentialAssertion, int64, error) {
 	if s.wa == nil {
-		return nil, 0, &HTTPError{503, "Passkey 服务暂不可用，请稍后重试"}
+		return nil, 0, &HTTPError{Code: 503, Message: "Passkey 服务暂不可用，请稍后重试"}
 	}
 	user, err := s.passkeyUserFor(c.UID)
 	if err != nil {
@@ -423,8 +527,8 @@ func (s *Service) BeginPasskeyReauth(c Caller) (*protocol.CredentialAssertion, i
 }
 
 // FinishPasskeyReauth 校验重新验证回执并刷新本会话的强认证窗。仪式行已绑 uid
-//（takeChallenge 比对），库只在这把凭证属于该账号的前提下验签；成败都进审计
-//（method=passkey）——持登录态反复尝试强认证，值得与密码/验证码路同样被看见。
+// （takeChallenge 比对），库只在这把凭证属于该账号的前提下验签；成败都进审计
+// （method=passkey）——持登录态反复尝试强认证，值得与密码/验证码路同样被看见。
 func (s *Service) FinishPasskeyReauth(c Caller, ceremonyID int64, body []byte) (err error) {
 	method := "passkey"
 	defer func() {
@@ -435,7 +539,7 @@ func (s *Service) FinishPasskeyReauth(c Caller, ceremonyID int64, body []byte) (
 		})
 	}()
 	if s.wa == nil {
-		return &HTTPError{503, "Passkey 服务暂不可用，请稍后重试"}
+		return &HTTPError{Code: 503, Message: "Passkey 服务暂不可用，请稍后重试"}
 	}
 	sd, err := s.takeChallenge(ceremonyID, PasskeyCeremonyReauth, c.UID)
 	if err != nil {
@@ -448,7 +552,7 @@ func (s *Service) FinishPasskeyReauth(c Caller, ceremonyID int64, body []byte) (
 	cred, err := s.wa.FinishLogin(user, *sd, synthRequest(body))
 	if err != nil {
 		slog.Warn("passkey 重新验证仪式失败", "uid", c.UID, "err", err)
-		return &HTTPError{400, "Passkey 验证失败，请重试"}
+		return passkeyFinishError(err, "Passkey 验证失败，请重试")
 	}
 	if err := s.recordCredentialUse(c.UID, cred); err != nil {
 		// 回写失败不拦验证：强认证已经成立，丢的只是一次计数
@@ -461,8 +565,10 @@ func (s *Service) FinishPasskeyReauth(c Caller, ceremonyID int64, body []byte) (
 
 // ListPasskeys 回当前账号的全部凭证；current 标出**本会话登录用的那把**。
 func (s *Service) ListPasskeys(uid, currentSID int64) ([]PasskeyInfo, error) {
+	// credential_id 一并取出：current 标记在内存里比，不再每行点查一次
+	//（旧实现是 N+1，一页 10 把 passkey = 11 次往返）。
 	rows, err := s.pool.QueryContext(db.QueryCtx(),
-		`SELECT id, name, created_at, last_used_at FROM passkeys
+		`SELECT id, name, created_at, last_used_at, credential_id FROM passkeys
 		 WHERE user_id = ? AND rp_id = ? ORDER BY created_at DESC, id DESC`, uid, passkeyRPID)
 	if err != nil {
 		return nil, fmt.Errorf("查 passkey 列表: %w", err)
@@ -473,23 +579,18 @@ func (s *Service) ListPasskeys(uid, currentSID int64) ([]PasskeyInfo, error) {
 	for rows.Next() {
 		var it PasskeyInfo
 		var lastUsed sql.NullInt64
-		if err := rows.Scan(&it.ID, &it.Name, &it.CreatedAt, &lastUsed); err != nil {
+		var credID string
+		if err := rows.Scan(&it.ID, &it.Name, &it.CreatedAt, &lastUsed, &credID); err != nil {
 			return nil, fmt.Errorf("读 passkey 行: %w", err)
 		}
 		if lastUsed.Valid {
 			it.LastUsedAt = lastUsed.Int64
 		}
+		it.Current = current != "" && credID == current
 		out = append(out, it)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("遍历 passkey: %w", err)
-	}
-	if current != "" {
-		for i := range out {
-			if cred, err := s.credentialIDFor(out[i].ID); err == nil && cred == current {
-				out[i].Current = true
-			}
-		}
 	}
 	return out, nil
 }
@@ -515,7 +616,7 @@ func (s *Service) RenamePasskey(c Caller, id int64, name string) (err error) {
 		return fmt.Errorf("改名: %w", err)
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		return &HTTPError{404, "该 Passkey 不存在"}
+		return &HTTPError{Code: 404, Message: "该 Passkey 不存在"}
 	}
 	return nil
 }
@@ -546,7 +647,7 @@ func (s *Service) DeletePasskey(c Caller, id int64) (err error) {
 	err = tx.QueryRowContext(ctx,
 		"SELECT rp_id FROM passkeys WHERE id = ? AND user_id = ?", id, uid).Scan(&rp)
 	if errors.Is(err, sql.ErrNoRows) {
-		return &HTTPError{404, "该 Passkey 不存在"}
+		return &HTTPError{Code: 404, Message: "该 Passkey 不存在"}
 	}
 	if err != nil {
 		return fmt.Errorf("查 passkey: %w", err)
@@ -623,7 +724,7 @@ func (s *Service) insertCredential(uid int64, name string, cred *webauthn.Creden
 		}
 		var me *mysql.MySQLError
 		if errors.As(err, &me) && me.Number == 1062 {
-			return 0, &HTTPError{409, "这把 Passkey 已经绑定过了，无需重复添加"}
+			return 0, &HTTPError{Code: 409, Message: "这把 Passkey 已经绑定过了，无需重复添加"}
 		}
 		return 0, fmt.Errorf("落 passkey: %w", err)
 	}
@@ -681,14 +782,6 @@ func (s *Service) loadCredentials(uid int64) ([]webauthn.Credential, error) {
 		return nil, fmt.Errorf("遍历凭证: %w", err)
 	}
 	return out, nil
-}
-
-// credentialIDFor 把列表行的 id 换成 credential_id（current 标记要比对它）。
-func (s *Service) credentialIDFor(passkeyID int64) (string, error) {
-	var cred string
-	err := s.pool.QueryRowContext(db.QueryCtx(),
-		"SELECT credential_id FROM passkeys WHERE id = ?", passkeyID).Scan(&cred)
-	return cred, err
 }
 
 // ---- 「本会话用哪把 Passkey 登录」的进程内记录 ----

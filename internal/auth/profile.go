@@ -94,10 +94,10 @@ func (s *Service) loginNotify(userID int64) (bool, error) {
 
 // UpdateProfile 全量替换档案三字段并置 updated_at=now，回写后的档案。
 // LoginNotify 是例外（W1）：**缺省不改值**，显式传才更新 users.login_notify
-//（见 protocol.ProfileUpdateRequest）——App 的全量档案提交不带它。
+// （见 protocol.ProfileUpdateRequest）——App 的全量档案提交不带它。
 //
 // 审计成败都记（profile.update）：detail 只放**字段名与长度类元信息**
-//（nickname 字符数、avatarImage 字符数/是否携带、被拒的字段名、login_notify 显式值），
+// （nickname 字符数、avatarImage 字符数/是否携带、被拒的字段名、login_notify 显式值），
 // **绝不放昵称内容与头像数据**——audit_logs 本身不能成为泄密面。
 func (s *Service) UpdateProfile(c Caller, req protocol.ProfileUpdateRequest) (resp *protocol.ProfileResponse, err error) {
 	detail := map[string]string{
@@ -193,7 +193,7 @@ func validateProfile(nickname string, avatarColor int, avatar *string) (string, 
 		// 超限走 413 而不是 400：它不是「格式错」，重填同样的内容还是超，
 		// 客户端与运维按载荷问题处理（what = 图片过大 + 上限，next = 压缩后重传）
 		return "", nil, "avatar_image",
-			&HTTPError{413, fmt.Sprintf("头像图片过大（上限%dKB），请压缩后重新上传", maxAvatarImageBytes/1024)}
+			&HTTPError{Code: 413, Message: fmt.Sprintf("头像图片过大（上限%dKB），请压缩后重新上传", maxAvatarImageBytes/1024)}
 	}
 	return nick, avatar, "", nil
 }

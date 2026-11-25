@@ -6,11 +6,13 @@ import (
 	"time"
 )
 
-// 品牌注册表的取值：两个 App 各回各的串；缺省与未知一律中性品牌 Auth。
+// 品牌注册表的取值：每个接入项目各回各的串；缺省与未知一律中性品牌 Auth。
 func TestBrandForSelection(t *testing.T) {
 	cases := []struct{ app, name, prefix, footer string }{
 		{"CalorieDiary", "热量日记", "【热量日记】", "热量日记 CalorieDiary"},
 		{"ExpenseDiary", "开支日记", "【开支日记】", "开支日记 ExpenseDiary"},
+		{"EPassportForMikey", "奇奇岛护照", "【奇奇岛护照】", "奇奇岛护照 EPassportForMikey"},
+		{"PersonalShortener", "屑涵短链", "【屑涵短链】", "屑涵短链 PersonalShortener"},
 		{"", "Auth", "【Auth】", "Auth auth.horatio.cn"},
 		{"evil-app", "Auth", "【Auth】", "Auth auth.horatio.cn"},
 	}
@@ -39,7 +41,7 @@ func TestBrandForSelection(t *testing.T) {
 	}
 }
 
-// 三品牌选串：同一套外壳，主题前缀 / 头部行 / 警示句 / 落款 / 改绑属格逐条照抄定案表。
+// 品牌选串：同一套外壳，主题前缀 / 头部行 / 警示句 / 落款 / 改绑属格逐条照抄定案表。
 // 警示句按业界对标强化为「品牌句 + 无人索码句」（见 codeEmail），品牌可变部分走 b.join。
 func TestBrandEmailStrings(t *testing.T) {
 	cases := []struct {
@@ -95,18 +97,18 @@ func TestBrandEmailStrings(t *testing.T) {
 	}
 }
 
-// 三品牌头部的托管 logo：src 是 https://auth.horatio.cn/brand/<slug>-v1.png、带
+// 品牌头部的托管 logo：src 是 https://auth.horatio.cn/brand/<slug>-v1.png、带
 // alt 与显式宽高、外层 td 刷品牌主色（裂图时露出的也是品牌色块），且每封信都真的
 // 引用它——对不上就会发出**裂图**，logoPath 与静态路由/生成器三方同口径。
 func TestBrandEmailLogoURL(t *testing.T) {
-	seen := map[string]string{} // logoPath → app，抓「三品牌共用一张图」的偷懒
+	seen := map[string]string{} // logoPath → app，抓「多品牌共用一张图」的偷懒
 	for _, app := range []string{"CalorieDiary", "ExpenseDiary", ""} {
 		b := brandFor(app)
 		if b.logoPath == "" || !strings.HasPrefix(b.logoPath, "/brand/") {
 			t.Fatalf("app=%q 的品牌缺 /brand/ logo 路径（得到 %q）", app, b.logoPath)
 		}
 		if other, dup := seen[b.logoPath]; dup {
-			t.Errorf("app=%q 与 app=%q 共用 logo %q，三品牌该各有各的图", app, other, b.logoPath)
+			t.Errorf("app=%q 与 app=%q 共用 logo %q，各品牌该各有各的图", app, other, b.logoPath)
 		}
 		seen[b.logoPath] = app
 

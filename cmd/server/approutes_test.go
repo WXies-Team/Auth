@@ -418,7 +418,7 @@ func reauthPasskeyOptions(t *testing.T, e *routeEnv, mutate func(*http.Request))
 }
 
 // passkeyLoginOptions 发一次 /webauthn/login/options，回 ceremonyId 与 challenge
-//（challenge 是 base64url 字符串，合成断言要原样带回 clientData）。
+// （challenge 是 base64url 字符串，合成断言要原样带回 clientData）。
 func passkeyLoginOptions(t *testing.T, e *routeEnv, ip string) (id int64, challenge string) {
 	t.Helper()
 	rec := e.do(t, "POST", "/webauthn/login/options", `{}`, fromIP(ip))

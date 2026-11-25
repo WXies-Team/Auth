@@ -57,7 +57,7 @@ type OAuthAuthorizeRequest struct {
 // OAuthBeginAuthorize 是授权第一步的 fail-fast 校验（顺序钉死：response_type →
 // state → PKCE → client 登记 → redirect 精确匹配），过了就落一条授权事务并回 tx。
 // 错误一律 400 + 中文可执行文案；redirect 不匹配**不回显**请求里的完整地址
-//（可能是恶意构造，回显等于给钓鱼页面当镜子）。
+// （可能是恶意构造，回显等于给钓鱼页面当镜子）。
 func (s *Service) OAuthBeginAuthorize(req OAuthAuthorizeRequest) (tx string, app string, err error) {
 	if req.ResponseType != "code" {
 		return "", "", badRequest("只支持 response_type=code 的授权请求，请让应用使用授权码模式")
@@ -481,7 +481,7 @@ func oauthRedirectAllowed(registered []string, got string) bool {
 }
 
 // oauthSecretMatches 恒时比对 client_secret：两侧各自 sha256 后再 subtle 比
-//（长度差被散列拉平，与 hook_token 同款口径）；空串登记（未签发过 secret）恒拒。
+// （长度差被散列拉平，与 hook_token 同款口径）；空串登记（未签发过 secret）恒拒。
 func oauthSecretMatches(storedHash, provided string) bool {
 	if storedHash == "" || provided == "" {
 		return false
@@ -496,7 +496,7 @@ func pkceS256(verifier string) string {
 }
 
 // pkceValueOK 判定 verifier/challenge 的格式：43~128 位 base64url 字符
-//（RFC 7636 §4.1/§4.2 的 unreserved 集在 base64url 下的取值）。
+// （RFC 7636 §4.1/§4.2 的 unreserved 集在 base64url 下的取值）。
 func pkceValueOK(v string) bool {
 	if len(v) < pkceMinLen || len(v) > pkceMaxLen {
 		return false

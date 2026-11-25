@@ -14,14 +14,14 @@ import (
 )
 
 // 生成器必须与入库的资产字节一致：任何人改了字形/配色但忘了重生，这里先红。
-//（regenerate 是纯函数，PNG 编码无时间戳——同一份输入恒同一份字节。）
+// （regenerate 是纯函数，PNG 编码无时间戳——同一份输入恒同一份字节。）
 func TestGeneratedAssetsInSync(t *testing.T) {
 	files, err := generate()
 	if err != nil {
 		t.Fatalf("生成资产: %v", err)
 	}
-	if len(files) != 9 {
-		t.Fatalf("资产清单应为 9 份（3 品牌 PNG + 3 品牌 SVG + apple-touch + ico + svg），得到 %d", len(files))
+	if len(files) != 13 {
+		t.Fatalf("资产清单应为 13 份（5 品牌 PNG + 5 品牌 SVG + apple-touch + ico + svg），得到 %d", len(files))
 	}
 	for _, f := range files {
 		got, err := os.ReadFile(filepath.Join("..", "..", f.rel))
@@ -35,12 +35,16 @@ func TestGeneratedAssetsInSync(t *testing.T) {
 	}
 }
 
-// 三品牌邮件 logo 的文件名必须与品牌注册表的 logoPath 口径一致
-//（<slug>-v1.png + 矢量源 <slug>.svg）——文件名拼错会让邮件里出现裂图。
+// 品牌邮件 logo 的文件名必须与品牌注册表的 logoPath 口径一致
+// （<slug>-v1.png + 矢量源 <slug>.svg）——文件名拼错会让邮件里出现裂图。
 func TestBrandLogoFilenamesMatchRegistryConvention(t *testing.T) {
 	want := map[string]bool{
-		"CalorieDiary-v1.png": true, "ExpenseDiary-v1.png": true, "auth-v1.png": true,
-		"CalorieDiary.svg": true, "ExpenseDiary.svg": true, "auth.svg": true,
+		"CalorieDiary-v1.png": true, "ExpenseDiary-v1.png": true,
+		"EPassportForMikey-v1.png": true, "PersonalShortener-v1.png": true,
+		"auth-v1.png":      true,
+		"CalorieDiary.svg": true, "ExpenseDiary.svg": true,
+		"EPassportForMikey.svg": true, "PersonalShortener.svg": true,
+		"auth.svg": true,
 	}
 	files, err := generate()
 	if err != nil {
@@ -96,7 +100,7 @@ func px(img image.Image, x, y int) (r, g, b, a uint8) {
 
 // 站点 favicon 三件套（2026-10-20 作者拍板）：**透明底 + miuix 蓝 #3482FF 的描边本体**，
 // 不带任何背景；品牌邮件 logo（2026-10-21 换装自 CID 内嵌图）：**纯色 #3482FF 实底**
-//（不许渐变）+ 白色矢量，squircle 外形不变。
+// （不许渐变）+ 白色矢量，squircle 外形不变。
 func TestFaviconTransparentBlueAndBrandLogosUnchanged(t *testing.T) {
 	// ---- favicon.svg：纯蓝描边，无渐变、无底 ----
 	svg := string(readAsset(t, "internal/ui/static/favicon.svg"))
@@ -186,7 +190,7 @@ func TestFaviconTransparentBlueAndBrandLogosUnchanged(t *testing.T) {
 	}
 
 	// ---- 品牌邮件 logo：纯色 #3482FF 实底（**零渐变**）+ 白矢量 + 超椭圆切角 ----
-	for _, name := range []string{"CalorieDiary", "ExpenseDiary", "auth"} {
+	for _, name := range []string{"CalorieDiary", "ExpenseDiary", "EPassportForMikey", "PersonalShortener", "auth"} {
 		img, err := png.Decode(bytes.NewReader(readAsset(t, "internal/ui/static/brand/"+name+"-v1.png")))
 		if err != nil {
 			t.Fatalf("解码 %s-v1.png: %v", name, err)
@@ -289,6 +293,8 @@ func TestBrandLogoGlyphMapping(t *testing.T) {
 	}{
 		{"CalorieDiary", flamePaths},
 		{"ExpenseDiary", receiptPaths},
+		{"EPassportForMikey", stampPaths},
+		{"PersonalShortener", linkPaths},
 		{"auth", shieldPaths},
 	}
 	for _, c := range cases {
@@ -322,7 +328,7 @@ func pxAtAlpha(img image.Image, x, y int) uint8 {
 }
 
 // officialShield 是 lucide 官方 icons/shield.svg 的 path data 逐字副本
-//（https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/shield.svg，
+// （https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/shield.svg，
 // 与 v0.462.0 同串）——钉住生成器里的 shieldPaths，字形被改一眼红。
 const officialShield = "M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"
 

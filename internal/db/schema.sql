@@ -83,8 +83,18 @@ CREATE TABLE IF NOT EXISTS sessions (
     created_at   BIGINT       NOT NULL,
     last_seen_at BIGINT       NOT NULL,
     revoked_at   BIGINT       NULL,
+    -- 会话子系统重写（2026-11）：绝对到期时刻 / 轮换家族 / 上一次 token 的宽限窗。
+    -- 存量库由 internal/db 的 ensureColumn 逐列补（含回滚 SQL，见 db.go）。
+    absolute_expires_at BIGINT NOT NULL DEFAULT 0,
+    family_id           BIGINT NOT NULL DEFAULT 0,
+    rotated_at          BIGINT NOT NULL DEFAULT 0,
+    prev_token_hash     CHAR(64) NULL,
+    prev_csrf_hash      CHAR(64) NULL,
+    prev_valid_until    BIGINT NOT NULL DEFAULT 0,
     PRIMARY KEY (id),
-    KEY idx_sessions_user (user_id, revoked_at)
+    UNIQUE KEY uq_sessions_prev_token (prev_token_hash),
+    KEY idx_sessions_user (user_id, revoked_at),
+    KEY idx_sessions_abs (absolute_expires_at)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci;
 
 -- 用户档案三件套（昵称 / 头像色 / 头像图）：OIDC UserInfo 同款思路——**档案归身份

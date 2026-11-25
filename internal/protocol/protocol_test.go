@@ -16,7 +16,7 @@ import (
 // 确认 private=true），本仓 CI 的凭据跨仓读不到真文件，checkout 对拍走不通——
 // 只能钉快照：日记侧改字段需来这里同步更新。
 // 2026-11-17 服务器审计补钉 ChangePasswordResponse：日记侧 AuthDtos.kt 早有该类
-//（改密回执只读 token），快照漏了它，双向比对对「日记新增类」一直是盲区。
+// （改密回执只读 token），快照漏了它，双向比对对「日记新增类」一直是盲区。
 var diaryAuthDTOSnapshot = map[string][]string{
 	"AuthRequest":                {"email", "password", "code", "app"},
 	"AuthResponse":               {"token", "email", "mustChangePassword", "deletePendingCancelled"},
@@ -77,9 +77,11 @@ func TestProtocolMatchesDiaryAuthDtos(t *testing.T) {
 // id 必须是 **string**——63 位雪花经浏览器 JSON.parse 往返只有 53 位精度，序列化成
 // number 会被静默抹圆，前端拿抹圆的 id 踢人只会 404（见 protocol.go 的注释）。
 func TestSessionInfoFields(t *testing.T) {
-	// 2026-11 追加 ipRegion（IP 粗略归属地）：**纯附加**字段，旧消费端忽略未知字段即可，
-	// 不构成破坏性变更；日记侧会话页要用时按这个顺序同步快照。
-	want := []string{"id", "app", "device", "ip", "ipRegion", "createdAt", "lastSeenAt", "current"}
+	// 2026-11 追加 ipRegion（IP 粗略归属地）与会话子系统重写的 expiresAt /
+	// idleExpiresAt（绝对/空闲到期时刻，只增可选字段）：**纯附加**字段，旧消费端
+	// 忽略未知字段即可，不构成破坏性变更；日记侧会话页要用时按这个顺序同步快照。
+	want := []string{"id", "app", "device", "ip", "ipRegion", "createdAt", "lastSeenAt",
+		"expiresAt,omitempty", "idleExpiresAt,omitempty", "current"}
 	typ := reflect.TypeOf(SessionInfo{})
 	got := make([]string, 0, typ.NumField())
 	for i := 0; i < typ.NumField(); i++ {

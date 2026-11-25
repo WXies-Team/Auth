@@ -3,7 +3,7 @@ package main
 // Command genicons 生成本仓全部图形资产（一次性画、可随时重生）。两种画法：
 //
 //	品牌画法（纯色 miuix 品牌蓝 #3482FF 实底 + 白色矢量，squircle 外形）
-//	  internal/ui/static/brand/<slug>-v1.png  三品牌邮件 logo（128px = 64@2x，单版本；
+//	  internal/ui/static/brand/<slug>-v1.png  品牌邮件 logo（128px = 64@2x，单版本；
 //	                                          邮件以 https://auth.horatio.cn/brand/ 引用）
 //	  internal/ui/static/brand/<slug>.svg     同款矢量源（squircle 用采样折线逼近）
 //	站点画法（**透明底 + miuix 蓝 #3482FF 描边本体**，2026-10-20 作者拍板）
@@ -47,21 +47,36 @@ var (
 	shieldPaths = []string{
 		"M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z",
 	}
+	// stamp / link 同取自 lucide-static v0.462.0（奇奇岛护照 = 护照章、屑涵短链 =
+	// 链接），path data 与官方源逐字一致。
+	stampPaths = []string{
+		"M5 22h14",
+		"M19.27 13.73A2.5 2.5 0 0 0 17.5 13h-11A2.5 2.5 0 0 0 4 15.5V17a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-1.5c0-.66-.26-1.3-.73-1.77Z",
+		"M14 13V8.5C14 7 15 7 15 5a3 3 0 0 0-3-3c-1.66 0-3 1-3 3s1 2 1 3.5V13",
+	}
+	linkPaths = []string{
+		"M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71",
+		"M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71",
+	}
 )
 
-// brandGlyphs 是三品牌 logo 的字形（键 = 文件名 slug）。auth = shield 素盾，与站点
+// brandGlyphs 是品牌 logo 的字形（键 = 文件名 slug）。auth = shield 素盾，与站点
 // favicon 三件套**同一份 path data**——全渠道一个图形（gen_test 有同源断言钉死）。
 var brandGlyphs = map[string][]string{
-	"CalorieDiary": flamePaths,
-	"ExpenseDiary": receiptPaths,
-	"auth":          shieldPaths,
+	"CalorieDiary":      flamePaths,
+	"ExpenseDiary":      receiptPaths,
+	"EPassportForMikey": stampPaths,
+	"PersonalShortener": linkPaths,
+	"auth":              shieldPaths,
 }
 
 // brandLabels 是 logo 的 alt/title 文案（与 auth 品牌注册表的 name 同值）。
 var brandLabels = map[string]string{
-	"CalorieDiary": "热量日记",
-	"ExpenseDiary": "开支日记",
-	"auth":          "Auth",
+	"CalorieDiary":      "热量日记",
+	"ExpenseDiary":      "开支日记",
+	"EPassportForMikey": "奇奇岛护照",
+	"PersonalShortener": "屑涵短链",
+	"auth":              "Auth",
 }
 
 // fileOut 是一份待写资产：rel 相对仓库根。
@@ -76,7 +91,7 @@ func generate() ([]fileOut, error) {
 
 	// 品牌邮件 logo：64px 设计尺寸 @2x = 128px，超椭圆切角 + 纯色 #3482FF 实底 +
 	// 白字形（字形外包盒占 76% ≈ 四周 12% 内边距）。矢量源同款（squircle 用采样折线逼近）。
-	for _, name := range []string{"CalorieDiary", "ExpenseDiary", "auth"} {
+	for _, name := range []string{"CalorieDiary", "ExpenseDiary", "EPassportForMikey", "PersonalShortener", "auth"} {
 		png, err := encodePNG(iconSpec{size: 128, cutCorners: true, boxFrac: 0.76, paths: brandGlyphs[name]})
 		if err != nil {
 			return nil, fmt.Errorf("画 %s 品牌 logo: %w", name, err)

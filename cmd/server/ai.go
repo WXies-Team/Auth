@@ -27,7 +27,7 @@ import (
 // 429 文案与 Retry-After 逐字沿用日记侧现行口径（calorie main.go 的 AI 路由）。
 
 // aiRatePerApp 是三端点每个 app 每分钟的兜底上限，口径与 /internal/verify 一致
-//（600 = 给多租户共享留的余量）。真正管住流量的是每 uid 的 ai_rate_per_minute，
+// （600 = 给多租户共享留的余量）。真正管住流量的是每 uid 的 ai_rate_per_minute，
 // 这道闸只挡「误配置 + 随机 uid」把 DB 查询打爆的放大面。
 const aiRatePerApp = 600
 
@@ -173,7 +173,7 @@ func internalAIRelease(quotaSvc *ai.Service) http.Handler {
 }
 
 // ai429 是三端点限流拒绝的统一回执：429 + Retry-After + 一条 429 状态日志
-//（同 limit429 的「运维可见」理由）。retryAfter 秒数与文案必须与日记侧一致。
+// （同 limit429 的「运维可见」理由）。retryAfter 秒数与文案必须与日记侧一致。
 func ai429(w http.ResponseWriter, retryAfter int, message string) {
 	w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
 	writeError(w, http.StatusTooManyRequests, message)

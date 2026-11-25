@@ -91,7 +91,7 @@ func TestPasskeyCeremonyOwnedByCaller(t *testing.T) {
 }
 
 // userHandle ↔ uid：8 字节大端往返无损，长度不对 / 最高位为 1 的垃圾一律报错
-//（discoverable 登录靠它反查账号，错位就是把 passkey 认给别人）。首项是现行的
+// （discoverable 登录靠它反查账号，错位就是把 passkey 认给别人）。首项是现行的
 // 7 位随机 uid，其余是编码边界（历史上出现过的雪花 uid 与人为溢出值）。
 func TestUserHandleRoundTrip(t *testing.T) {
 	for _, uid := range []int64{1234567, 1, 1<<53 + 7, 2112093138515398659, 1<<63 - 1} {
@@ -345,5 +345,56 @@ func TestJSsafeRowID(t *testing.T) {
 	}
 	if len(seen) < 190 {
 		t.Fatalf("200 次里碰撞过多: %d", len(seen))
+	}
+}
+
+// TestNormalizeOpaqueOrigins：Android 原生 origin 的清洗/校验口径——精确串、
+// 去重、只收 android:apk-key-hash: 前缀；写错整批拒（降级为仅网页端），不静默
+// 截断/丢弃单条（否则某条指纹的 App 会「只有它登不进」且没人发现）。
+func TestNormalizeOpaqueOrigins(t *testing.T) {
+	good := []string{
+		"android:apk-key-hash:" + strings.Repeat("A", 43),
+		" android:apk-key-hash:" + strings.Repeat("B", 43) + " ",
+		"android:apk-key-hash:" + strings.Repeat("A", 43), // 重复
+	}
+	out, err := normalizeOpaqueOrigins(good)
+	if err != nil || len(out) != 2 {
+		t.Fatalf("合法清单应去重为 2 条，得到 %v err=%v", out, err)
+	}
+	for _, v := range out {
+		if !strings.HasPrefix(v, "android:apk-key-hash:") || strings.TrimSpace(v) != v {
+			t.Errorf("清洗后形态不对: %q", v)
+		}
+	}
+	for _, bad := range [][]string{
+		{"https://evil.example.com"},
+		{"android:apk-key-hash:"},
+		{"android:apk-key-hash:short"},
+	} {
+		if _, err := normalizeOpaqueOrigins(bad); err == nil {
+			t.Errorf("非法清单应报错: %v", bad)
+		}
+	}
+}
+
+// TestPasskeyFinishErrorClassification：origin / challenge / 其余验证失败拆不同
+// message + reason（只增 reason 字段，不改响应形状）。
+func TestPasskeyFinishErrorClassification(t *testing.T) {
+	cases := []struct {
+		detail string
+		reason string
+	}{
+		{"Error validating origin", ReasonPasskeyOrigin},
+		{"Error validating topOrigin", ReasonPasskeyOrigin},
+		{"Error validating challenge", ReasonPasskeyChallenge},
+		{"Error validating ceremony type", ReasonPasskeyVerification},
+		{"some other failure", ReasonPasskeyVerification},
+	}
+	for _, c := range cases {
+		err := passkeyFinishError(&protocol.Error{Type: "verification_error", Details: c.detail}, "fallback")
+		var he *HTTPError
+		if !asHTTPError(err, &he) || he.Reason != c.reason || he.Code != 400 {
+			t.Errorf("detail %q 应 400/%s，得到 %+v", c.detail, c.reason, err)
+		}
 	}
 }

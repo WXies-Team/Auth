@@ -43,14 +43,18 @@ func (s *Service) CleanDeadSessions() { cleanDeadSessions(s.pool) }
 
 func cleanDeadSessions(pool *sql.DB) {
 	now := time.Now()
-	// 撤销行从 revoked_at 起算保留；未撤销行从 created_at 起算「寿命 + 保留」。
-	// web 会话的**空闲** 7 天超时不参与删行——它只影响验票，按 last_seen_at 删会把
-	// 一台刚闲置过久、仍在回看窗内的行提前抹掉。
+	// 撤销行从 revoked_at 起算保留；未撤销行以**绝对到期列**为准（0 = 存量行，
+	// 按 created_at + 90 天兜底），再留 sessionKeepAfterDeath 的回看窗。
+	// web 会话的**空闲** 7 天超时不参与删行——它只影响验票，按 last_seen_at 删会
+	// 把一台刚闲置过久、仍在回看窗内的行提前抹掉。
+	keep := now.Add(-sessionKeepAfterDeath).UnixMilli()
 	if _, err := pool.ExecContext(db.SlowCtx(),
-		"DELETE FROM sessions WHERE (revoked_at IS NOT NULL AND revoked_at < ?)"+
-			" OR (revoked_at IS NULL AND created_at < ?)",
-		now.Add(-sessionKeepAfterDeath).UnixMilli(),
-		now.Add(-webAbsoluteTTL-sessionKeepAfterDeath).UnixMilli()); err != nil {
+		`DELETE FROM sessions
+		 WHERE (revoked_at IS NOT NULL AND revoked_at < ?)
+		    OR (revoked_at IS NULL AND (
+		         (absolute_expires_at > 0 AND absolute_expires_at < ?)
+		         OR created_at < ?))`,
+		keep, keep, now.Add(-tokenTTL-sessionKeepAfterDeath).UnixMilli()); err != nil {
 		slog.Warn("清理过期会话行失败（下次发码再试）", "err", err)
 	}
 }

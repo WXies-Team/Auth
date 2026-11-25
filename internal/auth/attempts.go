@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"net"
+	"strings"
 	"sync"
 	"time"
 )
@@ -58,4 +60,34 @@ func (l *attemptLimiter) allow(key string, now time.Time) bool {
 	}
 	l.hits[key] = append(list, now)
 	return true
+}
+
+// RateKey 把客户端 IP 归一成**限流桶的键**（展示/存储仍用原地址）：
+//
+//	IPv4            → 完整地址（一个地址 = 一个客户端）
+//	IPv4-mapped     → 还原成 v4
+//	IPv6            → /64 前缀（RFC 6177：住宅/企业用户按 /64 分配，一台机器能用
+//	                  该前缀下的 2^64 个地址轮换）
+//	非法/空          → 原样（空串由调用方的「拿不到维度就放行」语义处理）
+//
+// 为什么必须按前缀：按完整 /128 记桶时，一个 IPv6 客户端每次换源地址（隐私地址
+// RFC 8981 本来就会轮换主机位）就得到一个全新预算，per-IP 闸等于不存在——这是
+// fastify-rate-limit / better-auth 都发过通告的一类绕过（CWE-307 的放大面）。
+// 桶键与 geoip 的 /64 缓存键同口径，避免「同一客户端在限流与归属地上被判成两人」。
+func RateKey(ip string) string {
+	v := strings.TrimSpace(ip)
+	if v == "" {
+		return ""
+	}
+	if i := strings.LastIndexByte(v, '%'); i > 0 && strings.Contains(v, ":") {
+		v = v[:i] // IPv6 zone 不是地址的一部分
+	}
+	parsed := net.ParseIP(v)
+	if parsed == nil {
+		return v
+	}
+	if v4 := parsed.To4(); v4 != nil {
+		return v4.String()
+	}
+	return parsed.Mask(net.CIDRMask(64, 128)).String() + "/64"
 }

@@ -36,7 +36,13 @@ func randUserID() (int64, error) {
 			return 0, fmt.Errorf("取随机 uid: %w", err)
 		}
 		if v := binary.LittleEndian.Uint64(b[:]); v < limit {
-			return uidMin + int64(v%span), nil
+			id := uidMin + int64(v%span)
+			// 根管理员 uid 是保留号：即使库里暂时没有这一行（账号被删/测试清库），
+			// 随机取号也绝不能把根身份发给一个普通注册者。见 admin.go 的 RootUID。
+			if id == RootUID {
+				continue
+			}
+			return id, nil
 		}
 	}
 }
@@ -55,6 +61,11 @@ func newUserID(gen func() (int64, error), insert func(id int64) error) (int64, e
 		if err != nil {
 			return 0, err
 		}
+		// 根 uid 永远不作为新账号发出（gen 是调用方注入的，测试/迁移固定号源
+		// 也要挡；只靠 randUserID 的过滤不够）。
+		if id == RootUID {
+			continue
+		}
 		if err := insert(id); err != nil {
 			if !isDuplicateUID(err, id) {
 				return 0, err
@@ -72,7 +83,7 @@ func newUserID(gen func() (int64, error), insert func(id int64) error) (int64, e
 //
 // 重复值这一条是必需的：uq_users_email 的冲突同样是 1062，它的重复值是邮箱串——
 // 光看错误码分不出「号撞了」和「邮箱被占了」，而后者必须原样交给 Register 翻译成
-//「该邮箱已注册」，重试换号毫无意义。
+// 「该邮箱已注册」，重试换号毫无意义。
 func isDuplicateUID(err error, id int64) bool {
 	var me *mysql.MySQLError
 	return errors.As(err, &me) && me.Number == 1062 &&

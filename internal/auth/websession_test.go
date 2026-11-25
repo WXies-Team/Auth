@@ -149,6 +149,99 @@ func TestWebSessionTimeoutsAndRevocation(t *testing.T) {
 	}
 }
 
+// 会话 token 轮换 + 重放检测（会话子系统重写）：轮换后新 token 生效、旧 token
+// 在 30 秒宽限窗内仍认（并发请求/网络滞后），窗外旧 token 再出现 = 重放——
+// 整个 family 当场吊销（含轮换后的新 token），并落 session.kick/fail 审计。
+// 另钉两条：轮换只认**当前** token（宽限窗里的旧 token 换不出新 token），以及
+// 期望 hash 不匹配时 409 且不落库（并发轮换的输家）。
+func TestWebSessionRotationAndReuseDetection(t *testing.T) {
+	svc, mailer := newTestService(t)
+	reg := registerViaCode(t, svc, mailer, "web-rotate@example.com", "secret123")
+	c, err := svc.ValidUserID("Bearer " + reg.Token)
+	if err != nil {
+		t.Fatalf("解析 token: %v", err)
+	}
+	ws, err := svc.CreateWebSession(c.UID, SessionMeta{IP: "203.0.113.20", UserAgent: "Chrome"})
+	if err != nil {
+		t.Fatalf("建 web 会话: %v", err)
+	}
+	rot, err := svc.RotateWebSession(ws.SID, sha256Hex(ws.Token))
+	if err != nil {
+		t.Fatalf("轮换: %v", err)
+	}
+	if rot.SID != ws.SID || rot.Token == ws.Token || rot.CSRFToken == ws.CSRFToken {
+		t.Fatalf("轮换应保持 SID、换新双 token，得到 %+v", rot)
+	}
+	// 新 token 正常
+	if _, err := svc.ValidWebSession(rot.Token); err != nil {
+		t.Fatalf("新 token 应有效: %v", err)
+	}
+	// 旧 token 在宽限窗内仍认，且旧 CSRF 也能过（并发请求不因轮换 403）
+	wc, err := svc.ValidWebSession(ws.Token)
+	if err != nil {
+		t.Fatalf("宽限窗内旧 token 应有效: %v", err)
+	}
+	if !wc.CheckCSRF(ws.CSRFToken) {
+		t.Error("宽限窗内旧 CSRF 应能过")
+	}
+	// 宽限窗里的旧 token 只能继续用，不能换发新 token（否则被偷的旧 cookie 能
+	// 在 30 秒内洗成新的 90 天 token）。期望 hash 是旧 token，条件 UPDATE 必不命中。
+	if _, err := svc.RotateWebSession(ws.SID, sha256Hex(ws.Token)); err == nil {
+		t.Fatal("宽限窗旧 token 不该能轮换出新 token")
+	} else if code, _ := httpMsg(err); code != 409 {
+		t.Errorf("宽限窗旧 token 轮换应 409，得到 %d (%v)", code, err)
+	}
+	// 409 不能落库：新 token 仍是当前 token，旧 token 仍只在宽限窗内有效
+	if _, err := svc.ValidWebSession(rot.Token); err != nil {
+		t.Errorf("被拒的轮换不该动当前 token: %v", err)
+	}
+	var rotatedAt int64
+	if err := svc.pool.QueryRow("SELECT rotated_at FROM sessions WHERE id = ?", ws.SID).Scan(&rotatedAt); err != nil {
+		t.Fatalf("读轮换时刻: %v", err)
+	}
+	// 用 rotated_at 相对取值把 30 秒窗钉住，不让测试真等半分钟：29 秒仍在窗内，
+	// 31 秒旧 token 触发重放检测并吊销整个 family。
+	if _, err := svc.pool.Exec("UPDATE sessions SET prev_valid_until = ? WHERE id = ?",
+		rotatedAt+webRotateGrace.Milliseconds()-time.Second.Milliseconds(), ws.SID); err != nil {
+		t.Fatalf("设 29 秒宽限窗: %v", err)
+	}
+	if _, err := svc.ValidWebSession(ws.Token); err != nil {
+		t.Fatalf("轮换后 29 秒旧 token 应仍有效: %v", err)
+	}
+	if _, err := svc.pool.Exec("UPDATE sessions SET prev_valid_until = ? WHERE id = ?",
+		rotatedAt+webRotateGrace.Milliseconds()+time.Second.Milliseconds(), ws.SID); err != nil {
+		t.Fatalf("设 31 秒宽限窗: %v", err)
+	}
+	if _, err := svc.ValidWebSession(ws.Token); err == nil {
+		t.Fatal("轮换后 31 秒旧 token 应判重放 401")
+	}
+	// family 全灭：轮换后的新 token 也不能再用
+	if _, err := svc.ValidWebSession(rot.Token); err == nil {
+		t.Error("重放检测后整个 family 应被吊销（新 token 也失效）")
+	}
+	var reused int
+	if err := svc.pool.QueryRow(
+		"SELECT COUNT(*) FROM audit_logs WHERE action = 'session.kick' AND result = 'fail' AND detail LIKE '%token_reuse%'").
+		Scan(&reused); err != nil || reused == 0 {
+		t.Errorf("重放应落 session.kick/fail 审计，得到 %d err=%v", reused, err)
+	}
+	// 同一个旧 token 再重放：仍然 401，但**不新增审计行**——否则任何持有旧 cookie
+	// 的人都能把 audit_logs 写成无限增长（不需要有效会话，绕开所有 uid 限流）。
+	if _, err := svc.ValidWebSession(ws.Token); err == nil {
+		t.Error("已吊销会话的旧 token 应继续 401")
+	}
+	var again int
+	if err := svc.pool.QueryRow(
+		"SELECT COUNT(*) FROM audit_logs WHERE action = 'session.kick' AND result = 'fail' AND detail LIKE '%token_reuse%'").
+		Scan(&again); err != nil || again != reused {
+		t.Errorf("重复重放不该新增审计行，得到 %d -> %d err=%v", reused, again, err)
+	}
+	// 已吊销的会话不能再轮换
+	if _, err := svc.RotateWebSession(ws.SID, sha256Hex(rot.Token)); err == nil {
+		t.Error("已吊销会话轮换应失败")
+	}
+}
+
 // 双凭据并存互不串用：web token 过不了 JWT 校验，JWT 过不了 web 校验；
 // 但两条路各自都要撞会话与版本闸。
 func TestWebBearerAndJWTCoexist(t *testing.T) {

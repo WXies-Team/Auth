@@ -135,7 +135,12 @@ func EnsureSchema(pool *sql.DB) error {
 			return err
 		}
 	}
-	slog.Info("schema ensured", "statements", len(stmts), "columns", len(extraColumns))
+	for _, idx := range extraIndexes {
+		if err := ensureIndex(pool, idx.table, idx.index, idx.ddl); err != nil {
+			return err
+		}
+	}
+	slog.Info("schema ensured", "statements", len(stmts), "columns", len(extraColumns), "indexes", len(extraIndexes))
 	return nil
 }
 
@@ -184,6 +189,73 @@ var extraColumns = []columnDef{
 		"ALTER TABLE ai_usage ADD COLUMN prompt_tokens INT NOT NULL DEFAULT 0"},
 	{"ai_usage", "completion_tokens",
 		"ALTER TABLE ai_usage ADD COLUMN completion_tokens INT NOT NULL DEFAULT 0"},
+	// ---- 会话子系统重写（2026-11）新增列。逐列一条 DDL：ensureColumn 按列探测，
+	// 多列绑一条 DDL 时「第一列已存在」会让后面的列永远补不上。
+	//
+	// absolute_expires_at：会话绝对过期时刻（毫秒）。0 = 补列前的存量行，判定时按
+	// created_at + 90 天兜底（sessionAbsoluteExpiry），不是永不过期。
+	{"sessions", "absolute_expires_at",
+		"ALTER TABLE sessions ADD COLUMN absolute_expires_at BIGINT NOT NULL DEFAULT 0"},
+	// family_id：轮换家族的锚点（新建会话 = 自己的 id；轮换只换 token 不换 family）。
+	// 0 = 存量行，按 id 视作自己的家族（sessionFamilyID）。
+	{"sessions", "family_id",
+		"ALTER TABLE sessions ADD COLUMN family_id BIGINT NOT NULL DEFAULT 0"},
+	// rotated_at：本行 token 最后一次轮换时刻（毫秒）；0 = 从未轮换。
+	{"sessions", "rotated_at",
+		"ALTER TABLE sessions ADD COLUMN rotated_at BIGINT NOT NULL DEFAULT 0"},
+	// prev_token_hash / prev_csrf_hash / prev_valid_until：轮换前的旧 token 与它的
+	// 短暂宽限窗。旧 token 过期后再出现 = 重放信号（见 RotateWebSession）。
+	{"sessions", "prev_token_hash",
+		"ALTER TABLE sessions ADD COLUMN prev_token_hash CHAR(64) NULL, ADD UNIQUE KEY uq_sessions_prev_token (prev_token_hash)"},
+	{"sessions", "prev_csrf_hash",
+		"ALTER TABLE sessions ADD COLUMN prev_csrf_hash CHAR(64) NULL"},
+	{"sessions", "prev_valid_until",
+		"ALTER TABLE sessions ADD COLUMN prev_valid_until BIGINT NOT NULL DEFAULT 0"},
+	// 回滚（按依赖倒序；生产回滚前先停进程，避免新旧二进制对缺列各自解释）：
+	//   ALTER TABLE sessions DROP INDEX uq_sessions_prev_token;
+	//   ALTER TABLE sessions DROP COLUMN prev_valid_until, DROP COLUMN prev_csrf_hash,
+	//     DROP COLUMN prev_token_hash, DROP COLUMN rotated_at, DROP COLUMN family_id,
+	//     DROP COLUMN absolute_expires_at;
+	// 回滚不删数据（会话行本就是短生命周期数据）；旧二进制不读新列，行为回到
+	// 「created_at/last_seen_at 推算超时」的既有口径。
+}
+
+// indexDef 是一条「老库补索引」的 DDL。table/index 只用于探测与报错定位。
+type indexDef struct {
+	table, index, ddl string
+}
+
+// extraIndexes 只补 schema.sql 已定义但存量库可能漂移的索引。
+// ALGORITHM=INPLACE + LOCK=NONE 让建索引期间并发 DML 继续跑（MariaDB/MySQL
+// 的 online DDL；初始化与提交阶段仍有短暂排他 MDL，长事务会让它等待）。
+var extraIndexes = []indexDef{
+	// 绝对到期扫描走这个索引；补列只加列不加索引，老库会缺它。
+	{"sessions", "idx_sessions_abs",
+		"ALTER TABLE sessions ADD INDEX idx_sessions_abs (absolute_expires_at), ALGORITHM=INPLACE, LOCK=NONE"},
+	// 回滚：ALTER TABLE sessions DROP INDEX idx_sessions_abs;
+}
+
+// ensureIndex 幂等地补一个索引：先查 information_schema.statistics，没有才执行 DDL。
+// 并发启动时两个实例可能同时探测到缺失，后到者撞 1061 Duplicate key name；
+// 重新探测确认已存在就按成功处理，不吞掉其它 DDL 错误。
+func ensureIndex(pool *sql.DB, table, index, ddl string) error {
+	var found int
+	probe := "SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?"
+	if err := pool.QueryRow(probe, table, index).Scan(&found); err != nil {
+		return fmt.Errorf("探测 %s.%s 索引: %w", table, index, err)
+	}
+	if found > 0 {
+		return nil
+	}
+	if _, err := pool.Exec(ddl); err != nil {
+		var n int
+		if perr := pool.QueryRow(probe, table, index).Scan(&n); perr == nil && n > 0 {
+			return nil
+		}
+		return fmt.Errorf("补 %s.%s 索引: %w", table, index, err)
+	}
+	slog.Info("补索引完成", "table", table, "index", index)
+	return nil
 }
 
 // ensureColumn 幂等地补一列：先查 information_schema，没有才执行 DDL。
@@ -200,6 +272,15 @@ func ensureColumn(pool *sql.DB, table, column, ddl string) error {
 		return nil
 	}
 	if _, err := pool.Exec(ddl); err != nil {
+		// 并发启动（或两个测试进程共用测试库）时两个实例可能同时探测到「列不存在」
+		// 再同时 ALTER：后到者拿 1060 Duplicate column。补列是幂等意图，重新探测
+		// 一次——列已存在就按成功处理；否则才是真错误（不是把所有 DDL 错误吞掉）。
+		var n int
+		if perr := pool.QueryRow(
+			"SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?",
+			table, column).Scan(&n); perr == nil && n > 0 {
+			return nil
+		}
 		return fmt.Errorf("补 %s.%s 列: %w", table, column, err)
 	}
 	slog.Info("补列完成", "table", table, "column", column)

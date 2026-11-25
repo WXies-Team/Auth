@@ -74,7 +74,7 @@ const (
 	AuditUserProfileReset = "user.profile_reset"
 	// B9 邀请建号四事件：创建 / 重发 / 撤销 / 接受。detail 只带掩码邮箱与 app
 	//（invite.go 逐处给出），邀请 token 与密码一律不进审计。
-	AuditUserInvite      = "user.invite"
+	AuditUserInvite       = "user.invite"
 	AuditUserInviteResend = "user.invite_resend"
 	AuditUserInviteRevoke = "user.invite_revoke"
 	AuditUserInviteAccept = "user.invite_accept"
@@ -148,7 +148,7 @@ func (s *Service) Audit(e AuditEvent) {
 }
 
 // MaskEmail 是掩码邮箱的导出入口：路由层在补老端点的审计时也要同一套口径
-//（本地部分只留首字符），两处各写一遍必然漂。
+// （本地部分只留首字符），两处各写一遍必然漂。
 func MaskEmail(email string) string { return maskEmail(email) }
 
 // uidPtr 把可能为零的 uid 装成审计用的 *int64（0 = 匿名，不落指针）。

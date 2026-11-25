@@ -242,7 +242,7 @@ func TestQueryAuditAppsFilter(t *testing.T) {
 
 // AI 用量的 app 过滤：app-admin 只见「该 app 用户」的行，global 行被隐藏；
 // 空 = 全量（含 global）。用户归属按 sessions 行判定，直接落行钉口径
-//（不过注册链——注册固定 calorie 会话，会把 u2 也算成 calorie 用户）。
+// （不过注册链——注册固定 calorie 会话，会把 u2 也算成 calorie 用户）。
 func TestAdminAIUsageAppsFilter(t *testing.T) {
 	svc, _ := newTestService(t)
 	day := time.Now().Format("2006-01-02")
@@ -335,6 +335,7 @@ func TestAdminAIUsageAppsFilter(t *testing.T) {
 		t.Errorf("授权项目内钻取应成功: %v", err)
 	}
 }
+
 // 注销清 scopes：授权行随账号删除，不留指向已删账号的残留。
 func TestDeleteAccountClearsScopes(t *testing.T) {
 	svc, mailer := newTestService(t)

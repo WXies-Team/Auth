@@ -74,20 +74,20 @@ type otpStore struct {
 // 今天发出的**全部**码数（跨用途总闸，用掉的也计数）。
 func otpGate(now time.Time, lastSent time.Time, dayCount, recipientCount int) error {
 	if recipientCount >= recipientDailyCap {
-		return &HTTPError{429, "今日验证码发送次数已达上限，请明天再试"}
+		return &HTTPError{Code: 429, Message: "今日验证码发送次数已达上限，请明天再试"}
 	}
 	// 冷却按「上一次发出」算：失败的发送会被 revoke 掉，不会白烧 60 秒
 	if !lastSent.IsZero() && now.Sub(lastSent) < otpCooldown {
-		return &HTTPError{429, "发送过于频繁，请60秒后再试"}
+		return &HTTPError{Code: 429, Message: "发送过于频繁，请60秒后再试"}
 	}
 	if dayCount >= otpDailyLimit {
-		return &HTTPError{429, "今日验证码发送次数已达上限，请明天再试"}
+		return &HTTPError{Code: 429, Message: "今日验证码发送次数已达上限，请明天再试"}
 	}
 	return nil
 }
 
 // dayStart 是 now 所在**本地日**的零点毫秒时间戳。与旧内存实现按本地日
-//（"2006-01-02"）计数同口径；服务器与 DSN 都按本地时区跑，跨天即重置。
+// （"2006-01-02"）计数同口径；服务器与 DSN 都按本地时区跑，跨天即重置。
 func dayStart(now time.Time) int64 {
 	y, m, d := now.Date()
 	return time.Date(y, m, d, 0, 0, 0, 0, now.Location()).UnixMilli()
@@ -200,7 +200,7 @@ func (s *otpStore) issueLocked(uid int64, purpose, email, code string, now time.
 
 // verify 校验并**用后即焚**（一次性的码不能再用第二次）。文案区分两种失败：
 // 没发过/过期/试错太多 → 一句「过期」，输错 → 「验证码错误」，避免把
-//「还有几次机会」这类可被利用的信息说出去。
+// 「还有几次机会」这类可被利用的信息说出去。
 //
 // uid 是**发码时写入的归属**（见 issue）：查询与烧代都按 uid 收口——发码时是 0
 // 就验 0（匿名五用途），是真实 uid 就验同一 uid（change / email_change）。这是

@@ -23,7 +23,7 @@ const (
 // QueryCtx 返回带 QueryTimeout 的 context，替代裸 context.Background()。
 //
 // 刻意不把 cancel 交回调用方：调用点全是单行表达式
-//（`s.pool.QueryContext(context.Background(), …)`），塞不进
+// （`s.pool.QueryContext(context.Background(), …)`），塞不进
 // `ctx, cancel := …; defer cancel()` 两行写法；定时器最迟在超时时刻自行触发释放，
 // 每次调用至多多挂一个 5 秒寿命的短命对象，不构成泄漏（vet lostcancel 对
 // `_ = cancel` 的显式丢弃放行，`go vet ./...` 保持干净）。

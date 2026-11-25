@@ -411,7 +411,7 @@ func (s *Service) beginLoginState(uid int64, app string) (string, error) {
 // 不存在 / 过期一律 400「登录请求已过期」——两者不区分，免得当探针。
 func (s *Service) peekLoginState(token string) (loginStateRow, error) {
 	if strings.TrimSpace(token) == "" {
-		return loginStateRow{}, &HTTPError{400, "登录请求已过期，请重新登录"}
+		return loginStateRow{}, &HTTPError{Code: 400, Message: "登录请求已过期，请重新登录"}
 	}
 	var row loginStateRow
 	var expires int64
@@ -420,14 +420,14 @@ func (s *Service) peekLoginState(token string) (loginStateRow, error) {
 		"SELECT user_id, method, app, expires_at FROM login_states WHERE token_hash = ?", sha256Hex(token)).
 		Scan(&row.uid, &row.method, &label, &expires)
 	if errors.Is(err, sql.ErrNoRows) {
-		return loginStateRow{}, &HTTPError{400, "登录请求已过期，请重新登录"}
+		return loginStateRow{}, &HTTPError{Code: 400, Message: "登录请求已过期，请重新登录"}
 	}
 	if err != nil {
 		return loginStateRow{}, fmt.Errorf("查登录中间态: %w", err)
 	}
 	if time.Now().UnixMilli() > expires {
 		s.burnLoginState(token)
-		return loginStateRow{}, &HTTPError{400, "登录请求已过期，请重新登录"}
+		return loginStateRow{}, &HTTPError{Code: 400, Message: "登录请求已过期，请重新登录"}
 	}
 	row.app = loginStateApp(label)
 	return row, nil

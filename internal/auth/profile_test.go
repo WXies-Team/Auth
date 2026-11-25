@@ -244,7 +244,7 @@ func TestProfileRowRemovedOnDeleteAccount(t *testing.T) {
 }
 
 // loginNotify（W1 新设备登录提醒开关）：默认开；显式 PUT 才改值，缺省 PUT 不动
-//（App 的全量档案提交不带该字段，绝不能把提醒关掉）；GET 回执恒带当前值。
+// （App 的全量档案提交不带该字段，绝不能把提醒关掉）；GET 回执恒带当前值。
 func TestProfileLoginNotifyRoundTrip(t *testing.T) {
 	svc, mailer := newTestService(t)
 	reg := registerViaCode(t, svc, mailer, "profile-notify@example.com", "secret123")

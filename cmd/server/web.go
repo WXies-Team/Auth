@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"html"
@@ -169,7 +171,31 @@ func registerWebRoutes(mux *http.ServeMux, svc *auth.Service) {
 			writeJSON(w, http.StatusOK, protocol.WebSessionResponse{
 				UID: c.UID, Email: c.Email, Role: c.Role, CSRFToken: csrf,
 				TotpEnabled: totpOn, PasskeyCount: len(keys), PasswordSet: hasPassword,
+				// isRoot 与 internal/auth 的 RootUID 同源（不是前端再抄一份 5939716）；
+				// UI 接线前硬编码的 ROOT_UID 应改为读这个字段。
+				IsRoot: svc.IsRootUID(c.UID),
 			})
+		}))
+	// 会话 token 轮换（会话子系统重写）：cookie 会话主动换一枚新 token，旧 token
+	// 只保留 30 秒宽限窗（并发请求/网络滞后），窗外再用即判重放并吊销整个 family。
+	// 只对 cookie 生效：Bearer 调用方没有可 Set-Cookie 的通道，回了新 token 也落不下去。
+	// 轮换只认**当前 token**（c.TokenHash 进条件 UPDATE）：宽限窗里的旧 token 能继续
+	// 用，但换不出新 token；并发轮换只有一个赢家，另一个 409 后刷新重试。
+	// 失败一律按「登录已过期」处理，前端回登录页即可（不暴露内部列状态）。
+	mux.Handle("POST /web/session/refresh", authed("web-session-refresh", 10,
+		func(c auth.WebCaller, w http.ResponseWriter, _ *http.Request) {
+			if !c.ViaCookie {
+				// 不带 reason：这是「通道不支持」，不是策略拦截也不是授权不足。
+				writeError(w, http.StatusForbidden, "只有网页登录态可以轮换会话，请从控制台重试")
+				return
+			}
+			ws, err := svc.RotateWebSession(c.SID, c.TokenHash)
+			if err != nil {
+				writeResult(w, nil, err)
+				return
+			}
+			setWebCookies(w, ws)
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "expiresAt": ws.ExpiresAt.UnixMilli()})
 		}))
 	mux.Handle("POST /web/reauth", authed("web-reauth", 10,
 		func(c auth.WebCaller, w http.ResponseWriter, r *http.Request) {
@@ -188,7 +214,7 @@ func registerWebRoutes(mux *http.ServeMux, svc *auth.Service) {
 	// 重新验证的 Passkey 路（弹框「Passkey / 两步验证码二选一」里的前者）：与
 	// POST /web/reauth 同为 authed——不是 reauthed，这两支正是要刷新 reauth 窗的
 	// 本体。额度与密码/验证码路同档：选项 30/min/uid、回执 10/min/uid。
-	mux.Handle("POST /web/reauth/webauthn/options", authed("reauth-passkey-options", 30,
+	mux.Handle("POST /web/reauth/webauthn/options", limitN("webauthn-ip", 120, authed("reauth-passkey-options", 30,
 		func(c auth.WebCaller, w http.ResponseWriter, _ *http.Request) {
 			assertion, id, err := svc.BeginPasskeyReauth(c.Caller)
 			if err != nil {
@@ -196,8 +222,8 @@ func registerWebRoutes(mux *http.ServeMux, svc *auth.Service) {
 				return
 			}
 			writeJSON(w, http.StatusOK, ceremonyResponse{PublicKey: assertion.Response, CeremonyID: id})
-		}))
-	mux.Handle("POST /web/reauth/webauthn/finish", authed("reauth-passkey-finish", 10, jsonAuthedWrapper(
+		})))
+	mux.Handle("POST /web/reauth/webauthn/finish", limitN("webauthn-ip", 120, authed("reauth-passkey-finish", 10, jsonAuthedWrapper(
 		func(c auth.WebCaller, req *protocol.PasskeyFinishRequest, w http.ResponseWriter, _ *http.Request) {
 			body, ok := credentialJSON(w, req.Response)
 			if !ok {
@@ -210,7 +236,7 @@ func registerWebRoutes(mux *http.ServeMux, svc *auth.Service) {
 				return
 			}
 			writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
-		})))
+		}))))
 	mux.Handle("POST /web/logout", authed("web-logout", 10,
 		func(c auth.WebCaller, w http.ResponseWriter, _ *http.Request) {
 			// 只吊销本行（web 会话），不动 token_version：同账号的其它设备照常用。
@@ -231,7 +257,7 @@ func registerWebRoutes(mux *http.ServeMux, svc *auth.Service) {
 		}))
 
 	// ---- Passkey 仪式 ----
-	mux.Handle("POST /webauthn/register/options", authed("passkey-options", 30,
+	mux.Handle("POST /webauthn/register/options", limitN("webauthn-ip", 120, authed("passkey-options", 30,
 		func(c auth.WebCaller, w http.ResponseWriter, _ *http.Request) {
 			creation, id, err := svc.BeginPasskeyRegistration(c.Caller)
 			if err != nil {
@@ -239,8 +265,8 @@ func registerWebRoutes(mux *http.ServeMux, svc *auth.Service) {
 				return
 			}
 			writeJSON(w, http.StatusOK, ceremonyResponse{PublicKey: creation.Response, CeremonyID: id})
-		}))
-	mux.Handle("POST /webauthn/register/finish", reauthed("passkey-register", 10, jsonAuthedWrapper(
+		})))
+	mux.Handle("POST /webauthn/register/finish", limitN("webauthn-ip", 120, reauthed("passkey-register", 10, jsonAuthedWrapper(
 		func(c auth.WebCaller, req *protocol.PasskeyFinishRequest, w http.ResponseWriter, r *http.Request) {
 			body, ok := credentialJSON(w, req.Response)
 			if !ok {
@@ -252,7 +278,7 @@ func registerWebRoutes(mux *http.ServeMux, svc *auth.Service) {
 				return
 			}
 			writeJSON(w, http.StatusOK, info)
-		})))
+		}))))
 	mux.Handle("POST /webauthn/login/options", withLogging(originGuard(limitN("passkey-login-options", 30,
 		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			assertion, id, err := svc.BeginPasskeyLogin()
@@ -442,6 +468,17 @@ func errText(err error) string {
 	return "服务暂时不可用，请稍后重试"
 }
 
+// cspNonce 生成一次性的 CSP nonce（16 字节 CSPRNG，base64url 无填充）。
+// 失败回空串：调用方的 contentSecurityPolicy("") 会回严格策略（内联脚本被拦），
+// 这是 fail closed 的方向——页面按钮失效可重试，放行任意内联脚本不可接受。
+func cspNonce() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return ""
+	}
+	return base64.RawURLEncoding.EncodeToString(b[:])
+}
+
 // writeDeleteCancelPage 渲染注销撤销页（W3）：ok=true 是确认页（按钮 → POST →
 // 成功后展示结果 + 登录入口），否则是友好错误页（400 + 一句可执行的下一步）。
 // HTML/CSS/JS 全内嵌：这页没有登录态、不进 internal/ui 的模板集（那批文件由
@@ -450,6 +487,11 @@ func writeDeleteCancelPage(w http.ResponseWriter, token string, ok bool, message
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
+	// 本页是唯一自渲染、且脚本内联的页面：按请求发 nonce 放宽这一条脚本，
+	// 其余站点仍走严格 CSP（script-src 'self'）。nonce 取不到随机数时为空 →
+	// contentSecurityPolicy("") 回严格策略，页面按钮失效但绝不放行不可控脚本。
+	nonce := cspNonce()
+	w.Header().Set("Content-Security-Policy", contentSecurityPolicy(nonce))
 	const head = `<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -505,7 +547,7 @@ p  { font-size:15px; line-height:1.7; margin:0 0 10px; color:#333; }
 <p>注销申请已撤销，账号与数据保持不变。</p>
 <a class="link" href="/web/login">前往登录</a>
 </div>
-<script>
+<script nonce="`+nonce+`">
 const TOKEN = `+string(tokJSON)+`;
 const go = document.getElementById('go');
 go.addEventListener('click', async () => {
@@ -594,6 +636,8 @@ func clearWebCookies(w http.ResponseWriter) {
 func originGuard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !readMethod(r.Method) && !sameOrigin(r) {
+			// 不带 reason（与 withUID 的 CSRF 失配同口径）：来源不对不是策略/权限分级，
+			// 前端按 message 提示「从本站页面重试」即可。
 			writeError(w, http.StatusForbidden, "请求来源校验失败，请从本站页面重试")
 			return
 		}

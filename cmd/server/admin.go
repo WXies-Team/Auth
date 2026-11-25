@@ -3,9 +3,10 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/hex"
-	"net/http"
 	"encoding/csv"
+	"encoding/hex"
+	"log/slog"
+	"net/http"
 	"sort"
 	"strconv"
 	"strings"
@@ -55,7 +56,10 @@ func registerAdminRoutes(mux *http.ServeMux, svc *auth.Service) {
 				return
 			}
 			if !auth.IsAdminRole(role) {
-				writeError(w, http.StatusForbidden, "你不是管理后台成员，请联系平台管理员开通")
+				// 路由层拒绝留结构化日志（审计事件名需要 UI 下拉同步，属 UI 批次；
+				// 业务层可写的角色/scope 拒绝已经各自落 audit fail）。
+				slog.Warn("管理后台拒绝访问", "uid", c.UID, "path", r.URL.Path, "reason", "not_admin")
+				writeDenied(w, "你不是管理后台成员，请联系平台管理员开通", auth.ReasonPermission)
 				return
 			}
 			mfa, err := svc.HasMFA(c.UID)
@@ -64,7 +68,8 @@ func registerAdminRoutes(mux *http.ServeMux, svc *auth.Service) {
 				return
 			}
 			if !mfa {
-				writeError(w, http.StatusForbidden, "管理后台要求先绑定两步验证或 Passkey，请到「两步验证」页绑定后再试")
+				slog.Warn("管理后台拒绝访问", "uid", c.UID, "path", r.URL.Path, "reason", "mfa_required")
+				writeDenied(w, "管理后台要求先绑定两步验证或 Passkey，请到「两步验证」页绑定后再试", auth.ReasonMFARequired)
 				return
 			}
 			if err := svc.RequireReauth(c.SID); err != nil {
@@ -95,7 +100,7 @@ func registerAdminRoutes(mux *http.ServeMux, svc *auth.Service) {
 	// 配置中心都是平台级数据）。放行即 true。
 	requireSuper := func(w http.ResponseWriter, ac adminCtx) bool {
 		if !ac.super {
-			writeError(w, http.StatusForbidden, "此功能仅平台管理员可用，请联系平台管理员操作")
+			writeDenied(w, "此功能仅平台管理员可用，请联系平台管理员操作", auth.ReasonPermission)
 			return false
 		}
 		return true
@@ -116,13 +121,13 @@ func registerAdminRoutes(mux *http.ServeMux, svc *auth.Service) {
 				return nil, true
 			}
 			if !auth.AppAllowed(want) {
-				writeError(w, http.StatusForbidden, "未知项目，请重新选择后重试")
+				writeDenied(w, "未知项目，请重新选择后重试", auth.ReasonPermission)
 				return nil, false
 			}
 			return []string{want}, true
 		}
 		if len(ac.apps) == 0 {
-			writeError(w, http.StatusForbidden, "尚未授予任何项目的管理权限，请联系平台管理员开通")
+			writeDenied(w, "尚未授予任何项目的管理权限，请联系平台管理员开通", auth.ReasonPermission)
 			return nil, false
 		}
 		if want == "" {
@@ -133,7 +138,7 @@ func registerAdminRoutes(mux *http.ServeMux, svc *auth.Service) {
 				return []string{want}, true
 			}
 		}
-		writeError(w, http.StatusForbidden, "没有该项目的管理权限，请联系平台管理员开通")
+		writeDenied(w, "没有该项目的管理权限，请联系平台管理员开通", auth.ReasonPermission)
 		return nil, false
 	}
 
@@ -143,7 +148,24 @@ func registerAdminRoutes(mux *http.ServeMux, svc *auth.Service) {
 			return
 		}
 		q := r.URL.Query()
-		list, total, err := svc.AdminSearchUsers(q.Get("query"), queryInt(q.Get("limit")), queryInt(q.Get("offset")))
+		// 可选过滤（契约缺口 #2）：role= 三值白名单（业务层校验），banned=true/false
+		// 走「生效封禁」口径；两者缺省 = 不限，与旧回执逐字节兼容。
+		var banned *bool
+		if raw := strings.TrimSpace(q.Get("banned")); raw != "" {
+			switch raw {
+			case "true", "1":
+				v := true
+				banned = &v
+			case "false", "0":
+				v := false
+				banned = &v
+			default:
+				writeError(w, http.StatusBadRequest, "banned 只能是 true 或 false，请重新选择后重试")
+				return
+			}
+		}
+		list, total, err := svc.AdminSearchUsersFiltered(q.Get("query"), q.Get("role"), banned,
+			queryInt(q.Get("limit")), queryInt(q.Get("offset")))
 		if err != nil {
 			writeResult(w, nil, err)
 			return
@@ -565,13 +587,24 @@ func registerAdminRoutes(mux *http.ServeMux, svc *auth.Service) {
 			return
 		}
 		q := r.URL.Query()
-		list, total, totalUsers, err := svc.AdminListSessions(queryInt64(q.Get("uid")), apps,
+		uid := queryInt64(q.Get("uid"))
+		list, total, totalUsers, err := svc.AdminListSessions(uid, apps,
 			q.Get("query"), q.Get("ip"), queryInt(q.Get("limit")), queryInt(q.Get("offset")))
 		if err != nil {
 			writeResult(w, nil, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, sessionPage{Items: list, Total: total, TotalUsers: totalUsers})
+		// 汇总（契约缺口 #3）：与列表同一套筛选条件，app 与地区两个桶。
+		// 聚合失败不把整页拖成 500——列表已经可用，汇总只是辅助视图。
+		byApp, byRegion, aerr := svc.AdminSessionAggregates(uid, apps, q.Get("query"), q.Get("ip"))
+		if aerr != nil {
+			slog.Warn("会话聚合失败（列表照常返回）", "err", aerr)
+			byApp, byRegion = []auth.SessionAggregate{}, []auth.SessionAggregate{}
+		}
+		writeJSON(w, http.StatusOK, sessionPage{
+			Items: list, Total: total, TotalUsers: totalUsers,
+			Apps: byApp, Regions: byRegion,
+		})
 	}))
 	mux.Handle("DELETE /admin/sessions/{id}", admin("admin-session-kick", func(ac adminCtx, w http.ResponseWriter, r *http.Request) {
 		id, ok := pathInt64(w, r.PathValue("id"))
@@ -694,7 +727,7 @@ func registerAdminRoutes(mux *http.ServeMux, svc *auth.Service) {
 }
 
 // page 是后台分页列表的统一回执：items 是本页数据，total 是过滤后的总条数
-//（翻页按钮按它判断还有没有下一页）。
+// （翻页按钮按它判断还有没有下一页）。
 type page struct {
 	Items any `json:"items"`
 	Total int `json:"total"`
@@ -707,6 +740,9 @@ type sessionPage struct {
 	Items      any `json:"items"`
 	Total      int `json:"total"`
 	TotalUsers int `json:"totalUsers"`
+	// Apps / Regions 是同一筛选条件下的汇总（只增字段，老调用方忽略）。
+	Apps    []auth.SessionAggregate `json:"apps"`
+	Regions []auth.SessionAggregate `json:"regions"`
 }
 
 // queryInt / queryInt64 解查询参数：缺省与非法值都按「没给」处理（0 = 不限 / 用默认），

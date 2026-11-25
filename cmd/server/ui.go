@@ -234,7 +234,7 @@ func pageHandler(svc *auth.Service, name, title string, gate pageGate) http.Hand
 			curApp = r.URL.Query().Get("app")
 			if scopedPages[name] && curApp != "" {
 				if (!isSuper && !containsStrGo(scopes, curApp)) || (isSuper && !auth.AppAllowed(curApp)) {
-					renderDenied(w, curApp)
+					renderDenied(w, curApp, auth.ReasonPermission)
 					return
 				}
 			}
@@ -287,12 +287,17 @@ func containsStrGo(list []string, v string) bool {
 }
 
 // renderDenied 渲染 ?app= 越权的 403 页（友好文案 + 回会话总览的出路）。
-// 文案点名是「应用范围」问题，避免被误读成登录态失效。
-func renderDenied(w http.ResponseWriter, app string) {
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(http.StatusForbidden)
+// 文案点名是「应用范围」问题，避免被误读成登录态失效；reason 走服务端
+// 拒绝分级（越出授权范围 = permission），403 页据此高亮命中级别。
+//
+// 状态码走 ui.Data.Status（Render 在 Execute 前设 Content-Type / Cache-Control:
+// no-store / nosniff / Referrer-Policy / Accept-CH 再 WriteHeader）。**不能**先
+// w.WriteHeader(403) 再 Render：头一旦冲刷，Render 里的安全与缓存头全部丢失，
+// 403 页会被浏览器/代理按默认缓存策略存下来。
+func renderDenied(w http.ResponseWriter, app, reason string) {
 	if err := ui.Render(w, "denied", ui.Data{
-		Title: "无权访问", Minimal: true, DeniedApp: app,
+		Title: "无权访问", Minimal: true, DeniedApp: app, DeniedReason: reason,
+		Status: http.StatusForbidden,
 	}); err != nil {
 		slog.Error("渲染 403 页失败", "err", err)
 	}

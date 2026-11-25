@@ -45,7 +45,7 @@ func (s *Service) denyIfBanned(uid int64, app string) error {
 		"SELECT app, until_ms, reason FROM user_bans WHERE uid = ?", uid)
 	if err != nil {
 		slog.Error("查封禁行失败", "uid", uid, "err", err)
-		return &HTTPError{503, "服务暂时不可用，请稍后重试"}
+		return &HTTPError{Code: 503, Message: "服务暂时不可用，请稍后重试"}
 	}
 	defer func() { _ = rows.Close() }()
 	now := time.Now().UnixMilli()
@@ -60,7 +60,7 @@ func (s *Service) denyIfBanned(uid int64, app string) error {
 		var b banRow
 		if err := rows.Scan(&b.app, &b.until, &b.reason); err != nil {
 			slog.Error("读封禁行失败", "uid", uid, "err", err)
-			return &HTTPError{503, "服务暂时不可用，请稍后重试"}
+			return &HTTPError{Code: 503, Message: "服务暂时不可用，请稍后重试"}
 		}
 		if b.until > 0 && now > b.until {
 			// 过期行记下惰性删（rows 读完再执行，不在查询中途抢连接）
@@ -75,7 +75,7 @@ func (s *Service) denyIfBanned(uid int64, app string) error {
 	}
 	if err := rows.Err(); err != nil {
 		slog.Error("遍历封禁行失败", "uid", uid, "err", err)
-		return &HTTPError{503, "服务暂时不可用，请稍后重试"}
+		return &HTTPError{Code: 503, Message: "服务暂时不可用，请稍后重试"}
 	}
 	_ = rows.Close()
 	for _, bannedApp := range stale {
@@ -88,7 +88,7 @@ func (s *Service) denyIfBanned(uid int64, app string) error {
 	if hit == nil {
 		return nil
 	}
-	return &HTTPError{403, banMessage(hit.reason, hit.until)}
+	return policyDenied(banMessage(hit.reason, hit.until))
 }
 
 // banMessage 拼封禁文案（W2 钉死的元素拼装，中文自然语序）：
@@ -122,24 +122,27 @@ func (s *Service) denyIfProjectRestricted(uid int64, app string) error {
 	}
 	if err != nil {
 		slog.Error("查项目登录限制失败", "app", app, "err", err)
-		return &HTTPError{503, "服务暂时不可用，请稍后重试"}
+		return &HTTPError{Code: 503, Message: "服务暂时不可用，请稍后重试"}
 	}
 	if restricted == 0 {
 		return nil
 	}
 	var allowed int
+	// 豁免口径与 W2 的「有效 app-admin」同源：admin_scopes 行 + role='admin'
+	// 两者都要（只留行不留角色的脏数据不该继续免检；super 已由上一条分支覆盖）。
 	if err := s.pool.QueryRowContext(db.QueryCtx(),
 		`SELECT (EXISTS(SELECT 1 FROM users WHERE id = ? AND role = ?)
 		       OR EXISTS(SELECT 1 FROM project_access WHERE app = ? AND uid = ?)
-		       OR EXISTS(SELECT 1 FROM admin_scopes WHERE app = ? AND uid = ?))`,
-		uid, adminRoleSuper, app, uid, app, uid).Scan(&allowed); err != nil {
+		       OR EXISTS(SELECT 1 FROM admin_scopes a JOIN users u ON u.id = a.uid
+		                 WHERE a.app = ? AND a.uid = ? AND u.role = ?))`,
+		uid, adminRoleSuper, app, uid, app, uid, adminRoleAdmin).Scan(&allowed); err != nil {
 		slog.Error("查项目白名单失败", "app", app, "uid", uid, "err", err)
-		return &HTTPError{503, "服务暂时不可用，请稍后重试"}
+		return &HTTPError{Code: 503, Message: "服务暂时不可用，请稍后重试"}
 	}
 	if allowed == 1 {
 		return nil
 	}
-	return &HTTPError{403, restrictedMessage(app)}
+	return policyDenied(restrictedMessage(app))
 }
 
 // restrictedMessage 是项目白名单的拒绝文案（带项目名更佳——展示名取品牌注册表，
@@ -172,7 +175,7 @@ func (s *Service) loginGate(uid int64, app string, meta SessionMeta) (mustChange
 	}
 	if err != nil {
 		slog.Error("读账号态失败", "uid", uid, "err", err)
-		return false, false, &HTTPError{503, "服务暂时不可用，请稍后重试"}
+		return false, false, &HTTPError{Code: 503, Message: "服务暂时不可用，请稍后重试"}
 	}
 	if pending > 0 {
 		if time.Now().UnixMilli() <= pending+deleteGrace.Milliseconds() {
@@ -187,7 +190,7 @@ func (s *Service) loginGate(uid int64, app string, meta SessionMeta) (mustChange
 		if err := s.finishDelete(uid, email, meta); err != nil {
 			return false, false, err
 		}
-		return false, false, &HTTPError{401, "该账号已注销"}
+		return false, false, &HTTPError{Code: 401, Message: "该账号已注销"}
 	}
 	return mustFlag == 1, false, nil
 }
@@ -216,13 +219,13 @@ func (s *Service) adminTarget(actor Caller, targetUID int64) (string, error) {
 	err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT email FROM users WHERE id = ?", targetUID).Scan(&email)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", &HTTPError{404, "该用户不存在，请刷新用户列表后重试"}
+		return "", &HTTPError{Code: 404, Message: "该用户不存在，请刷新用户列表后重试"}
 	}
 	if err != nil {
 		return "", fmt.Errorf("查目标用户: %w", err)
 	}
-	if s.isRootAccount(targetUID, email) && !s.isRootSuper(actor) {
-		return "", &HTTPError{403, "只有根管理员可以操作该账号"}
+	if s.isRootAccount(targetUID) && !s.isRootSuper(actor) {
+		return "", permissionDenied("只有根管理员可以操作该账号")
 	}
 	return email, nil
 }
@@ -233,7 +236,7 @@ func adminTargetScope(scope AdminScope, app string) error {
 	if scope.Super || containsStr(scope.Apps, app) {
 		return nil
 	}
-	return &HTTPError{403, "没有该项目的管理权限，请联系平台管理员开通"}
+	return permissionDenied("没有该项目的管理权限，请联系平台管理员开通")
 }
 
 // AdminScope 是管理端点的授权现场（路由层 adminCtx 透传）：
@@ -247,3 +250,16 @@ type AdminScope struct {
 
 // untilStr 把封禁解除时刻转成审计 detail 用的十进制串（0=永久原样落 "0"）。
 func untilStr(until int64) string { return strconv.FormatInt(until, 10) }
+
+// withDenyReason 把 403 的分级（policy / permission）并进审计 detail：
+// 审计表与 API 的拒绝原因同源，事后按 detail.reason 能区分「越权」与「被策略拦」。
+func withDenyReason(detail map[string]string, err error) map[string]string {
+	var he *HTTPError
+	if errors.As(err, &he) && he.Reason != "" {
+		if detail == nil {
+			detail = map[string]string{}
+		}
+		detail["reason"] = he.Reason
+	}
+	return detail
+}

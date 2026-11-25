@@ -227,7 +227,7 @@ func TestWebLoginEmailCode(t *testing.T) {
 }
 
 // n7 回归：第二步实耗恢复码时 login_states.method 如实落 'recovery'
-//（beginLoginState 恒写 'totp'，恢复码路把中间态改账——失败重试留下的行、
+// （beginLoginState 恒写 'totp'，恢复码路把中间态改账——失败重试留下的行、
 // 5 次烧毁的行都应能看出用户当时在用哪种码）。
 func TestLoginStateMethodRecordsRecoveryUse(t *testing.T) {
 	svc, mailer := newTestService(t)
@@ -350,7 +350,7 @@ func TestEnforceAppsSwitch(t *testing.T) {
 }
 
 // errBoom 是「读配置键失败」的假实现，用 HTTPError 形态免得再引一个 errors 名字。
-var errBoom = &HTTPError{500, "boom"}
+var errBoom = &HTTPError{Code: 500, Message: "boom"}
 
 // 两步验证第二步的邮箱验证码路（emailCode，purpose=login_2fa）：验过建会话、
 // 码绑同一 login state 的 uid/邮箱、用后即焚，错码计入 otp 层自己的文案与计数。

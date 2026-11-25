@@ -120,7 +120,8 @@ func TestRestrictedMessageNamesProject(t *testing.T) {
 // ---- 真库端到端（TEST_MYSQL_DSN 缺席即跳过）----
 
 // W1 管理员重置：generate 强随机 + forceChange 置位 + 全会话吊销 + 新密码可登录
-//（回执 mustChangePassword=true）+ 通知信含临时密码 + 审计 detail 不落密码。
+// （回执 mustChangePassword=true）+ 通知信只带一次性设密链接（不带密码本体）+
+// 审计 detail 不落密码。
 func TestAdminResetPasswordForcedChangeFlow(t *testing.T) {
 	svc, mailer := newTestService(t)
 	actor := seedAdminUser(t, svc, mailer, "w1-super@example.com", adminRoleSuper)
@@ -172,14 +173,18 @@ func TestAdminResetPasswordForcedChangeFlow(t *testing.T) {
 	if !resp.MustChangePassword {
 		t.Error("强制改密态的登录回执 mustChangePassword 应为 true")
 	}
-	// 通知信：收件人 + 主题 + 正文含临时密码（W8 第 1 封）。注意临时密码登录是
-	// 「全新设备」（重置已杀光旧会话），B8 的登录提醒信会插队——按主题取重置信。
-	resetMail := mailer.lastMailMatching(t, "密码重置通知")
+	// 通知信：收件人 + 主题 + 一次性设密链接（890d7a9 起正文不再出现密码本体，
+	// 临时密码只进 API 回执）。注意临时密码登录是「全新设备」（重置已杀光旧会话），
+	// B8 的登录提醒信会插队——按主题取重置信。
+	resetMail := mailer.lastMailMatching(t, "密码已被重置")
 	if resetMail.to != target.Email {
 		t.Errorf("重置通知应发给目标，得到 to=%q", resetMail.to)
 	}
-	if !strings.Contains(resetMail.html, tmp) {
-		t.Errorf("重置通知正文应含临时密码本体")
+	if !strings.Contains(resetMail.html, "/web/setup-password?token=") {
+		t.Errorf("重置通知应带一次性设密链接，得到 subject=%q", resetMail.subject)
+	}
+	if strings.Contains(resetMail.html, tmp) {
+		t.Error("重置通知不该出现临时密码本体")
 	}
 	// 审计：detail 记 mode/forceChange/notify/reason，**不记密码**
 	var detail string
@@ -405,8 +410,12 @@ func TestProjectRestrictionAndAccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("列项目: %v", err)
 	}
-	if len(projects) != 2 || projects[0].App != "CalorieDiary" || projects[0].Name != "热量日记" || !projects[0].Restricted {
-		t.Errorf("super 项目列表不对: %+v", projects)
+	if len(projects) != 4 || projects[0].App != "CalorieDiary" || projects[0].Name != "热量日记" || !projects[0].Restricted {
+		t.Errorf("super 项目列表应为 knownAppOrder 全量且首项是 calorie，得到 %+v", projects)
+	}
+	if projects[2].App != "EPassportForMikey" || projects[2].Name != "奇奇岛护照" ||
+		projects[3].App != "PersonalShortener" || projects[3].Name != "屑涵短链" {
+		t.Errorf("项目列表应带上两个外部项目与展示名，得到 %+v", projects)
 	}
 	foundMember := false
 	for _, m := range projects[0].Members {

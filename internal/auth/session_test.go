@@ -90,7 +90,7 @@ func TestShortDeviceClientHintsSuffix(t *testing.T) {
 
 // uaWithCH 是存储串的拼接口径：无 CH / 空 model（桌面 Chrome 的 `Sec-CH-UA-Model:
 // ""`）不加后缀；头值是结构化 quoted-string，去引号且剔掉 | ; 分隔符与控制字符
-//（分隔符是解析边界，留着等于把 splitCH 交给客户端摆布）；超长 base 先按
+// （分隔符是解析边界，留着等于把 splitCH 交给客户端摆布）；超长 base 先按
 // 512-后缀长度截断再拼，后缀一定落进 512 字内。
 func TestSessionMetaUAWithCH(t *testing.T) {
 	ua := "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
@@ -127,9 +127,9 @@ func TestSessionMetaUAWithCH(t *testing.T) {
 func sidStr(id int64) string { return strconv.FormatInt(id, 10) }
 
 // 存量行自愈：老服务端时期认不出库名 UA，device 列快照存了 UA 原文
-//（ktor-client/2.0）。展示改为读取时按 user_agent 现算后，同一行在用户端
+// （ktor-client/2.0）。展示改为读取时按 user_agent 现算后，同一行在用户端
 // ListSessions 与管理端 AdminListSessions 都回现算结果；device 列本身不动
-//（零迁移，历史快照/排障照旧）。
+// （零迁移，历史快照/排障照旧）。
 func TestSessionDeviceLabelHealsLegacyRows(t *testing.T) {
 	svc, _ := newTestService(t)
 	const legacyUA = "ktor-client/2.0"
@@ -496,5 +496,39 @@ func TestSessionScopeAndBatchRevoke(t *testing.T) {
 	_, capErr := svc.RevokeSessions(c.UID, ids, nil)
 	if code, _ := httpMsg(capErr); code != 400 {
 		t.Errorf("超上限应 400，得到 %d", code)
+	}
+}
+
+// 会话寿命的服务端口径（纯函数）：存储列只允许**提前**到期——晚于
+// created+90 天的一律按 90 天收口（回拨/脏数据不能放宽绝对寿命）；0 = 存量行
+// 按 created+90 天兜底，不是「永不过期」。空闲闸只对 web 会话生效。
+func TestSessionExpiryClamping(t *testing.T) {
+	const dayMs = int64(24 * 60 * 60 * 1000)
+	created := int64(1_700_000_000_000)
+	base := created + tokenTTL.Milliseconds()
+	for _, c := range []struct {
+		name   string
+		stored int64
+		want   int64
+	}{
+		{"存量行 0 按 created+90d 兜底", 0, base},
+		{"提前到期照用", base - 10*dayMs, base - 10*dayMs},
+		{"等于基准", base, base},
+		{"晚于基准按 90d 收口", base + 30*dayMs, base},
+		{"负数脏数据按 90d 收口", -1, base},
+	} {
+		if got := sessionAbsoluteExpiry(created, c.stored); got != c.want {
+			t.Errorf("%s: sessionAbsoluteExpiry = %d，应为 %d", c.name, got, c.want)
+		}
+	}
+	lastSeen := int64(1_700_000_000_000)
+	if got, want := sessionIdleExpiry(lastSeen, true), lastSeen+webIdleTTL.Milliseconds(); got != want {
+		t.Errorf("web 会话空闲截止 = %d，应为 %d", got, want)
+	}
+	if got := sessionIdleExpiry(lastSeen, false); got != 0 {
+		t.Errorf("App 会话不该有空闲闸，得到 %d", got)
+	}
+	if got := sessionIdleExpiry(0, true); got != 0 {
+		t.Errorf("lastSeen=0 的存量行不该算出空闲截止，得到 %d", got)
 	}
 }

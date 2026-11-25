@@ -33,11 +33,12 @@ func TestBuildMIMEEnvelope(t *testing.T) {
 	head := parseMessage(t, msg)
 
 	wantHeaders := map[string]string{
-		"Date":         "Thu, 22 Oct 2026 15:04:05 +0000",
-		"From":         "Auth <" + testSMTPUser + ">",
-		"To":           "u@example.com",
-		"Subject":      "=?UTF-8?B?" + base64.StdEncoding.EncodeToString([]byte("Auth 注册验证码")) + "?=",
-		"MIME-Version": "1.0",
+		"Date":           "Thu, 22 Oct 2026 15:04:05 +0000",
+		"From":           "Auth <" + testSMTPUser + ">",
+		"To":             "u@example.com",
+		"Subject":        "=?UTF-8?B?" + base64.StdEncoding.EncodeToString([]byte("Auth 注册验证码")) + "?=",
+		"MIME-Version":   "1.0",
+		"Auto-Submitted": "auto-generated",
 	}
 	for k, want := range wantHeaders {
 		if got := head.Header.Get(k); got != want {
@@ -61,6 +62,35 @@ func TestBuildMIMEEnvelope(t *testing.T) {
 	}
 	if got := headASCII.Header.Get("From"); got != "Auth <"+testSMTPUser+">" {
 		t.Errorf("ASCII From 显示名应原样，得到 %q", got)
+	}
+}
+
+// 信封头是逐行拼的：任何字段里混进 CR/LF 都必须拒发，否则能注入 Bcc:/伪造第二个
+// To/改 Content-Type。业务侧邮箱过 validateEmail，这条是邮件层自己的最后一道闩
+// （发件地址与显示名来自 app_config，不赌上游）。
+func TestBuildMIMERejectsHeaderInjection(t *testing.T) {
+	now := time.Date(2026, 10, 22, 15, 4, 5, 0, time.UTC)
+	cases := []struct{ name, fromName, fromAddr, to, subject string }{
+		{"To 注入 Bcc", "Auth", testSMTPUser, "u@example.com\r\nBcc: leak@evil.test", "hi"},
+		{"To 注入换行", "Auth", testSMTPUser, "u@example.com\nX-Evil: 1", "hi"},
+		{"Subject 注入", "Auth", testSMTPUser, "u@example.com", "hi\r\nBcc: leak@evil.test"},
+		{"From 显示名注入", "Auth\r\nBcc: leak@evil.test", testSMTPUser, "u@example.com", "hi"},
+		{"From 地址注入", "Auth", testSMTPUser + "\nBcc: leak@evil.test", "u@example.com", "hi"},
+	}
+	for _, c := range cases {
+		msg, err := buildMIME(c.fromName, c.fromAddr, c.to, c.subject, "<p>b</p>", "b", now)
+		if err == nil {
+			t.Errorf("%s 应被拒发，却拼出了信:\n%s", c.name, msg)
+			continue
+		}
+		if strings.Contains(msg, "Bcc:") || strings.Contains(msg, "X-Evil:") {
+			t.Errorf("%s 的注入串进了产出", c.name)
+		}
+	}
+	// 正常值不受影响（回归面：别把合法的多行折叠/编码路径一起掐了）
+	if _, err := buildMIME("热量日记", testSMTPUser, "u@example.com", "【热量日记】注册验证码",
+		"<p>b</p>", "b", now); err != nil {
+		t.Errorf("正常信件不该被 headerSafe 拦下: %v", err)
 	}
 }
 

@@ -43,6 +43,42 @@ func TestEnsureColumnProbesAndIsIdempotent(t *testing.T) {
 	}
 }
 
+// 老库补索引：缺则补、二跑幂等、DDL 不进 schema.sql（新库由 schema.sql 自带）。
+// 需要真库（TEST_MYSQL_DSN），缺省跳过。
+func TestEnsureIndexProbesAndIsIdempotent(t *testing.T) {
+	dsn := os.Getenv("TEST_MYSQL_DSN")
+	if dsn == "" {
+		t.Skip("未设置 TEST_MYSQL_DSN，跳过补索引真库测试")
+	}
+	pool, err := Open(dsn)
+	if err != nil {
+		t.Fatalf("连接测试库: %v", err)
+	}
+	t.Cleanup(func() { _ = pool.Close() })
+
+	const scratch = "scratch_ensure_index"
+	if _, err := pool.Exec("DROP TABLE IF EXISTS " + scratch); err != nil {
+		t.Fatalf("清 scratch 表: %v", err)
+	}
+	t.Cleanup(func() { _, _ = pool.Exec("DROP TABLE IF EXISTS " + scratch) })
+	if _, err := pool.Exec("CREATE TABLE " + scratch + " (id BIGINT NOT NULL PRIMARY KEY, probe_col CHAR(64) NULL)"); err != nil {
+		t.Fatalf("建 scratch 表: %v", err)
+	}
+	ddl := "ALTER TABLE " + scratch + " ADD INDEX probe_idx (probe_col), ALGORITHM=INPLACE, LOCK=NONE"
+	if err := ensureIndex(pool, scratch, "probe_idx", ddl); err != nil {
+		t.Fatalf("首次补索引: %v", err)
+	}
+	if err := ensureIndex(pool, scratch, "probe_idx", ddl); err != nil {
+		t.Fatalf("二次补索引应 no-op: %v", err)
+	}
+	var n int
+	if err := pool.QueryRow(
+		"SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?",
+		scratch, "probe_idx").Scan(&n); err != nil || n != 1 {
+		t.Errorf("索引应已存在，得到 n=%d err=%v", n, err)
+	}
+}
+
 // EnsureSchema 二跑必须幂等，且全部补列（role / web_token_hash / web_csrf_hash /
 // reauth_at / login_states.app / users.pending_delete_at / users.password_must_change /
 // users.login_notify / otp_codes.uid）与各批新表都要就位——它们是 web 管理台、
@@ -70,6 +106,14 @@ func TestEnsureSchemaIdempotentWithWebColumns(t *testing.T) {
 			"SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?",
 			c.table, c.column).Scan(&n); err != nil || n != 1 {
 			t.Errorf("列 %s.%s 应存在，得到 n=%d err=%v", c.table, c.column, n, err)
+		}
+	}
+	for _, idx := range extraIndexes {
+		var n int
+		if err := pool.QueryRow(
+			"SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?",
+			idx.table, idx.index).Scan(&n); err != nil || n < 1 {
+			t.Errorf("索引 %s.%s 应存在，得到 n=%d err=%v", idx.table, idx.index, n, err)
 		}
 	}
 	for _, table := range []string{"passkeys", "totp_factors", "recovery_codes", "webauthn_challenges",

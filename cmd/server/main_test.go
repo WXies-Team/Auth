@@ -157,6 +157,11 @@ func TestClientIPTrustModel(t *testing.T) {
 		{"伪造头来自不可信源", "203.0.113.7:1", "1.2.3.4", "", "203.0.113.7"},
 		{"XFF 左端伪造右端真实", "192.168.1.5:1", "9.9.9.9, 203.0.113.9", "", "203.0.113.9"},
 		{"只有 X-Real-IP", "127.0.0.1:1", "", "203.0.113.9", "203.0.113.9"},
+		// IPv4-mapped / 带端口 / IPv6 归一：同一个客户端不能因为写法不同分成两个限流桶
+		{"XFF 带端口", "127.0.0.1:1", "203.0.113.9:443", "", "203.0.113.9"},
+		{"XFF IPv4-mapped", "127.0.0.1:1", "::ffff:203.0.113.9", "", "203.0.113.9"},
+		{"XFF IPv6 zone", "127.0.0.1:1", "fe80::1%eth0, 203.0.113.9", "", "203.0.113.9"},
+		{"直连 IPv6 带 port", "[2001:db8::1]:443", "", "", "2001:db8::1"},
 	}
 	for _, c := range cases {
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -431,5 +436,54 @@ func TestHealthMailConfigured(t *testing.T) {
 				t.Errorf("mailConfigured 应为 %v，得到 %v", tc.want, body.MailConfigured)
 			}
 		})
+	}
+}
+
+// 基线安全头覆盖所有响应（含 handler 写 404/429 这类不走 withLogging 的分支）。
+func TestSecurityHeaders(t *testing.T) {
+	h := withSecurityHeaders(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.NotFound(w, nil)
+	}))
+	req := httptest.NewRequest(http.MethodGet, "/anything", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	for k, want := range map[string]string{
+		"X-Content-Type-Options": "nosniff",
+		"X-Frame-Options":        "DENY",
+		"Referrer-Policy":        "strict-origin-when-cross-origin",
+		"Permissions-Policy":     "camera=(), microphone=(), geolocation=()",
+	} {
+		if got := rec.Header().Get(k); got != want {
+			t.Errorf("%s = %q，应为 %q", k, got, want)
+		}
+	}
+	if csp := rec.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "frame-ancestors 'none'") {
+		t.Errorf("CSP 应含 frame-ancestors 'none'，得到 %q", csp)
+	}
+	// 严格 CSP（本批收口）：脚本只认同源外部文件，绝不放行 'unsafe-inline'——
+	// 那一条会让 CSP 对 XSS 完全失效。样式/头像 data URL 是两处刻意保留的放宽。
+	csp := rec.Header().Get("Content-Security-Policy")
+	for _, want := range []string{
+		"default-src 'self'", "script-src 'self'", "style-src 'self' 'unsafe-inline'",
+		"img-src 'self' data:", "connect-src 'self'", "form-action 'self'",
+		"object-src 'none'", "base-uri 'self'",
+	} {
+		if !strings.Contains(csp, want) {
+			t.Errorf("CSP 缺 %q，得到 %q", want, csp)
+		}
+	}
+	if scriptSrc := strings.SplitN(strings.SplitN(csp, "script-src ", 2)[1], ";", 2)[0]; strings.Contains(scriptSrc, "unsafe-inline") {
+		t.Errorf("script-src 不该放行 'unsafe-inline'，得到 %q", scriptSrc)
+	}
+	if rec.Header().Get("Strict-Transport-Security") != "" {
+		t.Error("明文请求不该发 HSTS")
+	}
+	// 受信反代声明 https 时补 HSTS
+	req2 := httptest.NewRequest(http.MethodGet, "/anything", nil)
+	req2.Header.Set("X-Forwarded-Proto", "https")
+	rec2 := httptest.NewRecorder()
+	h.ServeHTTP(rec2, req2)
+	if rec2.Header().Get("Strict-Transport-Security") == "" {
+		t.Error("HTTPS 请求应发 HSTS")
 	}
 }

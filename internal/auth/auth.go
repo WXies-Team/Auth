@@ -74,18 +74,46 @@ const dummyPasswordHash = "$2a$12$fLhdHrkU7451wJMbFcZKnOa0fZVVzqzWBgVx26XH1iYr2M
 var allowedApps = map[string]bool{
 	"CalorieDiary": true,
 	"ExpenseDiary": true,
+	// 2026-11 接入统一授权的外部项目（OAuth 授权码 + PKCE，client 登记在
+	// oauth_clients 表）。它们在 auth 侧只有身份，没有业务数据 hook。
+	"EPassportForMikey": true,
+	"PersonalShortener": true,
 }
 
 // HTTPError 携带状态码，由路由层翻译成 ApiError 响应体。
+//
+// Reason 是**可选**的机器可读拒绝分级：403 用 policy（账号/项目策略拦截：
+// 封禁、项目白名单、强认证窗）或 permission（授权不足：角色、scope、根收口）；
+// Passkey 仪式的 400/404 用 origin / challenge / verification / ceremony_expired。
+// 它只增字段、不改 ApiError 的既有 message；前端可据此把「去申请权限」与
+// 「联系管理员解封」分成两条下一步（UI 批次接线，服务端先统一口径）。
 type HTTPError struct {
 	Code    int
 	Message string
+	Reason  string
 }
 
 func (e *HTTPError) Error() string { return e.Message }
 
-func badRequest(msg string) error   { return &HTTPError{400, msg} }
-func unauthorized(msg string) error { return &HTTPError{401, msg} }
+// 拒绝分级常量：与 protocol.ApiError.Reason 同值域，HTTP 层只透传不解释。
+const (
+	ReasonPolicy     = "policy"
+	ReasonPermission = "permission"
+	// MFA 未完成是「还需要用户自己走第二步」，不是策略拒绝（OIDC
+	// interaction_required / RFC 9470 insufficient_user_authentication / Okta
+	// E0000058）；单列一个值，避免和 policy 的「找管理员改策略」混淆。
+	ReasonMFARequired = "mfa_required"
+)
+
+func badRequest(msg string) error   { return &HTTPError{Code: 400, Message: msg} }
+func unauthorized(msg string) error { return &HTTPError{Code: 401, Message: msg} }
+
+// policyDenied / permissionDenied 是两类 403 的唯一构造入口：调用方不再手写
+// &HTTPError{Code: 403, Message: msg}，从而保证「每个 403 都带 reason」不被新代码漏掉。
+func policyDenied(msg string) error { return &HTTPError{Code: 403, Message: msg, Reason: ReasonPolicy} }
+func permissionDenied(msg string) error {
+	return &HTTPError{Code: 403, Message: msg, Reason: ReasonPermission}
+}
 
 // Response 是 /auth/register 与 /auth/login 的响应体，字段名与 AuthResponse 一致
 // （token, email, mustChangePassword, deletePendingCancelled，顺序逐字同步）。
@@ -155,8 +183,9 @@ type Service struct {
 	// enforceCfg 读 totp_enforce_apps（老客户端密码登录的兼容开关，默认空=不拦）。
 	// nil 时恒放行（测试形态与「配置还没接」的形态一致）。
 	enforceCfg ConfigFunc
-	// rootUID 是启动时解析的根 su（RootSuperEmail → uid，W7-2）：0=尚未解析成功，
-	// isRootSuper/isRootAccount 回退邮箱比对并由 resolveRootSuper 打日志。
+	// rootUID 是启动时解析的根 su（RootUID → uid，RootSuperEmail 兜底）：0=尚未
+	// 解析成功。解析失败时授权侧（isRootSuper）fail closed = 不放行；保护侧
+	// （isRootAccount）仍按保留号 RootUID 认定，见 admin.go。
 	rootUID atomic.Int64
 	// 暴力破解闸：密码登录按 IP/邮箱、邮箱验证码登录按 IP/邮箱分别计窗（进程内滑动窗口）。
 	loginByIP    *attemptLimiter
@@ -400,14 +429,14 @@ func (s *Service) ValidUserID(bearer string) (Caller, error) {
 	if err != nil {
 		// DB 抖动不能当会话失效：客户端收到 401 会**清掉本地 token**，
 		// 一次 MySQL 超时就等于把全站设备静默登出 → 503 按普通失败重试
-		return Caller{}, &HTTPError{503, "服务暂时不可用，请稍后重试"}
+		return Caller{}, &HTTPError{Code: 503, Message: "服务暂时不可用，请稍后重试"}
 	}
 	if stored != int(ver) {
 		return Caller{}, unauthorized("登录已过期，请重新登录")
 	}
 	alive, err := s.sessionAlive(uid, sid)
 	if err != nil {
-		return Caller{}, &HTTPError{503, "服务暂时不可用，请稍后重试"}
+		return Caller{}, &HTTPError{Code: 503, Message: "服务暂时不可用，请稍后重试"}
 	}
 	if !alive {
 		return Caller{}, unauthorized("登录已过期，请重新登录")
@@ -455,7 +484,7 @@ func (s *Service) Verify(bearer, expectApp string) (*VerifyResult, error) {
 		return nil, unauthorized("登录已过期，请重新登录")
 	}
 	if err != nil {
-		return nil, &HTTPError{503, "服务暂时不可用，请稍后重试"}
+		return nil, &HTTPError{Code: 503, Message: "服务暂时不可用，请稍后重试"}
 	}
 	_ = email // claim 邮箱只作 token 形状校验（老 token 必带），回执一律用库值
 	email = dbEmail
@@ -464,7 +493,7 @@ func (s *Service) Verify(bearer, expectApp string) (*VerifyResult, error) {
 	}
 	alive, err := s.sessionAlive(uid, sid)
 	if err != nil {
-		return nil, &HTTPError{503, "服务暂时不可用，请稍后重试"}
+		return nil, &HTTPError{Code: 503, Message: "服务暂时不可用，请稍后重试"}
 	}
 	if !alive {
 		return nil, unauthorized("登录已过期，请重新登录")
@@ -682,15 +711,16 @@ func (s *Service) Login(rawEmail, password, app string, meta SessionMeta) (resp 
 	// （bcrypt 本身也是可被拿来做 CPU 打点的开销）。命中落可查记录（限流命中，
 	// 含分键/ip/端点）——撞库与误伤的事后取证靠它。
 	now := time.Now()
-	if !s.loginByIP.allow(meta.IP, now) {
-		slog.Warn("限流命中", "scope", "login-attempt", "bucket", "ip:"+meta.IP,
+	// 桶键走 RateKey：IPv6 按 /64 聚合，换主机位不能换出新预算（见 attempts.go）。
+	if !s.loginByIP.allow(RateKey(meta.IP), now) {
+		slog.Warn("限流命中", "scope", "login-attempt", "bucket", "ip:"+RateKey(meta.IP),
 			"ip", meta.IP, "path", "/auth/login")
-		return nil, &HTTPError{429, "尝试过于频繁，请稍后再试"}
+		return nil, &HTTPError{Code: 429, Message: "尝试过于频繁，请稍后再试"}
 	}
 	if !s.loginByEmail.allow(normalizeEmail(rawEmail), now) {
 		slog.Warn("限流命中", "scope", "login-attempt", "bucket", "email:"+maskEmail(normalizeEmail(rawEmail)),
 			"ip", meta.IP, "path", "/auth/login")
-		return nil, &HTTPError{429, "尝试过于频繁，请稍后再试"}
+		return nil, &HTTPError{Code: 429, Message: "尝试过于频繁，请稍后再试"}
 	}
 	uid, version, err := s.checkPassword(rawEmail, password)
 	if err != nil {
@@ -700,7 +730,7 @@ func (s *Service) Login(rawEmail, password, app string, meta SessionMeta) (resp 
 	// 拒绝老端点密码登录，提示升级。判定放在密码验过**之后**——没对上密码的
 	// 请求不该听得出「这账号开了 2FA」。
 	if s.enforceTOTPFor(app, uid) {
-		return nil, &HTTPError{401, "请升级应用后使用新版登录"}
+		return nil, &HTTPError{Code: 401, Message: "请升级应用后使用新版登录"}
 	}
 	// 凭据过了才走三道登录闸（顺序钉死：封禁 → 项目白名单 → 注销 pending → mustChange）
 	mustChange, cancelled, err := s.loginGate(uid, app, meta)
@@ -740,7 +770,7 @@ func (s *Service) Login(rawEmail, password, app string, meta SessionMeta) (resp 
 func (s *Service) checkPassword(rawEmail, password string) (int64, int, error) {
 	email := normalizeEmail(rawEmail)
 	if wait := s.loginBackoff.retryAfter(email, time.Now()); wait > 0 {
-		return 0, 0, &HTTPError{429, "尝试过于频繁，请稍后再试"}
+		return 0, 0, &HTTPError{Code: 429, Message: "尝试过于频繁，请稍后再试"}
 	}
 	id, version, err := s.verifyPassword(rawEmail, password)
 	switch {
@@ -828,7 +858,7 @@ func (s *Service) SendCode(rawEmail, purpose, app string) error {
 		return err
 	}
 	if s.mailer == nil {
-		return &HTTPError{503, "邮件服务暂不可用，请稍后重试"}
+		return &HTTPError{Code: 503, Message: "邮件服务暂不可用，请稍后重试"}
 	}
 
 	exists, err := s.userExists(email)
@@ -899,7 +929,7 @@ func validateCodePurpose(purpose string) error {
 // uid 是码的账号归属（见 otpStore.issue）：匿名路传 0，登录态路传真 uid。
 func (s *Service) sendOTP(uid int64, purpose, email, action, app string) error {
 	if s.mailer == nil {
-		return &HTTPError{503, "邮件服务暂不可用，请稍后重试"}
+		return &HTTPError{Code: 503, Message: "邮件服务暂不可用，请稍后重试"}
 	}
 	code, err := s.otps.issue(uid, purpose, email)
 	if err != nil {
@@ -912,7 +942,7 @@ func (s *Service) sendOTP(uid int64, purpose, email, action, app string) error {
 		// 码已生成但信没发出去：撤销，否则用户要白等 60 秒冷却
 		s.otps.revoke(uid, purpose, email)
 		mailLog(err, purpose, email)
-		return &HTTPError{503, "验证码发送失败，请稍后重试"}
+		return &HTTPError{Code: 503, Message: "验证码发送失败，请稍后重试"}
 	}
 	return nil
 }
@@ -977,15 +1007,15 @@ func (s *Service) LoginByEmailCode(rawEmail, code, app string, meta SessionMeta)
 	// 验证码同样限速：6 位码在 5 分钟有效期内可枚举，必须按 IP/邮箱计窗。
 	// 命中同样落可查记录（口径与密码登录的限流命中一致）。
 	now := time.Now()
-	if !s.codeByIP.allow(meta.IP, now) {
-		slog.Warn("限流命中", "scope", "code-attempt", "bucket", "ip:"+meta.IP,
+	if !s.codeByIP.allow(RateKey(meta.IP), now) {
+		slog.Warn("限流命中", "scope", "code-attempt", "bucket", "ip:"+RateKey(meta.IP),
 			"ip", meta.IP, "path", "/auth/login-code")
-		return nil, &HTTPError{429, "尝试过于频繁，请稍后再试"}
+		return nil, &HTTPError{Code: 429, Message: "尝试过于频繁，请稍后再试"}
 	}
 	if !s.codeByEmail.allow(normalizeEmail(rawEmail), now) {
 		slog.Warn("限流命中", "scope", "code-attempt", "bucket", "email:"+maskEmail(normalizeEmail(rawEmail)),
 			"ip", meta.IP, "path", "/auth/login-code")
-		return nil, &HTTPError{429, "尝试过于频繁，请稍后再试"}
+		return nil, &HTTPError{Code: 429, Message: "尝试过于频繁，请稍后再试"}
 	}
 	uid, _, email, err := s.checkLoginCode(rawEmail, code)
 	if err != nil {

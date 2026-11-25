@@ -92,3 +92,46 @@ func TestCleanDeadSessionsDropsZombies(t *testing.T) {
 		}
 	}
 }
+
+// 未撤销行以**绝对到期列**为准：提前到期的行（列 < now-30d）该删；列在未来或
+// 0（存量行）而 created 还年轻的行不该删——否则「管理员让某会话提前失效」会让
+// 行立刻消失（回看/排障没了），或者反过来永远留着。
+func TestCleanDeadSessionsHonorsAbsoluteExpiry(t *testing.T) {
+	svc, _ := newTestService(t)
+	const uid = int64(7654321)
+	now := time.Now()
+	day := 24 * time.Hour.Milliseconds()
+	rows := []struct {
+		name       string
+		createdAge int64
+		absExpires int64
+		want       int // 清理后该行剩余数（0/1）
+	}{
+		{"提前到期且过保留窗（删）", 10, now.UnixMilli() - 31*day, 0},
+		{"提前到期但在保留窗内（留）", 10, now.UnixMilli() - 10*day, 1},
+		{"绝对到期在未来（留）", 10, now.UnixMilli() + 80*day, 1},
+		{"存量行 0 按 created 兜底（留）", 10, 0, 1},
+		{"存量行 0 且 created 已过寿命+保留（删）", 130, 0, 0},
+	}
+	sids := make([]int64, len(rows))
+	for i, r := range rows {
+		sids[i] = svc.ids.Generate().Int64() + int64(100+i)
+		created := now.UnixMilli() - r.createdAge*day
+		if _, err := svc.pool.Exec(
+			"INSERT INTO sessions (id, user_id, app, device, ip, user_agent, created_at, last_seen_at, absolute_expires_at)"+
+				" VALUES (?,?,?,?,?,?,?,?,?)",
+			sids[i], uid, "CalorieDiary", "AbsTest", "127.0.0.1", "ua", created, created, r.absExpires); err != nil {
+			t.Fatalf("落会话行 %s: %v", r.name, err)
+		}
+	}
+	svc.CleanDeadSessions()
+	for i, r := range rows {
+		var n int
+		if err := svc.pool.QueryRow("SELECT COUNT(*) FROM sessions WHERE id = ?", sids[i]).Scan(&n); err != nil {
+			t.Fatalf("读会话行 %s: %v", r.name, err)
+		}
+		if n != r.want {
+			t.Errorf("%s 应剩 %d 行，得到 %d", r.name, r.want, n)
+		}
+	}
+}

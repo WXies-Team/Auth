@@ -1,8 +1,8 @@
 // Package protocol 定义与客户端共享的 HTTP 协议。
 //
 // **auth 各请求/响应的字段名与日记客户端的 AuthDtos.kt 逐字一致**
-//（JSON tag 一字不差）：两个日记 App 后续把客户端切到本端点时，改动只需
-//「加上 app 字段、换个 base URL」。对拍钉在 protocol_test.go 的
+// （JSON tag 一字不差）：两个日记 App 后续把客户端切到本端点时，改动只需
+// 「加上 app 字段、换个 base URL」。对拍钉在 protocol_test.go 的
 // TestProtocolMatchesDiaryAuthDtos——日记仓是私有仓，CI 无权跨仓读真文件，
 // 只能把它 AuthDtos.kt 的字段快照内联钉住；日记侧改字段要同步更新那份快照。
 package protocol
@@ -15,7 +15,7 @@ import "encoding/json"
 // 该字段照常工作；注册不带 = 拒绝（强制验证码）。
 //
 // App 是本服务新增的字段：登录请求要声明目标应用，作为 JWT aud
-//（白名单 CalorieDiary / ExpenseDiary，缺失或未知拒绝）。
+// （白名单 CalorieDiary / ExpenseDiary，缺失或未知拒绝）。
 type AuthRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
@@ -101,10 +101,10 @@ type ChangePasswordResponse struct {
 }
 
 // DeleteAccountRequest 对应 DeleteAccountRequest：注销申请改为**邮箱验证码**确认
-//（{email, code}，purpose=delete 的 6 位码发到注册邮箱）。
+// （{email, code}，purpose=delete 的 6 位码发到注册邮箱）。
 //
 // 不再收 password：body 里只带 password 的老 APK 请求由路由层翻译成 400
-//「注销流程已更新，请升级应用后使用新版注销流程」（老字段不进本结构体——
+// 「注销流程已更新，请升级应用后使用新版注销流程」（老字段不进本结构体——
 // 快照对拍钉的是新版形状）。
 type DeleteAccountRequest struct {
 	Email string `json:"email"`
@@ -192,16 +192,24 @@ type EnsureUserResult struct {
 // Device 是服务端 shortDevice(user_agent) 的**读取时现算**结果（与库中 device
 // 快照列解耦，那列只留历史/排障）；字段名与形态不变。
 type SessionInfo struct {
-	ID         string `json:"id"`
-	App        string `json:"app"`
-	Device     string `json:"device"`
-	IP         string `json:"ip"`
+	ID     string `json:"id"`
+	App    string `json:"app"`
+	Device string `json:"device"`
+	IP     string `json:"ip"`
 	// IPRegion 是 IP 的粗略归属地（「江苏 南京」），服务端用内嵌离线库现算；
 	// 查不到（内网/无库/IPv6）就是空串，前端据此不渲染这一段——不猜。
 	IPRegion   string `json:"ipRegion"`
 	CreatedAt  int64  `json:"createdAt"`
 	LastSeenAt int64  `json:"lastSeenAt"`
-	Current    bool   `json:"current"`
+	// ExpiresAt 是会话的**绝对**过期时刻（毫秒，服务端强制）：到期后任何凭据
+	// 都不再认，行由清理任务延后删除。0 = 老行尚未回填（按 created_at + 90 天
+	// 兜底判定），不是「永不过期」。
+	ExpiresAt int64 `json:"expiresAt,omitempty"`
+	// IdleExpiresAt 只对 web 会话有意义（last_seen_at + 7 天）；App 的 JWT 会话
+	// 以 token exp 为绝对寿命、不设空闲闸，此值为 0。前端可用它提示「这行很快要
+	// 因闲置退出」，不参与任何客户端计时（超时一律服务端判）。
+	IdleExpiresAt int64 `json:"idleExpiresAt,omitempty"`
+	Current       bool  `json:"current"`
 }
 
 // ProfileResponse 是 GET /api/profile 与 PUT /api/profile 的回执（本服务新增的端点，
@@ -222,12 +230,12 @@ type ProfileResponse struct {
 }
 
 // ProfileUpdateRequest 是 PUT /api/profile 的请求体：档案三字段**全量替换**
-//（没传的字段等于清空——客户端每次提交完整档案，服务端不做局部合并）。
+// （没传的字段等于清空——客户端每次提交完整档案，服务端不做局部合并）。
 // AvatarImage 给 null/缺字段/空串都表示清除头像（与日记客户端 clearAvatarImage()
 // 的空串语义对齐）。
 //
 // LoginNotify 是唯一的例外：**nil = 不改值**，显式传 true/false 才更新
-//（App 的全量档案提交不带它，不能让「没传」变成「关掉提醒」）。web 账号页的
+// （App 的全量档案提交不带它，不能让「没传」变成「关掉提醒」）。web 账号页的
 // 开关每次 GET 后整份 PUT，带上当前值。
 type ProfileUpdateRequest struct {
 	Nickname    string  `json:"nickname"`
@@ -292,11 +300,15 @@ type WebSessionResponse struct {
 	// 「密码这一行现在是什么状态」，而纯验证码并入的账号本来就没有密码——
 	// 加字段不改既有字段，老调用方零影响。
 	PasswordSet bool `json:"passwordSet"`
+	// IsRoot 判定当前账号是不是**根平台管理员**（唯一可任命/回收 super 的身份）。
+	// 判定与 internal/auth 的 RootUID 同源（不是前端硬编码 uid）：UI 用它决定
+	// 是否显示「平台管理员」任命入口，避免把 5939716 抄进模板后又与服务端漂移。
+	IsRoot bool `json:"isRoot"`
 }
 
 // WebReauthRequest 是 POST /web/reauth 的请求体：Password / TOTPCode /
 // RecoveryCode **三选一**（哪个非空用哪个，优先级同序），全为空则回 400
-//（「重新验证」必须真的验点什么）。
+// （「重新验证」必须真的验点什么）。
 //
 // RecoveryCode 是本批新增的可选字段：重新验证弹框的「使用恢复码」模式提交到这里。
 // 恢复码与两步验证码在业务层按**格式分流**（与安全页一框二选一同一套判定）：
@@ -309,7 +321,7 @@ type WebReauthRequest struct {
 }
 
 // PasskeyFinishRequest 是 /webauthn/*/finish 的请求体：ceremonyId 是我们发的
-//（53 位 JS 安全随机——63 位雪花经浏览器 JSON.parse 会被抹圆，见 passkey.go jsSafeID），
+// （53 位 JS 安全随机——63 位雪花经浏览器 JSON.parse 会被抹圆，见 passkey.go jsSafeID），
 // response 是浏览器原样回的 PublicKeyCredential JSON（透传给库解析）。
 type PasskeyFinishRequest struct {
 	CeremonyID int64           `json:"ceremonyId"`
@@ -327,7 +339,7 @@ type PasskeyRenameRequest struct {
 }
 
 // CodeRequest 是 /api/totp/setup 之外三个 TOTP 写操作的统一请求体
-//（enable / disable / regenerate-recovery-codes 都只要一个码）。
+// （enable / disable / regenerate-recovery-codes 都只要一个码）。
 type CodeRequest struct {
 	Code string `json:"code"`
 }
@@ -339,6 +351,21 @@ type RecoveryCodesResponse struct {
 }
 
 // ApiError 对应 ApiError：所有非 200 回执的统一响应体。
+//
+// Reason 是**可选**的机器可读拒绝分级（omitempty，老回执字节不变）。值域按状态码
+// 分段，服务端只透传：
+//
+//	403 policy        账号/项目策略拦截（封禁、项目白名单、强认证窗、非网页登录态）
+//	403 permission    授权不足（角色、项目 scope、根管理员收口）
+//	403 mfa_required  还差用户自己完成第二步（未绑 MFA 的管理后台入口）
+//	400 origin / challenge / verification  Passkey 仪式失败的分级
+//	404 ceremony_expired                  Passkey 仪式行不存在/已消费/过期
+//
+// 前端按 reason 把「去申请权限」与「联系管理员解封」分成两条下一步；其余错误不带
+// reason（下一步唯一，不需要分级）。值域常量在 internal/auth（ReasonPolicy /
+// ReasonPermission / ReasonMFARequired / ReasonPasskey*），协议层只声明形状；
+// 新增值不改动 JSON 字段，老客户端忽略不认识的 reason 即可。
 type ApiError struct {
 	Message string `json:"message"`
+	Reason  string `json:"reason,omitempty"`
 }

@@ -260,7 +260,7 @@ func (s *Service) adminInviteRow(scope AdminScope, id int64) (inviteRow, error) 
 		"SELECT email, app, accepted_at, revoked_at FROM user_invites WHERE id = ?", id).
 		Scan(&r.email, &r.app, &r.acceptedAt, &r.revokedAt)
 	if errors.Is(err, sql.ErrNoRows) {
-		return r, &HTTPError{404, "该邀请不存在，请刷新列表后重试"}
+		return r, &HTTPError{Code: 404, Message: "该邀请不存在，请刷新列表后重试"}
 	}
 	if err != nil {
 		return r, fmt.Errorf("查邀请: %w", err)
@@ -303,7 +303,7 @@ func (s *Service) inviteByToken(token string) (*inviteRow, error) {
 		"SELECT id, email, app, invited_by, accepted_at, revoked_at, expires_at FROM user_invites WHERE token_hash = ?",
 		sha256Hex(token)).Scan(&r.id, &r.email, &r.app, &r.invitedBy, &r.acceptedAt, &r.revokedAt, &r.expiresAt)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, &HTTPError{404, "邀请链接无效，请联系邀请人重新发送"}
+		return nil, &HTTPError{Code: 404, Message: "邀请链接无效，请联系邀请人重新发送"}
 	}
 	if err != nil {
 		return nil, fmt.Errorf("查邀请: %w", err)

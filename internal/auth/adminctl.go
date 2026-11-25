@@ -22,7 +22,7 @@ import (
 // knownAppOrder 是项目展示序（allowedApps 的定序视图）：Go map 遍历无序，
 // 后台项目列表每请求要稳定排序。**新增应用时与 allowedApps 一起加**
 // （TestKnownAppOrderMatchesWhitelist 对拍漂移）。
-var knownAppOrder = []string{"CalorieDiary", "ExpenseDiary"}
+var knownAppOrder = []string{"CalorieDiary", "ExpenseDiary", "EPassportForMikey", "PersonalShortener"}
 
 // appName 取项目展示名：走品牌注册表（与 internal/ui 的 knownApps 同键，
 // TestBrandForSelection 钉住 brands ↔ allowedApps 同步）。未登记回 slug 兜底。
@@ -42,7 +42,7 @@ type AdminPasswordReset struct {
 	Mode        string // "generate"（16 位强随机）| "manual"（管理员手输）
 	Password    string // mode=manual 时的临时密码；generate 忽略
 	ForceChange bool   // password_must_change 置 1（用户下次登录必须改密）/ 0
-	Notify      bool   // 给用户发「密码重置通知」（含临时密码本体）
+	Notify      bool   // 给用户发「密码已被重置」通知（只带一次性设密链接，不含密码本体）
 	Reason      string // 备注：只进审计 detail
 	BatchID     string // 批量操作批次号（单发为空）
 }
@@ -172,7 +172,7 @@ func (s *Service) AdminResetPassword(actor Caller, scope AdminScope, targetUID i
 			return "", cerr
 		}
 		if !ok {
-			return "", &HTTPError{403, "你没有该用户的管理权限"}
+			return "", permissionDenied("你没有该用户的管理权限")
 		}
 	}
 	hashed, err := hash(tmp)
@@ -228,7 +228,7 @@ func (s *Service) targetHasScopedSession(uid int64, apps []string) (bool, error)
 	return ok == 1, nil
 }
 
-// sendPasswordResetNotice 发「密码重置通知」：只发一次性设密链接，正文不再出现密码。
+// sendPasswordResetNotice 发「密码已被重置」通知：只发一次性设密链接，正文不再出现密码。
 // 品牌恒中性 Auth（账号级操作）；失败只记日志，不把重置翻成 500。
 func (s *Service) sendPasswordResetNotice(uid int64, email string) {
 	if s.mailer == nil {
@@ -299,7 +299,7 @@ func (s *Service) AdminChangeEmail(actor Caller, scope AdminScope, targetUID int
 			return cerr
 		}
 		if !ok {
-			return &HTTPError{403, "你没有该用户的管理权限"}
+			return permissionDenied("你没有该用户的管理权限")
 		}
 	}
 	if email == normalizeEmail(oldEmail) {
@@ -407,7 +407,7 @@ func (s *Service) AdminResetProfile(actor Caller, scope AdminScope, targetUID in
 			return cerr
 		}
 		if !ok {
-			return &HTTPError{403, "你没有该用户的管理权限"}
+			return permissionDenied("你没有该用户的管理权限")
 		}
 	}
 	// 逐项生成 SET 子句：无档案行时 UPDATE 命中 0 行 = 幂等 no-op（从未设置过
@@ -529,11 +529,16 @@ type AdminProjectMember struct {
 // AdminProject 是 GET /admin/projects 的一条（回执由路由层包进 {projects:[...]}）。
 // ClientID 是该项目的 OAuth client_id（空串 = 未开通，前端据此渲染空态）；
 // RedirectURIs 是已登记的回跳地址（未开通时为 null）。
+//
+// Admins 是**该项目管理员**（admin_scopes 在册用户，契约缺口 #1）：成员是「被
+// 放行登录的人」，管理员是「能管这个项目的人」，两者语义不同，UI 需要分开列。
+// 恒为数组（无管理员回 []，不回 null），与 Members 同形。
 type AdminProject struct {
 	App          string               `json:"app"`
 	Name         string               `json:"name"`
 	Restricted   bool                 `json:"restricted"`
 	Members      []AdminProjectMember `json:"members"`
+	Admins       []AdminProjectMember `json:"admins"`
 	ClientID     string               `json:"clientId"`
 	RedirectURIs []string             `json:"redirectUris"`
 }
@@ -551,6 +556,7 @@ func (s *Service) AdminListProjects(scope AdminScope) ([]AdminProject, error) {
 		p := AdminProject{
 			App: app, Name: appName(app),
 			Members: make([]AdminProjectMember, 0, 4),
+			Admins:  make([]AdminProjectMember, 0, 2),
 		}
 		var restricted int
 		err := s.pool.QueryRowContext(ctx,
@@ -579,6 +585,27 @@ func (s *Service) AdminListProjects(scope AdminScope) ([]AdminProject, error) {
 			return nil, fmt.Errorf("遍历项目名单: %w", err)
 		}
 		_ = rows.Close()
+		// 项目管理员（契约缺口 #1）：admin_scopes 在册用户。app-admin 视角只看
+		// 自己被授权的项目，这里自然只回该项目管理员，不泄露其它项目的人员。
+		adminRows, err := s.pool.QueryContext(ctx,
+			"SELECT a.uid, u.email FROM admin_scopes a JOIN users u ON u.id = a.uid"+
+				" WHERE a.app = ? AND u.role = ? ORDER BY a.granted_at, a.uid", app, adminRoleAdmin)
+		if err != nil {
+			return nil, fmt.Errorf("查项目管理员: %w", err)
+		}
+		for adminRows.Next() {
+			var m AdminProjectMember
+			if err := adminRows.Scan(&m.UID, &m.Email); err != nil {
+				_ = adminRows.Close()
+				return nil, fmt.Errorf("读项目管理员: %w", err)
+			}
+			p.Admins = append(p.Admins, m)
+		}
+		if err := adminRows.Err(); err != nil {
+			_ = adminRows.Close()
+			return nil, fmt.Errorf("遍历项目管理员: %w", err)
+		}
+		_ = adminRows.Close()
 		// OAuth 客户端登记（B4）：有则带 clientId/redirectUris，空 = 未开通
 		p.ClientID, p.RedirectURIs = s.OAuthClientIDFor(app)
 		out = append(out, p)
@@ -597,7 +624,7 @@ func (s *Service) uidByEmail(rawEmail string) (int64, error) {
 	err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT id FROM users WHERE email = ?", email).Scan(&uid)
 	if errors.Is(err, sql.ErrNoRows) {
-		return 0, &HTTPError{404, "该用户不存在，请刷新用户列表后重试"}
+		return 0, &HTTPError{Code: 404, Message: "该用户不存在，请刷新用户列表后重试"}
 	}
 	if err != nil {
 		return 0, fmt.Errorf("查用户: %w", err)
@@ -719,8 +746,9 @@ func (s *Service) AdminSetRestricted(actor Caller, scope AdminScope, app string,
 		 WHERE app = ? AND revoked_at IS NULL AND user_id NOT IN (
 		   SELECT id FROM users WHERE role = ?
 		   UNION SELECT uid FROM project_access WHERE app = ?
-		   UNION SELECT uid FROM admin_scopes WHERE app = ?)`,
-		time.Now().UnixMilli(), app, adminRoleSuper, app, app); err != nil {
+		   UNION SELECT a.uid FROM admin_scopes a JOIN users u ON u.id = a.uid
+		          WHERE a.app = ? AND u.role = ?)`,
+		time.Now().UnixMilli(), app, adminRoleSuper, app, app, adminRoleAdmin); err != nil {
 		return fmt.Errorf("吊销不合规会话: %w", err)
 	}
 	return nil

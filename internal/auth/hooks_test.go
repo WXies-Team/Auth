@@ -154,4 +154,4 @@ func TestHooksFailureAborts(t *testing.T) {
 	}
 }
 
-var errDBBoom = &HTTPError{503, "服务暂时不可用，请稍后重试"}
+var errDBBoom = &HTTPError{Code: 503, Message: "服务暂时不可用，请稍后重试"}

@@ -81,7 +81,7 @@ func TestWithBatchID(t *testing.T) {
 // 逐项错误的面板文案：HTTPError 取自带中文（越权/参数错要能直接读），
 // 其余一律中性白话（根因进日志，不把内部串甩到管理台）。
 func TestBulkErrText(t *testing.T) {
-	httpErr := &HTTPError{403, "没有该项目的管理权限，请联系平台管理员开通"}
+	httpErr := &HTTPError{Code: 403, Message: "没有该项目的管理权限，请联系平台管理员开通", Reason: ReasonPermission}
 	if got := bulkErrText(httpErr); got != "没有该项目的管理权限，请联系平台管理员开通" {
 		t.Errorf("HTTPError 应取自带文案，得到 %q", got)
 	}
@@ -125,7 +125,7 @@ func TestAdminBulkRejectsBadInputWithoutDB(t *testing.T) {
 
 // 入参闸：**先去重再判上限**（prepareBulkUIDs）——含重复的 150 条按去重后的真数判，
 // 不整批打回；去重后 101 个才提示分批；全 0/负数经去重出局后回「请先选择」
-//（老实现先 len 后去重，200 个全 0 会误报「分批」）。
+// （老实现先 len 后去重，200 个全 0 会误报「分批」）。
 func TestPrepareBulkUIDs(t *testing.T) {
 	// total 条输入平铺成 distinct 个真 uid（其余重复）
 	batch := func(distinct, total int) []int64 {
@@ -159,7 +159,7 @@ func TestPrepareBulkUIDs(t *testing.T) {
 // ---- 真库端到端（无 TEST_MYSQL_DSN 跳过）----
 
 // 三个 kind 全跑一遍 + 权限矩阵：批量层只负责逐项执行与汇总，单发的语义
-//（强制改密/吊销会话/写封禁行）与权限（越权项落成单条失败，不整批 403）都得在。
+// （强制改密/吊销会话/写封禁行）与权限（越权项落成单条失败，不整批 403）都得在。
 func TestAdminBulkEndToEnd(t *testing.T) {
 	svc, mailer := newTestService(t)
 	super := seedAdminUser(t, svc, mailer, "bulk-super@example.com", adminRoleSuper)

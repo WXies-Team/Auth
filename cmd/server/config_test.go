@@ -12,7 +12,7 @@ import (
 )
 
 // configDispatchKeys 是端点认的四个 app_config 键，顺序即回执键名排序后的顺序
-//（keysOf 按字典序拼）：llmApiKey, llmBaseUrl, llmModel, pushAdminToken ——
+// （keysOf 按字典序拼）：llmApiKey, llmBaseUrl, llmModel, pushAdminToken ——
 // 改契约必须同时改这里与 handler。FCM 两键已退出本端点（见 config.go 头注释）。
 const configAllKeys = "llmApiKey,llmBaseUrl,llmModel,pushAdminToken"
 

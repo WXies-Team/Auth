@@ -107,3 +107,57 @@ func TestDeleteCancelPageRender(t *testing.T) {
 		t.Errorf("非 HTTPError 应回中性 503 文案，得到 %q", got)
 	}
 }
+
+// 注销撤销页是唯一「脚本内联」的页面：CSP 用按请求的 nonce 放宽**这一条**脚本，
+// 其余策略仍严格（不放 'unsafe-inline'）。nonce 每请求不同，哈希白名单不适用。
+func TestDeleteCancelPageCSPNonce(t *testing.T) {
+	rec := httptest.NewRecorder()
+	writeDeleteCancelPage(rec, "tok-1", true, "")
+	csp := rec.Header().Get("Content-Security-Policy")
+	scriptSrc := ""
+	if i := strings.Index(csp, "script-src "); i >= 0 {
+		scriptSrc = strings.SplitN(csp[i+len("script-src "):], ";", 2)[0]
+	}
+	if !strings.Contains(scriptSrc, "'self'") || strings.Contains(scriptSrc, "unsafe-inline") {
+		t.Fatalf("script-src 应只含 'self' + nonce，得到 %q（整条 %q）", scriptSrc, csp)
+	}
+	i := strings.Index(scriptSrc, "'nonce-")
+	if i < 0 {
+		t.Fatalf("script-src 应带 nonce，得到 %q", scriptSrc)
+	}
+	nonce := scriptSrc[i+len("'nonce-"):]
+	if j := strings.Index(nonce, "'"); j >= 0 {
+		nonce = nonce[:j]
+	}
+	if len(nonce) < 16 {
+		t.Errorf("nonce 太短: %q", nonce)
+	}
+	if !strings.Contains(rec.Body.String(), `<script nonce="`+nonce+`">`) {
+		t.Error("内联脚本必须带同一个 nonce，否则严格 CSP 下不会执行")
+	}
+	// 每请求一个 nonce：不能被复用成固定值
+	rec2 := httptest.NewRecorder()
+	writeDeleteCancelPage(rec2, "tok-1", true, "")
+	if rec2.Header().Get("Content-Security-Policy") == csp {
+		t.Error("nonce 应每请求不同")
+	}
+}
+
+// 403 页用 ui.Data.Status 起头，而不是先 WriteHeader：先冲刷会让 Render 设置的
+// Cache-Control: no-store 等头丢失（403 页被缓存是真实后果）。
+func TestRenderDeniedKeepsRenderHeaders(t *testing.T) {
+	rec := httptest.NewRecorder()
+	renderDenied(rec, "CalorieDiary", auth.ReasonPermission)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("应 403，得到 %d", rec.Code)
+	}
+	if cc := rec.Header().Get("Cache-Control"); cc != "no-store" {
+		t.Errorf("403 页应 no-store，得到 %q", cc)
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "text/html") {
+		t.Errorf("403 页应是 text/html，得到 %q", ct)
+	}
+	if body := rec.Body.String(); !strings.Contains(body, "无权访问") {
+		t.Errorf("403 页正文不对: %s", body)
+	}
+}

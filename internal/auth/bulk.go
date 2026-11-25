@@ -67,7 +67,7 @@ func summarizeBulk(kind, batchID string, items []BulkItem) BulkResult {
 }
 
 // dedupeUIDs 去重保序：同一 uid 在选择集里出现两次等于把同一个用户重置/封禁两遍
-//（第二次多烧一次 bcrypt、多吊一次会话，审计也多一条）——入口折掉，纯函数可单测。
+// （第二次多烧一次 bcrypt、多吊一次会话，审计也多一条）——入口折掉，纯函数可单测。
 // 非正数一并滤掉（它们只会变成一排 404 噪声）。
 func dedupeUIDs(uids []int64) []int64 {
 	seen := make(map[int64]bool, len(uids))

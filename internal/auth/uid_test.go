@@ -125,3 +125,27 @@ func TestNewUserIDStopsOnOtherErrors(t *testing.T) {
 		})
 	}
 }
+
+// 根 uid 是保留号：即使注入的号源（迁移/测试）先把 RootUID 交出来，newUserID
+// 也必须跳过它，绝不能把根身份发给一个新账号。
+func TestNewUserIDSkipsRootUID(t *testing.T) {
+	calls := 0
+	gen := func() (int64, error) {
+		calls++
+		if calls == 1 {
+			return RootUID, nil
+		}
+		return 1234567, nil
+	}
+	var inserted []int64
+	got, err := newUserID(gen, func(id int64) error {
+		inserted = append(inserted, id)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("newUserID: %v", err)
+	}
+	if got == RootUID || len(inserted) != 1 || inserted[0] == RootUID {
+		t.Errorf("根 uid 必须被跳过，得到 got=%d inserted=%v", got, inserted)
+	}
+}

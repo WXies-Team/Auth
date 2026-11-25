@@ -213,17 +213,18 @@ func TestLegacySessionsResponseShape(t *testing.T) {
 		got = append(got, k)
 	}
 	joined := strings.Join(got, ",")
-	// 2026-11 追加 ipRegion（IP 粗略归属地）：**纯附加**字段，旧的日记客户端按
-	// ignoreUnknownKeys 解析，不构成破坏性变更，因此这里钉 8 个字段。
-	// 本用例故意用内网 IP 10.1.2.3 登录——内网地址不该被安上公网归属地，
-	// 顺带钉住「不猜」的口径：ipRegion 必须是空串。
-	for _, want := range []string{"id", "app", "device", "ip", "ipRegion", "createdAt", "lastSeenAt", "current"} {
+	// 2026-11 追加 ipRegion（IP 粗略归属地）与会话子系统重写的 expiresAt（绝对
+	// 到期）：**纯附加**字段，旧的日记客户端按 ignoreUnknownKeys 解析，不构成
+	// 破坏性变更。idleExpiresAt 只对 web 会话有值（omitempty），App 行不出现，
+	// 所以这里钉 9 个字段。本用例故意用内网 IP 10.1.2.3 登录——内网地址不该被
+	// 安上公网归属地，顺带钉住「不猜」的口径：ipRegion 必须是空串。
+	for _, want := range []string{"id", "app", "device", "ip", "ipRegion", "createdAt", "lastSeenAt", "expiresAt", "current"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("设备行缺字段 %s，得到 %s", want, joined)
 		}
 	}
-	if len(items[0]) != 8 {
-		t.Errorf("设备行应恰好 8 个字段，得到 %d（%s）", len(items[0]), joined)
+	if len(items[0]) != 9 {
+		t.Errorf("设备行应恰好 9 个字段（App 行无 idleExpiresAt），得到 %d（%s）", len(items[0]), joined)
 	}
 	var region string
 	if raw, ok := items[0]["ipRegion"]; ok {
@@ -661,10 +662,21 @@ func TestAdminAuthzMatrix(t *testing.T) {
 		r.Header.Set("X-CSRF-Token", csrf.Value)
 	}
 
-	// ① 管理员账号没绑任何 MFA → 403 且提示要先绑定
+	// ① 管理员账号没绑任何 MFA → 403 且提示要先绑定；reason 单列为
+	// mfa_required（还要用户自己走第二步），不能混进 policy 让 UI 误判成「找管理员解封」
 	rec := e.do(t, "GET", "/admin/users", "", cookies)
-	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "绑定") {
+	var mfaDenied struct {
+		Message string `json:"message"`
+		Reason  string `json:"reason"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &mfaDenied); err != nil {
+		t.Fatalf("解析未绑 MFA 的 403 体: %v（%s）", err, rec.Body.String())
+	}
+	if rec.Code != http.StatusForbidden || !strings.Contains(mfaDenied.Message, "绑定") {
 		t.Errorf("未绑 MFA 的管理员应 403 并说明原因，得到 %d %s", rec.Code, rec.Body.String())
+	}
+	if mfaDenied.Reason != auth.ReasonMFARequired {
+		t.Errorf("未绑 MFA 的 reason 应为 %q（不是 policy），得到 %q", auth.ReasonMFARequired, mfaDenied.Reason)
 	}
 
 	// ② 绑上两步验证（直接落 enabled 行：本用例只看授权闸，不跑验码链路），

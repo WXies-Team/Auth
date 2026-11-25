@@ -72,6 +72,7 @@ func NewHooks(require ConfigFunc) *Hooks {
 //     App 见「注销钩子已调用」日志；按 uid 在该 App 库里复查即知数据是否已清。
 //   - 不做的补偿：跨库回滚不存在（账号服务不连别的库，这是刻意的边界）；「先探
 //     测全部端点再删」也挡不住探测与删除之间的故障窗口，只会翻倍打爆对端。
+//
 // 若将来此残余不可接受，唯一彻底的解法是把两个日记侧的清理改成「两阶段提交」
 // 或「auth 先发预约、对端懒清理」，那是跨三仓的架构变更，不在本仓单独能力内。
 //
@@ -95,7 +96,7 @@ func (h *Hooks) BeforeDelete(uid int64, email string) error {
 		if err != nil {
 			slog.Error("注销钩子调用失败，注销中止", "uid", uid, "app", app.app,
 				"status", status, "email", maskEmail(email), "err", err)
-			return &HTTPError{503, "注销失败，请稍后重试"}
+			return &HTTPError{Code: 503, Message: "注销失败，请稍后重试"}
 		}
 		slog.Info("注销钩子已调用", "uid", uid, "app", app.app,
 			"status", status, "email", maskEmail(email))

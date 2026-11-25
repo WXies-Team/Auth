@@ -355,8 +355,8 @@ func TestRequireTOTPEncKeyFormats(t *testing.T) {
 	for name, bad := range map[string]string{
 		"64位非hex": strings.Repeat("z", 64),
 		"40字节":    strings.Repeat("k", 40),
-		"空":        "",
-		"63位hex":   strings.Repeat("a", 63),
+		"空":       "",
+		"63位hex":  strings.Repeat("a", 63),
 	} {
 		t.Run(name+" 拒启", func(t *testing.T) {
 			t.Setenv("TOTP_ENC_KEY", bad)

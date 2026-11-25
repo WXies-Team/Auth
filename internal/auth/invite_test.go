@@ -24,10 +24,10 @@ func TestInviteStateMatrix(t *testing.T) {
 		now    = int64(2000)
 	)
 	cases := []struct {
-		name                       string
-		acceptedAt, revokedAt      int64
-		expiresAt, now             int64
-		want                       string
+		name                  string
+		acceptedAt, revokedAt int64
+		expiresAt, now        int64
+		want                  string
 	}{
 		{"待接受", 0, 0, future, now, "pending"},
 		{"已过期", 0, 0, past, now, "expired"},
@@ -126,8 +126,8 @@ func TestInviteEndToEnd(t *testing.T) {
 	if expiresAt < before+(24*time.Hour-time.Minute).Milliseconds() || expiresAt > time.Now().UnixMilli()+(24*time.Hour+time.Minute).Milliseconds() {
 		t.Errorf("有效期应是创建起 24 小时，得到 %d", expiresAt)
 	}
-	if mailer.to != "invitee@example.com" || !strings.Contains(mailer.subject, "账号邀请") {
-		t.Errorf("邀请信应收件归一化、主题带「账号邀请」，得到 to=%q subject=%q", mailer.to, mailer.subject)
+	if mailer.to != "invitee@example.com" || !strings.Contains(mailer.subject, "邀请你创建账号") {
+		t.Errorf("邀请信应收件归一化、主题带「邀请你创建账号」，得到 to=%q subject=%q", mailer.to, mailer.subject)
 	}
 	token := inviteTokenIn(t, mailer)
 	var stored string
