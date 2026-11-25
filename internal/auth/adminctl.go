@@ -562,7 +562,9 @@ func (s *Service) AdminProjectCandidates(scope AdminScope, app, rawQuery string)
 		return nil, err
 	}
 	q := strings.TrimSpace(rawQuery)
-	if q == "" {
+	// 至少 2 个字符：项目级管理员只能按片段定位，不能靠 1 个字符把用户目录
+	// 一页页翻出来；uid 精确查询通常也 ≥2 位。
+	if len([]rune(q)) < 2 {
 		return []AdminUserCandidate{}, nil
 	}
 	rows, err := s.pool.QueryContext(db.QueryCtx(),

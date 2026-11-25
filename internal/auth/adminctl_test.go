@@ -435,6 +435,9 @@ func TestProjectRestrictionAndAccess(t *testing.T) {
 	if cands, err := svc.AdminProjectCandidates(superScope, "CalorieDiary", "  "); err != nil || len(cands) != 0 {
 		t.Errorf("空查询应回空数组，得到 %+v err=%v", cands, err)
 	}
+	if cands, err := svc.AdminProjectCandidates(superScope, "CalorieDiary", "w"); err != nil || len(cands) != 0 {
+		t.Errorf("单字符查询应回空数组（防翻目录），得到 %+v err=%v", cands, err)
+	}
 	cands, err := svc.AdminProjectCandidates(superScope, "CalorieDiary", "w5-member")
 	if err != nil || len(cands) != 1 || cands[0].UID != member.UID || cands[0].Email != member.Email {
 		t.Errorf("按邮箱片段应搜到 member，得到 %+v err=%v", cands, err)
