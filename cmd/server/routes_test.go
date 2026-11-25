@@ -706,6 +706,10 @@ func TestAdminAuthzMatrix(t *testing.T) {
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "worker@example.com") {
 		t.Errorf("候选用户搜索应 200 且包含 worker，得到 %d %s", rec.Code, rec.Body.String())
 	}
+	rec = e.do(t, "GET", "/admin/projects/CalorieDiary/candidates", "", cookies)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "worker@example.com") {
+		t.Errorf("候选用户空查询应默认列出一页用户（列表选择），得到 %d %s", rec.Code, rec.Body.String())
+	}
 	rec = e.do(t, "GET", "/admin/projects/evil-app/candidates?query=worker", "", cookies)
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("未知项目搜索候选应 400，得到 %d %s", rec.Code, rec.Body.String())
