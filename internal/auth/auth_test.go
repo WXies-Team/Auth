@@ -136,7 +136,7 @@ func httpMsg(err error) (int, string) {
 }
 
 // tokenClaimUID 直接读 JWT payload 里的 uid（json.Number，无损），用于断言
-//「claims 里的 uid 与库里的 id 一字不差」。
+// 「claims 里的 uid 与库里的 id 一字不差」。
 func tokenClaimUID(t *testing.T, token string) int64 {
 	t.Helper()
 	parts := strings.Split(token, ".")
@@ -726,7 +726,7 @@ func TestResetPasswordRevokesSessions(t *testing.T) {
 
 // m12 回归：Register 在验证码验过**之后**失败（bcrypt/建库错那一档）不给用户
 // 留 60 秒冷却白等——失败后立刻重发注册码必须成功。
-//（现状核实：otpStore.verify 成功即烧掉整代，冷却查询只看 used=0 行，所以
+// （现状核实：otpStore.verify 成功即烧掉整代，冷却查询只看 used=0 行，所以
 // 此路径本来就不欠冷却；本用例把该行为钉住，防止将来 verify 语义漂移。）
 func TestRegisterFailureAfterVerifyAllowsImmediateResend(t *testing.T) {
 	svc, mailer := newTestService(t)
@@ -765,7 +765,7 @@ func TestRegisterFailureAfterVerifyAllowsImmediateResend(t *testing.T) {
 type failMailer struct{}
 
 func (failMailer) Send(context.Context, string, string, string, string, string) error {
-	return errors.New("graph boom")
+	return errors.New("mail boom")
 }
 
 // 发信失败必须**回滚冷却**：码已生成但信没发出去时若不作废，用户要白等 60 秒。

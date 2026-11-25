@@ -31,11 +31,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/WXies-Team/Auth/internal/db"
 	"github.com/WXies-Team/Auth/internal/protocol"
 	"github.com/bwmarrin/snowflake"
 	"github.com/go-sql-driver/mysql"
+	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -44,7 +44,7 @@ const (
 	minPassword  = 8
 	maxPasswordB = 72
 
-	issuer   = "auth"
+	issuer = "auth"
 	// 与旧版一致：90 天。下游客户端按旧口径刷新，切换服务端不需要改造
 	tokenTTL = 90 * 24 * time.Hour
 	// 与旧版 BCrypt.withDefaults().hashToString(12, ...) 一致
@@ -88,7 +88,7 @@ func badRequest(msg string) error   { return &HTTPError{400, msg} }
 func unauthorized(msg string) error { return &HTTPError{401, msg} }
 
 // Response 是 /auth/register 与 /auth/login 的响应体，字段名与 AuthResponse 一致
-//（token, email, mustChangePassword, deletePendingCancelled，顺序逐字同步）。
+// （token, email, mustChangePassword, deletePendingCancelled，顺序逐字同步）。
 //
 // Session 只在 **web cookie 调用者的改密换发**里非空（json:"-" 不进回执）：路由层
 // 据它 Set-Cookie 刷新 web 会话——凭据轮换是传输层的事，不改变回执形状。
@@ -100,7 +100,7 @@ type Response struct {
 	Session                *WebSession `json:"-"`
 }
 
-// Mailer 是发信能力的最小接口：生产用 internal/mail 的 Graph 实现，测试注入假实现
+// Mailer 是发信能力的最小接口：生产用 internal/mail 的 SMTP 实现，测试注入假实现
 // （这样真库测试不会往外真发信）。fromName 是这封信的发件人显示名（品牌名，见
 // brandFor）——与正文品牌同源取值，分头各传一套必然漂。text 是 HTML 的忠实纯文本
 // 降级（模板逐封给出），与 html 一起拼进 multipart/alternative。
@@ -279,7 +279,7 @@ func validateApp(app string) error {
 }
 
 // AppAllowed 导出白名单查询，给路由层校验调用方声明的应用标识用
-//（/internal/ai/* 三端点）：加新应用仍只改 allowedApps 一处。
+// （/internal/ai/* 三端点）：加新应用仍只改 allowedApps 一处。
 func AppAllowed(app string) bool { return allowedApps[app] }
 
 func hash(password string) (string, error) {
@@ -324,7 +324,7 @@ func (s *Service) createToken(userID int64, email, app string, version int, sid 
 // 查精确匹配，两处期望不同）。
 //
 // jwt.WithJSONNumber 是硬要求：**sid 是 63 位雪花整数**，默认解析走 float64
-//（53 位尾数）丢精度，错位的 sid 会让会话校验查到别的会话上。uid 自 2026-10 起
+// （53 位尾数）丢精度，错位的 sid 会让会话校验查到别的会话上。uid 自 2026-10 起
 // 只是 7 位随机数（float64 装得下），但同一份 claims 解析不按 uid 宽度分叉，一律读整数。
 func (s *Service) parseToken(token string) (jwt.MapClaims, error) {
 	claims := jwt.MapClaims{}
@@ -1089,7 +1089,7 @@ func (s *Service) Logout(userID int64) error {
 }
 
 // loadUserAuth 取改密族都要的两样：绑定邮箱（改密码码按它存取）与现口令散列
-//（原密码比对用；验码路径不用）。uid 已过期（账号被删）按未授权处理。
+// （原密码比对用；验码路径不用）。uid 已过期（账号被删）按未授权处理。
 func (s *Service) loadUserAuth(userID int64) (email, hashed string, err error) {
 	var h sql.NullString
 	err = s.pool.QueryRowContext(db.QueryCtx(),
@@ -1104,7 +1104,7 @@ func (s *Service) loadUserAuth(userID int64) (email, hashed string, err error) {
 }
 
 // setPasswordAndRevoke 写入新口令散列并 **token_version+1**：吊销该账号全部已签发 token
-//（与 Logout/注销同一套机制）。改密的三条路——原密码、验证码、找回密码——共用这一处，
+// （与 Logout/注销同一套机制）。改密的三条路——原密码、验证码、找回密码——共用这一处，
 // 「改密必吊销」不会在某条路上漏掉。
 //
 // **同一事务里把全部会话行也置 revoked_at**：token 层判死的那批设备，会话行若留着，

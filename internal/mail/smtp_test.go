@@ -17,11 +17,8 @@ import (
 	"mime"
 	"mime/multipart"
 	"net"
-	"net/http"
-	"net/http/httptest"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -33,7 +30,7 @@ const (
 	testSMTPPass = "client-pass-not-a-real-one"
 )
 
-// smtpKeySet / graphKeySet 是两套凭据键的完整形态，测试往里删键造缺键态。
+// smtpKeySet 是 SMTP 四键的完整形态，测试往里删键造缺键态。
 func smtpKeySet(host, port string) map[string]string {
 	return map[string]string{
 		smtpHostKey: host,
@@ -43,19 +40,10 @@ func smtpKeySet(host, port string) map[string]string {
 	}
 }
 
-func graphKeySet() map[string]string {
-	return map[string]string{
-		graphTenantKey: "11111111-2222-3333-4444-555555555555",
-		graphClientKey: "test-client-id",
-		graphSecretKey: "test-client-secret",
-	}
-}
-
 // senderWith 拼一个测试发送器：cfg 注入键表；smtpTLSConfig 只信测试自签证书
-//（InsecureSkipVerify 的前提仅是本地假服务器，生产该字段恒 nil）。
+// （InsecureSkipVerify 的前提仅是本地假服务器，生产该字段恒 nil）。
 func senderWith(keys map[string]string) *Sender {
 	return &Sender{
-		client:        &http.Client{Timeout: 5 * time.Second},
 		cfg:           func(k string) string { return keys[k] },
 		smtpTLSConfig: &tls.Config{InsecureSkipVerify: true},
 	}
@@ -222,40 +210,18 @@ func srvPort(t *testing.T, srv *fakeSMTP) string {
 	return port
 }
 
-// 分流主用例：两套凭据都配齐时走 SMTP、Graph 一次都不碰；信件沿用品牌显示名
-//（email.go 注册表经 Send 入参传入）、发件人取 mail_smtp_user、模板正文与
-// Graph 路径同一份 MIME。
-func TestSendPrefersSMTPAndCarriesBrandFrom(t *testing.T) {
+// 主用例：凭据配齐时信走 SMTP 投递，信件沿用品牌显示名（email.go 注册表经
+// Send 入参传入）、发件人取 mail_smtp_user、模板正文与 buildMIME 拼出的
+// multipart/alternative 逐字一致。
+func TestSendCarriesBrandFrom(t *testing.T) {
 	srv := startFakeSMTP(t, false)
 	keys := smtpKeySet("127.0.0.1", srvPort(t, srv))
-	// 叠上 Graph 键：证明 host 非空时 Graph 路径根本不被走
-	for k, v := range graphKeySet() {
-		keys[k] = v
-	}
-
-	var graphHits atomic.Int32
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		graphHits.Add(1)
-		if r.URL.Path == "/token" {
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = io.WriteString(w, `{"access_token":"t","token_type":"Bearer","expires_in":3600}`)
-			return
-		}
-		w.WriteHeader(http.StatusAccepted)
-	}))
-	defer ts.Close()
-
-	s := senderWith(keys)
-	s.tokenURL, s.sendURL = ts.URL+"/token", ts.URL+"/sendMail"
 
 	const htmlBody = `<html><body><p>654321</p></body></html>`
 	const textBody = "验证码 654321"
-	if err := s.Send(context.Background(),
+	if err := senderWith(keys).Send(context.Background(),
 		"热量日记", "u@example.com", "【热量日记】注册验证码", htmlBody, textBody); err != nil {
 		t.Fatalf("发送失败: %v", err)
-	}
-	if n := graphHits.Load(); n != 0 {
-		t.Errorf("mail_smtp_host 配齐时不该碰 Graph，得到 %d 次请求", n)
 	}
 
 	srv.mu.Lock()
@@ -323,59 +289,31 @@ func TestSendPrefersSMTPAndCarriesBrandFrom(t *testing.T) {
 	}
 }
 
-// mail_smtp_host 空（哪怕其余三键都配了）→ 回退 Graph，缺键错误口径不变。
-func TestSendFallsBackToGraphWhenSMTPHostEmpty(t *testing.T) {
-	keys := graphKeySet()
-	keys[smtpPortKey], keys[smtpUserKey], keys[smtpPassKey] = "465", testSMTPUser, testSMTPPass // host 故意不配
-
-	var tokenHits, sendHits int
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/token" {
-			tokenHits++
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = io.WriteString(w, `{"access_token":"t","token_type":"Bearer","expires_in":3600}`)
-			return
-		}
-		sendHits++
-		w.WriteHeader(http.StatusAccepted)
-	}))
-	defer ts.Close()
-
-	s := senderWith(keys)
-	s.tokenURL, s.sendURL = ts.URL+"/token", ts.URL+"/sendMail"
-	if err := s.Send(context.Background(), "Auth", "u@example.com", "s", "<p>b</p>", "b"); err != nil {
-		t.Fatalf("回退 Graph 应发送成功: %v", err)
-	}
-	if tokenHits != 1 || sendHits != 1 {
-		t.Errorf("应走完整 Graph 取票+投信，得到 token=%d send=%d", tokenHits, sendHits)
-	}
-}
-
-// 缺键错误：两套都没配回 Graph 的 errNoCredential（口径不变）；进了 SMTP 路径
-// 缺任一键回 errNoSMTPCredential，两者都是配置态错误、一个网络请求都不发。
+// 缺键错误：四键缺任一键回 errNoSMTPCredential（配置态错误、一个网络请求都不发，
+// 指向必然拨不通的端点也没被拨出去）。
 func TestSendMissingKeysFailOffline(t *testing.T) {
 	cases := []struct {
 		name string
 		keys map[string]string
-		want error
 	}{
-		{"两套都没配（回 Graph，口径不变）", map[string]string{}, errNoCredential},
-		{"只配了 host", map[string]string{smtpHostKey: "smtp.exmail.qq.com"}, errNoSMTPCredential},
+		{"四键全缺", map[string]string{}},
+		{"只配了 host", map[string]string{smtpHostKey: "smtp.exmail.qq.com"}},
+		{"缺 host（其余三键齐）", map[string]string{
+			smtpPortKey: "465", smtpUserKey: testSMTPUser, smtpPassKey: testSMTPPass,
+		}},
 		{"缺 pass", map[string]string{
 			smtpHostKey: "smtp.exmail.qq.com", smtpPortKey: "465", smtpUserKey: testSMTPUser,
-		}, errNoSMTPCredential},
+		}},
 		{"缺 port", map[string]string{
 			smtpHostKey: "smtp.exmail.qq.com", smtpUserKey: testSMTPUser, smtpPassKey: testSMTPPass,
-		}, errNoSMTPCredential},
+		}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			// 指向必然拨不通的端点：若缺键后还去拨号，报的会是连接错误而不是配置错误
 			s := senderWith(tc.keys)
-			s.tokenURL, s.sendURL = "http://127.0.0.1:0/token", "http://127.0.0.1:0/sendMail"
 			err := s.Send(context.Background(), "Auth", "u@example.com", "s", "<p>b</p>", "b")
-			if !errors.Is(err, tc.want) {
-				t.Fatalf("应报 %v，得到 %v", tc.want, err)
+			if !errors.Is(err, errNoSMTPCredential) {
+				t.Fatalf("应报 %v，得到 %v", errNoSMTPCredential, err)
 			}
 			if strings.Contains(err.Error(), testSMTPPass) {
 				t.Errorf("错误文案不许回显密码: %q", err)
@@ -428,36 +366,25 @@ func TestSendSMTPDialFailureIsActionable(t *testing.T) {
 	}
 }
 
-// 配齐判定（/health mailConfigured 与启动 Warn 的同源逻辑）：SMTP 四键齐 或
-// Graph 三键齐任一即 true；两套都没齐回 missing 供 Warn 点名；读库失败上抛。
+// 配齐判定（/health mailConfigured 与启动 Warn 的同源逻辑）：**SMTP 四键齐**
+// 才 true；缺键回 missing 供 Warn 点名；读库失败上抛。
 func TestConfigState(t *testing.T) {
-	fullSMTP := smtpKeySet("smtp.exmail.qq.com", "465")
-	fullGraph := graphKeySet()
-	merge := func(ms ...map[string]string) map[string]string {
-		out := map[string]string{}
-		for _, m := range ms {
-			for k, v := range m {
-				out[k] = v
-			}
-		}
-		return out
-	}
+	fullSMTP := smtpKeySet("smtp.qiye.aliyun.com", "465")
 	read := func(m map[string]string) RequireFunc {
 		return func(k string) (string, error) { return m[k], nil }
 	}
 
-	noPassSMTP := merge(fullSMTP)
+	noPassSMTP := map[string]string{}
+	for k, v := range fullSMTP {
+		noPassSMTP[k] = v
+	}
 	delete(noPassSMTP, smtpPassKey)
 
-	allMissing := strings.Join(append(append([]string{}, smtpKeys...), graphKeys...), ",")
-	onlyHost := merge(fullSMTP)
-	for _, k := range []string{smtpPortKey, smtpUserKey, smtpPassKey} {
-		delete(onlyHost, k)
-	}
-	// 两套里除 host 外全缺（顺带钉住键名本身）
-	onlyHostMissing := strings.Join([]string{
-		smtpPortKey, smtpUserKey, smtpPassKey, graphTenantKey, graphClientKey, graphSecretKey,
-	}, ",")
+	// 全缺（顺带钉住四键键名与顺序）
+	allMissing := strings.Join(smtpKeys, ",")
+	onlyHost := map[string]string{smtpHostKey: "smtp.qiye.aliyun.com"}
+	// 除 host 外全缺
+	onlyHostMissing := strings.Join([]string{smtpPortKey, smtpUserKey, smtpPassKey}, ",")
 
 	cases := []struct {
 		name        string
@@ -466,10 +393,8 @@ func TestConfigState(t *testing.T) {
 		wantMissing string // 只在 !wantOK 时校验，逗号连接
 	}{
 		{"SMTP 四键齐", fullSMTP, true, ""},
-		{"Graph 三键齐", fullGraph, true, ""},
-		{"两套都齐", merge(fullSMTP, fullGraph), true, ""},
-		{"SMTP 缺 pass、Graph 齐（回退可用即算配好）", merge(noPassSMTP, fullGraph), true, ""},
-		{"两套都缺", map[string]string{}, false, allMissing},
+		{"缺 pass", noPassSMTP, false, smtpPassKey},
+		{"全缺", map[string]string{}, false, allMissing},
 		{"只配了 host", onlyHost, false, onlyHostMissing},
 	}
 	for _, tc := range cases {

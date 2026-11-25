@@ -281,7 +281,7 @@ func TestAdminSessionsAndRevocation(t *testing.T) {
 }
 
 // 会话总览的服务端搜索（A4#3）：query 是邮箱片段或精确 uid，过滤在 SQL 里做
-//（邮箱条件要 join users），total / totalUsers 按同一条件数——前端不再拿本页
+// （邮箱条件要 join users），total / totalUsers 按同一条件数——前端不再拿本页
 // 100 条会话自己过滤（那会漏掉本页之外的用户，页码也数不出用户数）。
 // 真库用例：无 TEST_MYSQL_DSN 时 Skip（与本包其它真库用例同策略），留给 CI。
 func TestAdminListSessionsQuery(t *testing.T) {
@@ -369,19 +369,19 @@ func TestAdminConfigMaskingAndWrite(t *testing.T) {
 	actor.Meta = testMeta
 
 	// 测试库的 app_config 归本用例管（其它用例的配置都走假 ConfigFunc，不碰这张表）
-	const secretKey = "mail_client_secret"
+	const secretKey = "mail_smtp_pass"
 	const secretValue = "super-secret-mail-value-8f3a"
 	if _, err := svc.pool.Exec("DELETE FROM app_config"); err != nil {
 		t.Fatalf("清配置表: %v", err)
 	}
 	t.Cleanup(func() { _, _ = svc.pool.Exec("DELETE FROM app_config") })
 	seed := map[string]string{
-		"mail_client_secret": secretValue,
-		"mail_tenant_id":     "tenant-abc",
-		"hook_token":         "hook-secret-token-value",
-		"llm_model":          "gpt-x",
-		"web_private_key":    "should-be-secret", // 前缀不在白名单 → 不该出现
-		"panel_debug":        "0",                // 同上
+		"mail_smtp_pass":  secretValue,
+		"mail_smtp_host":  "smtp.qiye.aliyun.com",
+		"hook_token":      "hook-secret-token-value",
+		"llm_model":       "gpt-x",
+		"web_private_key": "should-be-secret", // 前缀不在白名单 → 不该出现
+		"panel_debug":     "0",                // 同上
 	}
 	for k, v := range seed {
 		if _, err := svc.pool.Exec("INSERT INTO app_config (`key`, `value`) VALUES (?,?)", k, v); err != nil {
@@ -404,7 +404,7 @@ func TestAdminConfigMaskingAndWrite(t *testing.T) {
 		}
 	}
 	// secret：configured + 末 4 位，Value 必须为空
-	for _, key := range []string{"mail_client_secret", "hook_token"} {
+	for _, key := range []string{secretKey, "hook_token"} {
 		it, ok := byKey[key]
 		if !ok {
 			t.Fatalf("缺 secret 键 %s", key)
@@ -417,7 +417,7 @@ func TestAdminConfigMaskingAndWrite(t *testing.T) {
 		}
 	}
 	// 非 secret：回全文
-	if it := byKey["mail_tenant_id"]; it.Value != "tenant-abc" || it.Secret {
+	if it := byKey["mail_smtp_host"]; it.Value != "smtp.qiye.aliyun.com" || it.Secret {
 		t.Errorf("非 secret 应回全文: %+v", it)
 	}
 	// 白盒：整个响应序列化后不得出现任何 secret 原值

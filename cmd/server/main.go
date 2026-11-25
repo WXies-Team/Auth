@@ -44,7 +44,7 @@ const maxProfileBodyBytes = 1536 * 1024
 type ctxKey int
 
 // callerKey 放业务身份（老端点只认它）；webCallerKey 放双凭据解析的完整现场
-//（CSRF hash、role、凭 cookie 还是 Bearer 进来）——两把钥匙同一次解析填。
+// （CSRF hash、role、凭 cookie 还是 Bearer 进来）——两把钥匙同一次解析填。
 const (
 	callerKey ctxKey = iota
 	webCallerKey
@@ -88,9 +88,8 @@ func main() {
 	cfg := config.New(pool)
 	// 邮件凭据从 app_config 现读（10s 缓存，改库即热生效）。没配好时发码回 503
 	//「邮件服务暂不可用」，属于可自愈的配置态而不是崩溃；启动时 Warn 一次，
-	// 免得等用户注册失败才发现。SMTP 四键与 Graph 三键**任一配齐即可发信**
-	//（与 Send 分流、/health 同源判定），只在两套都没配齐时喊：只喊 Graph 那
-	// 三键会把「SMTP 已配好、Graph 没配」的正常态误报成故障。
+	// 免得等用户注册失败才发现。配齐口径 = **SMTP 四键齐**（与 Send、/health
+	// 同源判定），缺哪键 Warn 点名哪键。
 	if ok, missing, err := mailsvc.ConfigState(cfg.Require); err != nil {
 		// 读库失败 ≠ 没配：分开喊，否则 DB 抖动会被「未配置」这条 Warn 带偏
 		slog.Error("读邮件凭据失败（继续启动）", "err", err)
@@ -210,7 +209,7 @@ func splitList(raw string) []string {
 // health 复刻日记服务的 /health 语义：**ping 数据库**（DB 挂了返回 5xx，
 // deploy-server.sh 靠 `curl -fsS` 判定失败并自动回滚），再给两个配置开关位。
 // 开关位**刻意外显**（定案不改）：本服务的健康即运维监控面，布尔只报
-//「凭据配没配」，不含任何敏感值。
+// 「凭据配没配」，不含任何敏感值。
 func health(pool *sql.DB, require func(string) (string, error)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Ping 带 2s 超时：连接池被占满时 /health 不能无限排队——
@@ -222,8 +221,7 @@ func health(pool *sql.DB, require func(string) (string, error)) http.Handler {
 			return
 		}
 		// 邮件凭据没有兜底值：缺键时发码全 503，/health 给个开关位让部署方自查，
-		// 不用翻日志。配齐口径 = SMTP 四键或 Graph 三键任一齐（与 Send 分流同源，
-		// 见 mail.ConfigState——只查一套会把另一套配好的正常态报成 false）；
+		// 不用翻日志。配齐口径 = SMTP 四键齐（与 Send 同源，见 mail.ConfigState）；
 		// 读配置失败与「数据库挂了」是两回事，文案分开（n9）——
 		// 写成「数据库不可用」会把排障方向带偏到 DB 上。
 		mailOK, _, err := mailsvc.ConfigState(require)
@@ -254,13 +252,13 @@ type verifier interface {
 }
 
 // verifyRatePerApp 是 /internal/verify 每个 app 每分钟的上限，额度与原设计一致
-//（600 = 给多租户共享留的余量，挡的是误配置成公网可达后的打爆）。
+// （600 = 给多租户共享留的余量，挡的是误配置成公网可达后的打爆）。
 const verifyRatePerApp = 600
 
 // verifyUidWarnPerMin 是单 uid 每分钟 verify 次数的**告警线**——只记 Warn、
 // 不拒绝：600/分按 app 分键是共享桶，单个风暴客户端经日记服务放大就能吃掉整桶、
 // 挤兑该 app 全部用户（P1-3）；但把拒绝下沉到 per-uid 会给正常大流量用户
-//（首同步突发）新增一刀切的天花板。取 300/分：正常客户端单账号的各端点 per-uid
+// （首同步突发）新增一刀切的天花板。取 300/分：正常客户端单账号的各端点 per-uid
 // 额度之和到不了它，越线即在日志里点名 uid，运维据此决定是否提额或处置。
 const verifyUidWarnPerMin = 300
 
@@ -422,7 +420,7 @@ func decodeOr400Limit(w http.ResponseWriter, r *http.Request, v any, limit int64
 }
 
 // writeJSON 是全部 JSON 回执的唯一出口：Content-Type + **Cache-Control: no-store**
-//（规格 B1 原文要求「全部会话响应 no-store」，落到实现层即所有 JSON 响应——
+// （规格 B1 原文要求「全部会话响应 no-store」，落到实现层即所有 JSON 响应——
 // 登录/改密/会话回执落在共享缓存或浏览器 bfcache 里，等于把凭据外泄给下一个
 // 用同一台机器的人）。限流 429 与 recover 500 也走这里，同样带 no-store。
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -538,7 +536,7 @@ func readMethod(method string) bool {
 //
 // **cookie 校验失败且带了 Bearer 头时继续尝试 Bearer**：浏览器会把过期/被踢的
 // 残留 cookie 一并发上来，旧实现被它绑架成 401——同一浏览器里的 API 调用方
-//（App WebView、脚本）明明带着有效 Bearer 也进不来。cookie 失败分两档：
+// （App WebView、脚本）明明带着有效 Bearer 也进不来。cookie 失败分两档：
 // 503（DB 抖动）仍原样上抛（不能把抖动当成「换凭据再试」）；401 才回落 Bearer，
 // 两者皆败才 401。
 func resolveCaller(svc *auth.Service, r *http.Request) (auth.WebCaller, error) {
@@ -578,7 +576,7 @@ func sessMeta(r *http.Request) auth.SessionMeta {
 }
 
 // webSessMeta 在 sessMeta 之上再取 UA Client Hints 两头：Sec-CH-UA-Platform
-//（低熵，默认随请求带）与 Sec-CH-UA-Model（高熵，要 /web 页面响应先带过
+// （低熵，默认随请求带）与 Sec-CH-UA-Model（高熵，要 /web 页面响应先带过
 // Accept-CH——见 internal/ui.Render——浏览器才自动带上；Firefox/Safari 不支持，
 // 取不到就是空串，存储串不加后缀，设备名回退 UA 解析，零回归）。
 //
@@ -754,7 +752,7 @@ func (l *rateLimiter) observe(key string, win time.Duration) int {
 //
 // 生产里 nginx 在同机做 TLS 反代，请求转到本进程时 RemoteAddr 恒为代理地址——
 // 直接当键会让**所有用户挤进同一个桶**，15 次/分的全站共享额度可被单点打满
-//（打挂登录注册），反爆破的分 IP 粒度也完全失效。业界共识是「只信任受信代理
+// （打挂登录注册），反爆破的分 IP 粒度也完全失效。业界共识是「只信任受信代理
 // 追加的转发值」，所以：
 //
 //  1. RemoteAddr 不是受信代理（环回/内网）→ 认定直连，用 RemoteAddr，XFF 一律不信

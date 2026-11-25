@@ -157,7 +157,7 @@ func keysOf(t *testing.T, raw []byte) string {
 // ---- 老端点回归：已发布日记 App 依赖的形状 ----
 
 // /auth/login 的成功回执必须恰好 {token,email,mustChangePassword,deletePendingCancelled}
-//（契约 4：两个 bool 无 omitempty、显式出现），失败回执恰好 {message}；
+// （契约 4：两个 bool 无 omitempty、显式出现），失败回执恰好 {message}；
 // 且请求体多带未知字段照常工作（decode 不拒未知字段是前向兼容的既定口径）。
 func TestLegacyLoginResponseShape(t *testing.T) {
 	e := newRouteEnv(t)
@@ -344,7 +344,7 @@ func TestWebLoginIssuesCookies(t *testing.T) {
 }
 
 // CSRF：带 cookie 的非 GET 请求缺 X-CSRF-Token 必须 403——**老端点同样受约束**
-//（cookie 是新能力，老客户端走 Bearer 不受它影响）。
+// （cookie 是新能力，老客户端走 Bearer 不受它影响）。
 func TestWebCSRFEnforcedOnCookieRequests(t *testing.T) {
 	e := newRouteEnv(t)
 	seedUser(t, e, "web-csrf@example.com", "secret123", "user")
@@ -471,9 +471,9 @@ func TestAdminGateKeepsNonAdminsOut(t *testing.T) {
 }
 
 // 契约 5：cookie 会话调 /auth/change-password **换发**——响应 Set-Cookie 刷新会话
-//（旧 cookie 当场失效）、其它会话全被踢、回执 token 恒空串（绝不给 app='web' 的
+// （旧 cookie 当场失效）、其它会话全被踢、回执 token 恒空串（绝不给 app='web' 的
 // 会话签 JWT）、sessions 表不许留下 app='web' 却没有 web_token_hash 的僵尸行。
-//（旧 M1「本会话行保活、cookie 照用」口径由本批契约推翻：改密后凭据必须轮换。）
+// （旧 M1「本会话行保活、cookie 照用」口径由本批契约推翻：改密后凭据必须轮换。）
 func TestWebChangePasswordRotatesCurrentSession(t *testing.T) {
 	e := newRouteEnv(t)
 	uid := seedUser(t, e, "web-chpw@example.com", "secret123", "user")
@@ -725,7 +725,7 @@ func TestAdminConfigNeverLeaksSecret(t *testing.T) {
 	uid := seedUser(t, e, "cfg-admin@example.com", "secret123", "super")
 	const secret = "leaky-secret-value-8f3a"
 	if _, err := e.pool.Exec("INSERT INTO app_config (`key`, `value`) VALUES (?, ?)",
-		"mail_client_secret", secret); err != nil {
+		"mail_smtp_pass", secret); err != nil {
 		t.Fatalf("种配置: %v", err)
 	}
 	sess, csrf := loginCookie(t, e, "cfg-admin@example.com", "secret123")
@@ -753,7 +753,7 @@ func TestAdminConfigNeverLeaksSecret(t *testing.T) {
 	}
 
 	// 写入：审计只记 key 与旧值是否已配置，值本身不得出现
-	rec = e.do(t, "PUT", "/admin/config/mail_tenant_id", `{"value":"tenant-new"}`, withCSRF)
+	rec = e.do(t, "PUT", "/admin/config/mail_smtp_host", `{"value":"smtp.host-new.example"}`, withCSRF)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("写配置应 200，得到 %d %s", rec.Code, rec.Body.String())
 	}
@@ -763,7 +763,7 @@ func TestAdminConfigNeverLeaksSecret(t *testing.T) {
 		Scan(&detail); err != nil {
 		t.Fatalf("查配置审计: %v", err)
 	}
-	if strings.Contains(detail, "tenant-new") || strings.Contains(detail, secret) {
+	if strings.Contains(detail, "smtp.host-new.example") || strings.Contains(detail, secret) {
 		t.Errorf("配置审计泄露了值: %s", detail)
 	}
 	// 白名单外的键 404
@@ -975,7 +975,7 @@ func TestWebRegistryRoute(t *testing.T) {
 // 顶栏「管理后台」入口按角色在**模板层**显隐：管理员的概览页 HTML 里有入口与
 // 账号胶囊（邮箱 + 首字母占位），普通用户的 HTML 里连按钮都没有——不是前端藏一下。
 // W2：入口指向按角色分流——super 指用户页（平台落地），app-admin 指会话总览
-//（它的数据落地；用户页对它 302）。
+// （它的数据落地；用户页对它 302）。
 func TestTopbarAdminEntryRendersByRole(t *testing.T) {
 	e := newRouteEnv(t)
 	seedUser(t, e, "topbar-admin@example.com", "secret123", "admin")
@@ -1087,7 +1087,7 @@ func TestRevokeOthersForcesReauthAndAudits(t *testing.T) {
 }
 
 // reauth 窗 = 2 小时且**滑动续期**（GitHub sudo mode 口径）：三道 reauth 闸
-//（reauthThen / reauthed / admin gate）里过闸且成功的**非 GET 写操作**把 reauth_at
+// （reauthThen / reauthed / admin gate）里过闸且成功的**非 GET 写操作**把 reauth_at
 // 刷到现在，失败不刷；GET 读操作不续期（W7-1）。回拨 90 分钟仍放行（老的 15 分钟
 // 窗早已超时），本身也钉住了 2 小时窗。
 func TestReauthWindowSlidesOnSensitiveOps(t *testing.T) {

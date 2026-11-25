@@ -1,8 +1,9 @@
 // Package config 读取应用级配置（MySQL 的 app_config 表）。
 //
 // 与热量日记服务同款：改库即热生效，热生效延迟 ≤10s——Get 走进程内短 TTL 缓存。
-// P0 只有邮件三键（mail_tenant_id / mail_client_id / mail_client_secret）会走这里，
-// 量级极小，缓存的意义是「改库立刻生效、又不为每个请求多打一次点查」。
+// P0 只有邮件 SMTP 四键（mail_smtp_host / mail_smtp_port / mail_smtp_user /
+// mail_smtp_pass）会走这里，量级极小，缓存的意义是「改库立刻生效、又不为每个
+// 请求多打一次点查」。
 //
 // ⚠️ token_version **不缓存**：它在 users 表、由 auth 每请求现读——那是吊销
 // （logout/改密 +1）的唯一机制，缓 10 秒等于吊销留 10 秒空窗。本包只碰 app_config。

@@ -56,8 +56,8 @@ CREATE TABLE IF NOT EXISTS otp_codes (
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci;
 
 -- 应用级配置：改库即热生效（读取带 10s 进程缓存，见 internal/config）。
--- P0 只用 mail_tenant_id / mail_client_id / mail_client_secret 三键，部署时人工灌，
--- 表结构为后续配置中心（P2.5）预留。
+-- P0 只用邮件 SMTP 四键（mail_smtp_host / mail_smtp_port / mail_smtp_user /
+-- mail_smtp_pass），部署时人工灌，表结构为后续配置中心（P2.5）预留。
 CREATE TABLE IF NOT EXISTS app_config (
     `key`  VARCHAR(64) NOT NULL,
     value  TEXT        NOT NULL,

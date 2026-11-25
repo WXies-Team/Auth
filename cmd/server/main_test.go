@@ -396,10 +396,9 @@ func TestHealthConfigFailureIsNeutral(t *testing.T) {
 	}
 }
 
-// /health 的 mailConfigured 口径（2026-11-25 切阿里企业邮箱 SMTP 后）：SMTP 四键齐
-// **或** Graph 三键齐，任一齐 true——与 Send 分流同源（mail.ConfigState），
-// 只查一套会把另一套配好的正常态报成 false。真库用例（Ping 要连库）。
-func TestHealthMailConfiguredEitherKeySet(t *testing.T) {
+// /health 的 mailConfigured 口径：**SMTP 四键齐**才 true（与 Send 同源，
+// mail.ConfigState），缺任一键 false，供部署方自查。真库用例（Ping 要连库）。
+func TestHealthMailConfigured(t *testing.T) {
 	e := newRouteEnv(t)
 	cases := []struct {
 		name string
@@ -407,13 +406,14 @@ func TestHealthMailConfiguredEitherKeySet(t *testing.T) {
 		want bool
 	}{
 		{"SMTP 四键齐", map[string]string{
-			"mail_smtp_host": "smtp.exmail.qq.com", "mail_smtp_port": "465",
+			"mail_smtp_host": "smtp.qiye.aliyun.com", "mail_smtp_port": "465",
 			"mail_smtp_user": "service@example.com", "mail_smtp_pass": "x"}, true},
-		{"只有 Graph 三键齐", map[string]string{
-			"mail_tenant_id": "t", "mail_client_id": "c", "mail_client_secret": "s"}, true},
-		{"两套都缺", map[string]string{}, false},
-		{"SMTP 缺 pass、Graph 也不齐", map[string]string{
-			"mail_smtp_host": "smtp.exmail.qq.com", "mail_smtp_user": "service@example.com"}, false},
+		{"四键全缺", map[string]string{}, false},
+		{"缺 pass", map[string]string{
+			"mail_smtp_host": "smtp.qiye.aliyun.com", "mail_smtp_user": "service@example.com"}, false},
+		{"缺 host", map[string]string{
+			"mail_smtp_port": "465", "mail_smtp_user": "service@example.com",
+			"mail_smtp_pass": "x"}, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
