@@ -1,10 +1,10 @@
 // Package mail 发验证码等通知邮件：**两条发送路径，Send 入口一处分流**——
-// `mail_smtp_host` 非空走**腾讯企业邮箱 SMTP**（smtp.go，主路径），否则回退
+// `mail_smtp_host` 非空走**阿里企业邮箱 SMTP**（smtp.go，主路径），否则回退
 // **Microsoft Graph**（本文件，Exchange Online）。凭据只在生产库 `app_config`、
 // 仓库不出现任何值；/health 的 mailConfigured 与启动未配置 Warn 用同一套配齐
 // 判定（[ConfigState]：SMTP 四键齐 或 Graph 三键齐）。
 //
-// **为什么 Graph 还留着**：它是切换前的主路径（2026-11 切到腾讯企业邮箱 SMTP），
+// **为什么 Graph 还留着**：它是切换前的主路径（2026-11 切腾讯企业邮箱 SMTP、2026-11-25 切阿里企业邮箱 SMTP），
 // 实现原样保留当回退——Exchange Online 的 SMTP 基础认证 2026-12 底对存量租户
 // 默认关闭，OAuth + SMTP AUTH 还要自己实现 XOAUTH2，Graph 只需一次 HTTPS POST。
 // 热量日记服务联调实测（2026-10-08）：token 200、sendMail 202，邮件实际送达。
@@ -19,7 +19,7 @@
 //
 // **发件人显示名随信取品牌**：From 落在信封头里（见 buildMIME），显示名是这封信
 // 的品牌名（热量日记 / 开支日记 / Auth，来自 email.go 注册表、随 Send 入参传下
-// 来），与正文品牌同源；两条路径共用 buildMIME 这一处，腾讯 SMTP 不改写 From
+// 来），与正文品牌同源；两条路径共用 buildMIME 这一处，SMTP 路径不改写 From
 // 显示名，收件人看到的仍是品牌名。发件地址两条路径各取：Graph 恒 sender 常量，
 // SMTP 取 mail_smtp_user。历史实测（2026-10-08，热量日记服务）Exchange 会把显示名
 // 覆盖成邮箱对象的 DisplayName：若收件箱仍显示旧名，兜底办法是改邮箱 DisplayName
@@ -155,7 +155,7 @@ const (
 	// sender 是 Graph 路径的发信身份（显示地址，不是密钥），保持常量：它出现在
 	// 该路径每封信的 From 与 sendMail 端点里，换它属于产品决策而不是环境差异。
 	// SMTP 路径的发件地址取 mail_smtp_user（见 smtp.go）。
-	sender = "service@horatio.cn"
+	sender = "support@horatio.cn"
 
 	graphTokenURL = "https://login.microsoftonline.com/" // 后接 {tenant}/oauth2/v2.0/token
 	graphSendURL  = "https://graph.microsoft.com/v1.0/users/" + sender + "/sendMail"
@@ -213,7 +213,7 @@ func New(cfg ConfigFunc) *Sender {
 	}
 }
 
-// Send 发一封邮件：**分流只此一处**——`mail_smtp_host` 非空走腾讯企业邮箱 SMTP
+// Send 发一封邮件：**分流只此一处**——`mail_smtp_host` 非空走阿里企业邮箱 SMTP
 //（sendSMTP），否则走下面这条 Graph 路径（缺键错误口径不变，见 errNoCredential）。
 //
 // 两条路径的正文都是完整 RFC 5322 信件（信封头 + multipart/alternative 双部件，
@@ -235,7 +235,7 @@ func New(cfg ConfigFunc) *Sender {
 // 与「202 但带 Retry-After」撞出重复投递的风险——失败就把码撤销回 503，
 // 让用户手动重发，是最短也最安全的路径（SMTP 路径同样单次会话、不重试）。
 func (s *Sender) Send(ctx context.Context, fromName, to, subject, html, text string) error {
-	// 分流只此一处：mail_smtp_host 非空 → 腾讯企业邮箱 SMTP（smtp.go），否则
+	// 分流只此一处：mail_smtp_host 非空 → 阿里企业邮箱 SMTP（smtp.go），否则
 	// 回退 Graph。键现读（app_config，10s 缺省缓存），改库即热生效。
 	if s.cfg(smtpHostKey) != "" {
 		return s.sendSMTP(ctx, fromName, to, subject, html, text)

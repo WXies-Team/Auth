@@ -65,22 +65,23 @@ func ConfigState(read RequireFunc) (ok bool, missing []string, err error) {
 // 文案列全四键（补键照单抓药），绝不回显任何键值。
 var errNoSMTPCredential = errors.New("邮件 SMTP 凭据未配置（app_config 缺 mail_smtp_host / mail_smtp_port / mail_smtp_user / mail_smtp_pass）")
 
-// sendSMTP 走腾讯企业邮箱 SMTP 发信：465 隐式 TLS + PLAIN AUTH。
+// sendSMTP 走阿里企业邮箱 SMTP 发信：465 隐式 TLS + PLAIN AUTH。
 //
 // **为什么 465 要自己起 TLS**：Go 的 net/smtp 只会先连明文、再发 STARTTLS
-// 升级（25 端口的形态），而腾讯的发送服务器只给 SSL 端口 465、不支持非 SSL——
-// 只能先 tls.Dial 出 TLS 连接再交给 smtp.NewClient：它认出 *tls.Conn 后
+// 升级（25 端口的形态），而阿里发送服务器推荐 SSL 端口 465（25 被云主机默认
+// 封禁、80/587 未全量开放），只能先 tls.Dial 出 TLS 连接再交给 smtp.NewClient：
+// 它认出 *tls.Conn 后
 // PLAIN AUTH 才肯带密码（对非 TLS 连接 net/smtp 直接回 unencrypted
 // connection，压根不发凭据）。
 //
-// **发件人 = mail_smtp_user**：发件地址没有独立键，腾讯口径是账户名/发件人
-// 同为完整地址（邮箱开了安全登录时 mail_smtp_pass 填授权码），信封 MAIL FROM
-// 与信头 From 都取它。
+// **发件人 = mail_smtp_user**：发件地址没有独立键，阿里口径同为账户名/发件人
+// 同一完整地址（开了三方客户端安全密码时 mail_smtp_pass 填该安全密码），信封
+// MAIL FROM 与信头 From 都取它。
 //
 // **信件复用 buildMIME**：与 Graph 路径同一份 RFC 5322 实体（信封头 +
 // multipart/alternative 双部件），模板、样式、RFC 2047 头编码零差异；fromName
-// 是 Send 入参传下来的品牌名（email.go 注册表），显示名照旧编码进 From 头——
-// 腾讯不改写 From 显示名，收件人看到的就是品牌名。
+// 是 Send 入参传下来的品牌名（email.go 注册表），显示名照旧编码进 From 头、
+// 信头原样写进 DATA，收件人看到的就是品牌名。
 func (s *Sender) sendSMTP(ctx context.Context, fromName, to, subject, html, text string) error {
 	host, port := s.cfg(smtpHostKey), s.cfg(smtpPortKey)
 	user, pass := s.cfg(smtpUserKey), s.cfg(smtpPassKey)

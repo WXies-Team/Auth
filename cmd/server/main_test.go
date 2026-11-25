@@ -396,7 +396,7 @@ func TestHealthConfigFailureIsNeutral(t *testing.T) {
 	}
 }
 
-// /health 的 mailConfigured 口径（2026-11 切腾讯企业邮箱 SMTP 后）：SMTP 四键齐
+// /health 的 mailConfigured 口径（2026-11-25 切阿里企业邮箱 SMTP 后）：SMTP 四键齐
 // **或** Graph 三键齐，任一齐 true——与 Send 分流同源（mail.ConfigState），
 // 只查一套会把另一套配好的正常态报成 false。真库用例（Ping 要连库）。
 func TestHealthMailConfiguredEitherKeySet(t *testing.T) {
