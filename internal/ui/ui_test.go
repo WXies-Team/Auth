@@ -306,6 +306,23 @@ func TestAdminConfigRequiresFullEndpoint(t *testing.T) {
 	}
 }
 
+// 触屏按压/焦点不能画出不跟随圆角的整块方框：关掉浏览器 tap highlight，
+// hover 样式只在有 hover 的设备生效，焦点环只画在真正的交互控件上。
+func TestTouchFeedbackAndScopedFocusRing(t *testing.T) {
+	css := mustCSS(t)
+	for _, want := range []string{
+		"-webkit-tap-highlight-color: transparent;",
+		"touch-action: manipulation;",
+		"@media (hover: none)",
+		".nav-item:hover { background: transparent; color: var(--dim); }",
+		`where(a, button, input, select, textarea, summary, [role="button"], [tabindex]):focus-visible`,
+	} {
+		if !strings.Contains(css, want) {
+			t.Errorf("触屏/焦点样式缺 %q", want)
+		}
+	}
+}
+
 // 会话总览的搜索卡与用户表之间必须有显式间距：#sess-users-view 是块容器，
 // .content 的 grid gap 不作用于它内部，靠 toolbar 自己的下边距隔开（2026-10-22 实报回归）。
 func TestSessionsSearchToolbarSpacing(t *testing.T) {
@@ -2022,8 +2039,8 @@ func TestAdminUsersExemptionAndDangerZone(t *testing.T) {
 	for _, want := range []string{
 		"return '管理全部项目'",                                 // scopeSummary：super
 		"`管理 ${n} 个项目`",                                   // scopeSummary：有授权
-		"'未管理项目'",                                        // scopeSummary：零授权
-		"项目管理员 · 可管理本项目",                                 // 详情面板逐项语义
+		"'未管理项目'",                                         // scopeSummary：零授权
+		"项目管理员 · 可管理本项目",                                  // 详情面板逐项语义
 		"class=\"danger-zone\"",                           // 高风险操作收进危险区
 		"当前筛选生效",                                          // 筛选如实标注
 		"banned: facet.status === 'banned' ? 'true' : ''", // 封禁筛选写 URL

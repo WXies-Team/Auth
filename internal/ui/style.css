@@ -173,6 +173,16 @@
 html, body { margin: 0; padding: 0; }
 /* sticky chrome 不遮锚点与焦点目标（WCAG 2.4.11） */
 html { scroll-padding-top: 72px; }
+/* 移动端默认 tap highlight 是不跟随圆角的整块方框；Miuix 的按压反馈由
+   组件自身 :active 缩放/变色承担，这里关掉浏览器方框。 */
+html { -webkit-tap-highlight-color: transparent; }
+/* 交互控件不选中文字，避免长按/连点出现整块选区；正文与输入保持可选中。 */
+button, summary, .btn, .app-chip, .nav-item, .tab, .select-btn, .pf-chip,
+.dock, .rail, .topbar { -webkit-user-select: none; user-select: none; }
+button, .btn, .app-chip, .nav-item, .tab, .select-btn, .pf-chip {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
 body {
   background: var(--canvas);
   color: var(--ink);
@@ -193,7 +203,13 @@ body {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
-:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* 只给真正的交互控件画焦点环；全局 :focus-visible 会在容器/弹层上画出
+   与元素轮廓不一致的大方框。outline 自动跟随控件圆角。 */
+:where(a, button, input, select, textarea, summary, [role="button"], [tabindex]):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: inherit;
+}
 a, button, input, select, textarea {
   transition: outline-color var(--dur-1) var(--ease), outline-offset var(--dur-1) var(--ease);
 }
@@ -1255,6 +1271,20 @@ tbody tr:nth-child(10) { animation-delay: 330ms; }
    点开后要多等 ~600ms 才可见）。这些容器改由 slideIn/swapIn（WAAPI，无 delay）
    负责入场——错峰只属于真正随页面一起加载的内容。 */
 .content > .detail, .content > .denied-slot { animation: none; }
+
+/* 触屏没有 hover：去掉 :hover 留下的整块底色/亮度（点一下后停在屏幕上会像
+   一块大方框遮罩）；按下反馈仍由各组件的 :active 负责。 */
+@media (hover: none) {
+  .nav-item:hover { background: transparent; color: var(--dim); }
+  .nav-item.on:hover { background: var(--primary-soft); color: var(--primary-text); }
+  .app-chip:hover { color: var(--dim); }
+  .app-chip.on:hover { color: var(--primary-text); }
+  .btn:hover, .btn.primary:hover { filter: none; }
+  .btn.danger:hover { background: var(--danger-bg); }
+  .btn.ghost:hover { background: transparent; color: var(--dim); }
+  .select-opt:hover { background: transparent; }
+  tbody tr:hover { background: transparent; }
+}
 
 @media print {
   *, *::before, *::after { animation: none !important; transition: none !important; }
