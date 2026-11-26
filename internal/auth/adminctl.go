@@ -553,41 +553,53 @@ type AdminUserCandidate struct {
 // AdminProjectCandidates 供项目成员选择器列出/搜索**已注册用户**（GET
 // /admin/projects/{app}/candidates?query=）：项目管理员只能看自己有权管理的
 // 项目，避免把全站用户目录暴露给项目级管理员；super 可看全部项目。
-// 空查询回最近注册的 100 人（列表选择），有关键词再按邮箱片段/uid 过滤。
-func (s *Service) AdminProjectCandidates(scope AdminScope, app, rawQuery string) ([]AdminUserCandidate, error) {
+// 空查询列出全部已注册用户（分页，每页最多 200），有关键词再按邮箱片段/uid 过滤。
+func (s *Service) AdminProjectCandidates(scope AdminScope, app, rawQuery string, limit, offset int) ([]AdminUserCandidate, int, error) {
 	if !allowedApps[app] {
-		return nil, badRequest("未知项目，请重新选择后重试")
+		return nil, 0, badRequest("未知项目，请重新选择后重试")
 	}
 	if err := adminTargetScope(scope, app); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	q := strings.TrimSpace(rawQuery)
-	// 添加成员默认就是列表选择：空查询回最近注册的一页（上限 100），
-	// 有关键词再按邮箱片段/uid 过滤。项目级管理员看不到 super。
-	query := `SELECT id, email, role FROM users WHERE role <> 'super'`
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	where := ` WHERE role <> 'super'`
 	args := []any{}
 	if q != "" {
-		query += ` AND (LOWER(email) LIKE LOWER(?) OR id = ?)`
+		where += ` AND (LOWER(email) LIKE LOWER(?) OR id = ?)`
 		args = append(args, "%"+q+"%", numericOrZero(q))
 	}
-	query += ` ORDER BY id DESC LIMIT 100`
-	rows, err := s.pool.QueryContext(db.QueryCtx(), query, args...)
+	var total int
+	if err := s.pool.QueryRowContext(db.QueryCtx(), `SELECT COUNT(*) FROM users`+where, args...).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("查项目候选用户总数: %w", err)
+	}
+	pageArgs := append(append([]any{}, args...), limit, offset)
+	rows, err := s.pool.QueryContext(db.QueryCtx(),
+		`SELECT id, email, role FROM users`+where+` ORDER BY id DESC LIMIT ? OFFSET ?`, pageArgs...)
 	if err != nil {
-		return nil, fmt.Errorf("查项目候选用户: %w", err)
+		return nil, 0, fmt.Errorf("查项目候选用户: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-	out := make([]AdminUserCandidate, 0, 8)
+	out := make([]AdminUserCandidate, 0, limit)
 	for rows.Next() {
 		var u AdminUserCandidate
 		if err := rows.Scan(&u.UID, &u.Email, &u.Role); err != nil {
-			return nil, fmt.Errorf("读项目候选用户: %w", err)
+			return nil, 0, fmt.Errorf("读项目候选用户: %w", err)
 		}
 		out = append(out, u)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("遍历项目候选用户: %w", err)
+		return nil, 0, fmt.Errorf("遍历项目候选用户: %w", err)
 	}
-	return out, nil
+	return out, total, nil
 }
 
 // numericOrZero 把纯数字查询转成 uid；非数字回 0（SQL 里 id=0 不命中任何人）。

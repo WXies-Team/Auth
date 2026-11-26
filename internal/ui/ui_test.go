@@ -1929,7 +1929,7 @@ func TestAdminAccessMembersAndPicker(t *testing.T) {
 	for _, want := range []string{
 		`id="access-ladder"`, `id="access-stats"`, `id="access-denied"`,
 		`id="member-dlg"`, `id="member-query"`, `id="member-results"`,
-		`id="member-role"`, `id="access-dlg"`,
+		`id="member-role"`, `id="member-more"`, `id="access-dlg"`,
 		"谁可以访问项目", "平台管理员", "项目管理员", "登录名单", "添加成员",
 	} {
 		if !strings.Contains(tpl, want) {

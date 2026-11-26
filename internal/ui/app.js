@@ -3229,7 +3229,7 @@ function initAdminAccess() {
   /* ---- 添加成员：搜索已注册用户 → 勾选 → 选角色 → 添加 ----
      候选接口按项目鉴权（app-admin 只搜自己的项目），不在前端手输邮箱。 */
   function openMemberPicker(p) {
-    picker = { p, selected: new Map(), timer: null };
+    picker = { p, selected: new Map(), timer: null, offset: 0, total: 0, loading: false };
     $('#member-dlg-title').textContent = `添加成员 · ${p.name || p.app}`;
     $('#member-dlg-desc').textContent =
       '搜索已注册用户，选择「可登录」或「项目管理员」。项目管理员可管理本项目成员，并始终可以登录。';
@@ -3244,7 +3244,7 @@ function initAdminAccess() {
     openDialog($('#member-dlg'), '#member-query');
     // 打开即列出一页已注册用户（列表选择），搜索框只是可选筛选——不要求
     // 管理员记住 uid；聚焦搜索框但仍先渲染列表。
-    searchCandidates();
+    searchCandidates(true);
     setTimeout(() => $('#member-query').focus(), 30);
   }
 
@@ -3255,25 +3255,40 @@ function initAdminAccess() {
     btn.textContent = n ? `添加 ${n} 人` : '添加';
   }
 
-  async function searchCandidates() {
-    if (!picker) return;
+  async function searchCandidates(reset) {
+    if (!picker || picker.loading) return;
     const q = $('#member-query').value.trim();
     const box = $('#member-results');
     const empty = $('#member-empty');
     const count = $('#member-count');
+    const more = $('#member-more');
+    if (reset) {
+      picker.offset = 0;
+      picker.total = 0;
+      picker.selected.clear();
+      updateAddBtn();
+      box.innerHTML = '';
+      more.hidden = true;
+    }
+    picker.loading = true;
     showErr('#member-error', '');
-    picker.selected.clear();
-    updateAddBtn();
-    box.innerHTML = '';
-    count.hidden = true;
     try {
-      const res = await api(`/admin/projects/${encodeURIComponent(picker.p.app)}/candidates?query=${encodeURIComponent(q)}`);
+      const res = await api(`/admin/projects/${encodeURIComponent(picker.p.app)}/candidates?query=${encodeURIComponent(q)}&limit=100&offset=${picker.offset}`);
       const existing = new Map(peopleOf(picker.p).map(x => [String(x.email).toLowerCase(), x.role]));
       const items = res.items || [];
-      if (!items.length) { empty.hidden = false; return; }
+      picker.total = Number(res.total) || 0;
+      picker.offset += items.length;
+      if (!picker.total) {
+        empty.hidden = false;
+        count.hidden = true;
+        more.hidden = true;
+        return;
+      }
       empty.hidden = true;
       count.hidden = false;
-      count.textContent = q ? `找到 ${items.length} 个匹配用户` : `最近注册的 ${items.length} 个用户（输入关键词可筛选）`;
+      count.textContent = q
+        ? `找到 ${picker.total} 位匹配用户 · 已显示 ${Math.min(picker.offset, picker.total)} 位`
+        : `共 ${picker.total} 位已注册用户 · 已显示 ${Math.min(picker.offset, picker.total)} 位（输入关键词可筛选）`;
       items.forEach(u => {
         const role = existing.get(String(u.email).toLowerCase());
         const disabled = !!role;
@@ -3292,23 +3307,28 @@ function initAdminAccess() {
         });
         box.appendChild(row);
       });
+      more.hidden = picker.offset >= picker.total;
+      if (!more.hidden) more.textContent = `加载更多（剩余 ${picker.total - picker.offset} 位）`;
     } catch (err) {
       showErr('#member-error', err.message);
+    } finally {
+      picker.loading = false;
     }
   }
 
   $('#member-query').addEventListener('input', () => {
     if (!picker) return;
     clearTimeout(picker.timer);
-    picker.timer = setTimeout(searchCandidates, 250);
+    picker.timer = setTimeout(() => searchCandidates(true), 250);
   });
   $('#member-query').addEventListener('keydown', e => {
     if (e.key !== 'Enter') return;
     e.preventDefault();
     if (!picker) return;
     clearTimeout(picker.timer);
-    searchCandidates();
+    searchCandidates(true);
   });
+  $('#member-more').addEventListener('click', () => searchCandidates(false));
   $('#member-cancel').addEventListener('click', () => { picker = null; closeDialog($('#member-dlg')); });
   $('#member-add').addEventListener('click', async () => {
     if (!picker || !picker.selected.size) return;

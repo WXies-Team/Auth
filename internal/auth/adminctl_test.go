@@ -432,23 +432,23 @@ func TestProjectRestrictionAndAccess(t *testing.T) {
 	}
 
 	// 项目成员选择器：空查询不倒全表；按邮箱片段能搜到；app-admin 只能搜自己的项目。
-	allCands, err := svc.AdminProjectCandidates(superScope, "CalorieDiary", "  ")
-	if err != nil || len(allCands) == 0 {
-		t.Fatalf("空查询应默认回一页已注册用户（列表选择），得到 %+v err=%v", allCands, err)
+	allCands, total, err := svc.AdminProjectCandidates(superScope, "CalorieDiary", "  ", 0, 0)
+	if err != nil || len(allCands) == 0 || total < len(allCands) {
+		t.Fatalf("空查询应默认回一页已注册用户（列表选择），得到 %+v total=%d err=%v", allCands, total, err)
 	}
 	for _, c := range allCands {
 		if c.Role == adminRoleSuper {
 			t.Errorf("候选列表不应包含平台管理员: %+v", c)
 		}
 	}
-	cands, err := svc.AdminProjectCandidates(superScope, "CalorieDiary", "w5-member")
+	cands, _, err := svc.AdminProjectCandidates(superScope, "CalorieDiary", "w5-member", 100, 0)
 	if err != nil || len(cands) != 1 || cands[0].UID != member.UID || cands[0].Email != member.Email {
 		t.Errorf("按邮箱片段应搜到 member，得到 %+v err=%v", cands, err)
 	}
-	if _, err := svc.AdminProjectCandidates(appScope, "ExpenseDiary", "w5"); err != nil {
+	if _, _, err := svc.AdminProjectCandidates(appScope, "ExpenseDiary", "w5", 100, 0); err != nil {
 		t.Errorf("app-admin 搜自己的项目应放行: %v", err)
 	}
-	if _, err := svc.AdminProjectCandidates(appScope, "CalorieDiary", "w5"); err == nil {
+	if _, _, err := svc.AdminProjectCandidates(appScope, "CalorieDiary", "w5", 100, 0); err == nil {
 		t.Error("app-admin 搜未授权项目应 403")
 	} else if code, _ := httpMsg(err); code != 403 {
 		t.Errorf("越权搜索应 403，得到 %d %v", code, err)
