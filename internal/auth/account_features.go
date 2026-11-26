@@ -152,6 +152,8 @@ type AccountExport struct {
 	TOTP          TOTPStatus               `json:"totp"`
 	ConnectedApps []ConnectedApp           `json:"connectedApps"`
 	Audit         []AuditRow               `json:"audit"`
+	// AIUsage 是最近 30 天的个人 AI 用量；查询失败不阻断导出（omitempty）。
+	AIUsage *AIUsageUserDetail `json:"aiUsage,omitempty"`
 }
 
 func (s *Service) ExportAccount(uid int64) (*AccountExport, error) {
@@ -188,10 +190,11 @@ func (s *Service) ExportAccount(uid int64) (*AccountExport, error) {
 	if err != nil {
 		return nil, err
 	}
+	aiUsage, _ := s.AdminAIUsageUser(30, nil, uid)
 	return &AccountExport{
 		ExportedAt: time.Now().UnixMilli(), UID: uid, Email: email, CreatedAt: createdAt,
 		Profile: *profile, Sessions: sessions, Passkeys: passkeys, TOTP: totp,
-		ConnectedApps: apps, Audit: audit,
+		ConnectedApps: apps, Audit: audit, AIUsage: aiUsage,
 	}, nil
 }
 
