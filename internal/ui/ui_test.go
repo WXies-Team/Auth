@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -35,6 +36,21 @@ func TestTextAssetsHaveGzip(t *testing.T) {
 		}
 		if _, ok := Gzip(name); !ok {
 			t.Errorf("%s 应有预压缩版本", name)
+		}
+	}
+}
+
+// 前端下拉的项目清单必须与后端 knownApps 同值：漏一个项目，邀请/筛选就会
+// 发一个后端白名单外的 slug（400）。
+func TestKnownAppsMatchFrontend(t *testing.T) {
+	raw, err := os.ReadFile("../../web/src/lib/apps.ts")
+	if err != nil {
+		t.Fatalf("读前端项目清单: %v", err)
+	}
+	src := string(raw)
+	for _, a := range knownApps {
+		if !strings.Contains(src, a.key) || !strings.Contains(src, a.label) {
+			t.Errorf("前端 apps.ts 缺 %s/%s", a.key, a.label)
 		}
 	}
 }
