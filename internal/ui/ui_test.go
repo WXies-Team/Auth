@@ -2118,7 +2118,7 @@ func TestAdminUsersExemptionAndDangerZone(t *testing.T) {
 		`id="users-facet-note"`,      // 当前筛选口径提示
 		`id="users-denied"`,          // 拒绝态面板容器
 		"项目权限",                       // 列名
-		"把项目授予账号，就是让 TA 成为该项目的项目管理员", // 角色语义写进页首说明
+		"项目级授权（谁能登录、谁是项目管理员）统一在「项目访问」页按项目维护", // 授权入口唯一
 	} {
 		if !strings.Contains(tpl, want) {
 			t.Errorf("admin-users.html 缺 %q", want)
@@ -2331,19 +2331,19 @@ func TestRoleHierarchyAppointmentGating(t *testing.T) {
 		"function isRootViewer()",  // 根判定读 /web/session.isRoot，不再硬编码 uid
 		"window.__isRoot === true", // 拿不到 isRoot 时按非根保守处理
 		"window.__isRoot = me.isRoot === true",
-		"${u.isRoot",                            // 列表根徽标走服务端逐行 isRoot
-		"const isRootTarget = !!d.isRoot",       // 详情锁定目标走服务端 isRoot
-		"async function viewerUid()",            // 竞态兜底：详情打开前确保拿到当前 uid
-		"function reportDenial(",                // 越权拒绝 → 分级面板的统一出口
-		"reportDenial('#users-denied'",          // 用户页写操作
-		"reportDenial('#access-denied'",         // 项目访问写操作
-		"reportDenial('#sess-denied'",           // 会话退出写操作
-		"只有根管理员能任命/回收平台管理员",                     // 非根视角的解释
-		"根管理员账号只有本人能调整",                         // 目标是根时的解释
-		"项目管理员不是手工角色",                            // admin 是项目授权的派生身份
-		`data-role="super"`,                     // 平台管理员仍是显式操作
-		`title="唯一的平台管理员任命者"`,                   // 列表根徽标
-		"不跨项目",                                  // 项目管理员的授权边界
+		"${u.isRoot",                      // 列表根徽标走服务端逐行 isRoot
+		"const isRootTarget = !!d.isRoot", // 详情锁定目标走服务端 isRoot
+		"async function viewerUid()",      // 竞态兜底：详情打开前确保拿到当前 uid
+		"function reportDenial(",          // 越权拒绝 → 分级面板的统一出口
+		"reportDenial('#users-denied'",    // 用户页写操作
+		"reportDenial('#access-denied'",   // 项目访问写操作
+		"reportDenial('#sess-denied'",     // 会话退出写操作
+		"只有根管理员能任命/回收平台管理员",               // 非根视角的解释
+		"根管理员账号只有本人能调整",                   // 目标是根时的解释
+		"项目管理员不是手工角色",                     // admin 是项目授权的派生身份
+		`data-role="super"`,               // 平台管理员仍是显式操作
+		`title="唯一的平台管理员任命者"`,             // 列表根徽标
+		"不跨项目",                            // 项目管理员的授权边界
 	} {
 		if !strings.Contains(js, want) {
 			t.Errorf("app.js 缺角色任命结构 %q", want)
@@ -2635,6 +2635,28 @@ func TestWebSessionRefreshRotationWiring(t *testing.T) {
 	mutated = strings.Replace(js, "if (refreshInflight) return refreshInflight;", "", 1)
 	if !issueHas(refreshWiringIssues(mutated), "single-flight") {
 		t.Error("变异检验失效：删掉单飞竟没被钉住")
+	}
+}
+
+// 项目授权只有一个入口：用户详情只读展示项目权限，不再提供「设为/移除管理员」按钮，
+// 并显式指向「项目访问」页；避免同一授权在两处各有一套按钮、状态互相打架。
+func TestProjectScopeSingleSourceOfTruth(t *testing.T) {
+	js := mustJS(t)
+	detail := jsBlock(t, js, "async function openDetail(uid, email)", "const roleSet = $('#ud-role-set')")
+	for _, want := range []string{
+		"/web/admin/access",                         // 指向唯一入口
+		"这里只读展示",                                    // 明确只读
+		"项目管理员 · 可管理本项目",                            // 保留逐项语义
+		`class="badge ${granted ? 'on' : 'plain'}"`, // 只读徽章而非按钮
+	} {
+		if !strings.Contains(detail, want) {
+			t.Errorf("用户详情项目权限缺 %q", want)
+		}
+	}
+	for _, banned := range []string{"data-op=", "设为管理员", "移除管理员", "/admin/roles/${uid}/scope"} {
+		if strings.Contains(detail, banned) {
+			t.Errorf("用户详情仍保留重复的授权入口 %q", banned)
+		}
 	}
 }
 

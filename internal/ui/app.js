@@ -2232,8 +2232,10 @@ function banMinStr() {
 /* ---------- 后台：用户（含角色管理与项目权限，合并页） ----------
    列表 = 搜索 + 服务端跨页筛选（角色/封禁）+ 分页 + 批量操作；详情 = 身份/角色与
    项目权限/会话/资料/
-   高风险操作（danger-zone）。授予项目即让该账号成为该项目的项目管理员——与
-   项目访问页是同一件事的两个入口。 */
+   高风险操作（danger-zone）。
+   项目权限只有一个入口：「项目访问」页（成员列表 + 添加成员）。详情面板只读展示，
+   避免同一授权在两处各有一套按钮、状态互相打架（Vercel/GitHub 也是项目成员在
+   项目设置里管，用户页只显示归属）。 */
 function initAdminUsers() {
   const body = $('#users-body');
   if (!body) return;
@@ -2652,16 +2654,16 @@ function initAdminUsers() {
             : '<button type="button" class="btn small primary" id="ud-role-set" data-role="super">设为平台管理员</button>')
           : ''}`;
       // 应用授权开关：选项来自服务端注册表；每项的语义 = 该项目管理员（与访问页同口径）
+      // 项目权限在「项目访问」页统一管理（项目成员列表 + 添加成员）；用户详情
+      // 只读展示，避免同一授权在两个页面各有一套按钮、状态互相打架。
       const scopeList = d.role === 'super'
         ? '<div class="empty">平台管理员管理全部项目，无需逐项授权。</div>'
         : APPS.map(app => {
             const granted = scopes.indexOf(app.key) >= 0;
             return `<div class="item">
               <span class="grow"><span class="title">${esc(app.label)}</span><br>
-              <span class="meta">${granted ? '项目管理员 · 可管理本项目' : '未授权 · 只是普通用户'}</span></span>
-              <button type="button" class="btn small ${granted ? 'danger' : 'primary'}" data-app="${esc(app.key)}" data-op="${granted ? 'revoke' : 'grant'}">
-                ${granted ? '移除管理员' : '设为管理员'}
-              </button>
+              <span class="meta">${granted ? '项目管理员 · 可管理本项目' : '未授权'}</span></span>
+              <span class="badge ${granted ? 'on' : 'plain'}">${granted ? '项目管理员' : '未授权'}</span>
             </div>`;
           }).join('');
       $('#ud-body').innerHTML = `
@@ -2675,8 +2677,8 @@ function initAdminUsers() {
         <h3>角色与项目权限</h3>
         <div class="row" style="gap:8px;flex-wrap:wrap">${roleCtl}</div>
         <p class="hint" id="ud-role-note">${esc(roleNote)}</p>
-        <p class="hint">授予项目即成为该项目的项目管理员：可管理其成员并可登录该项目；全部项目都回收后角色自动降回普通用户。平台管理员管理全部项目，仅平台管理员能调整角色与授权；项目管理员的授权只在单个项目内生效，不跨项目。</p>
         <div class="list">${scopeList}</div>
+        <p class="hint">项目管理员是可登录并管理本项目成员的项目级授权，只在单个项目内生效、不跨项目；全部项目回收后角色自动降回普通用户。授权统一在 <a href="/web/admin/access">项目访问</a> 调整：添加成员时选「项目管理员」，或点「移出项目」。这里只读展示。</p>
 
         <h3>活跃会话</h3>
         <div class="list">${sessions}</div>
@@ -2763,18 +2765,6 @@ function initAdminUsers() {
           `已退出「${device}」上的会话`,
           () => api('/admin/sessions/' + btn.dataset.kick, { method: 'DELETE' }),
           true);
-      }));
-      $$('#ud-body [data-app]').forEach(btn => btn.addEventListener('click', () => {
-        const app = btn.dataset.app;
-        const op = btn.dataset.op;
-        confirmAction(
-          op === 'grant' ? '设为项目管理员' : '移除项目管理员',
-          op === 'grant'
-            ? `将「${appLabel(app)}」的管理权授予该用户：TA 成为该项目的项目管理员（角色自动提为项目管理员）。`
-            : `移除「${appLabel(app)}」的管理权；全部项目都移除后角色会降回普通用户。`,
-          op === 'grant' ? `已将「${appLabel(app)}」设为项目管理员` : `已移除「${appLabel(app)}」的项目管理员`,
-          () => api(`/admin/roles/${uid}/scope`, { method: 'POST', body: { app, op } }),
-          op === 'revoke');
       }));
       const roleSet = $('#ud-role-set');
       if (roleSet) roleSet.addEventListener('click', () => {
