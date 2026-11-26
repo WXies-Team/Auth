@@ -196,6 +196,8 @@ type Service struct {
 	// enforceCfg 读 totp_enforce_apps（老客户端密码登录的兼容开关，默认空=不拦）。
 	// nil 时恒放行（测试形态与「配置还没接」的形态一致）。
 	enforceCfg ConfigFunc
+	// cfg 是通用配置读取器（风险登录开关等）；nil = 全部按缺省值。
+	cfg ConfigFunc
 	// rootUID 是启动时解析的根 su（RootUID → uid，RootSuperEmail 兜底）：0=尚未
 	// 解析成功。解析失败时授权侧（isRootSuper）fail closed = 不放行；保护侧
 	// （isRootAccount）仍按保留号 RootUID 认定，见 admin.go。
@@ -211,6 +213,10 @@ type Service struct {
 
 // SetEnforceApps 注入兼容开关的配置读取器（生产传 cfg.Require，测试不设即全放行）。
 func (s *Service) SetEnforceApps(f ConfigFunc) { s.enforceCfg = f }
+
+// SetConfig 注入通用配置读取器（风险登录等缺省开启的功能）。与 SetEnforceApps
+// 分开只为测试能各钉各的；生产两者都传 cfg.Require。
+func (s *Service) SetConfig(f ConfigFunc) { s.cfg = f }
 
 // enforceTOTPFor 判定这条老端点密码登录要不要被拦：app 在 totp_enforce_apps 名单里
 // **且**该账号已启用两步验证。
@@ -560,6 +566,9 @@ func (s *Service) Register(rawEmail, password, code, app string, meta SessionMet
 		return nil, err
 	}
 	if err := validatePassword(password); err != nil {
+		return nil, err
+	}
+	if err := s.rejectBreached(password); err != nil {
 		return nil, err
 	}
 	if err := validateApp(app); err != nil {
@@ -1085,6 +1094,9 @@ func (s *Service) ResetPassword(rawEmail, code, newPassword string) error {
 	if err := validatePassword(newPassword); err != nil {
 		return err
 	}
+	if err := s.rejectBreached(newPassword); err != nil {
+		return err
+	}
 	var uid int64
 	err := s.pool.QueryRowContext(db.QueryCtx(),
 		"SELECT id FROM users WHERE email = ?", email).Scan(&uid)
@@ -1242,6 +1254,9 @@ func (s *Service) ChangePassword(c Caller, oldPassword, newPassword string) (res
 		})
 	}()
 	if err := validatePassword(newPassword); err != nil {
+		return nil, err
+	}
+	if err := s.rejectBreached(newPassword); err != nil {
 		return nil, err
 	}
 	if strings.TrimSpace(oldPassword) == "" {

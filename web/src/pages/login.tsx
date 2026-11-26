@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { Navigate, useSearchParams } from 'react-router-dom'
+import { Link, Navigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Fingerprint, Loader2, Mail } from 'lucide-react'
 import { api } from '@/lib/api'
@@ -17,6 +17,7 @@ import { OtpInput } from '@/components/ui/otp-input'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Separator } from '@/components/ui/separator'
+import { useI18n } from '@/lib/i18n'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 type Tab = 'password' | 'code' | 'reset'
@@ -32,6 +33,7 @@ function safeNext(raw: string | null): string {
 }
 
 export default function LoginPage() {
+  const { t } = useI18n()
   const { session, loading, refresh } = useAuth()
   const [params] = useSearchParams()
   const tx = params.get('tx')
@@ -54,6 +56,14 @@ export default function LoginPage() {
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState('')
   const [notice, setNotice] = React.useState('')
+  const [selfRegister, setSelfRegister] = React.useState(false)
+
+  React.useEffect(() => {
+    void api
+      .get<{ enabled: boolean }>('/web/register/config', { reauth: false })
+      .then((r) => setSelfRegister(r.enabled))
+      .catch(() => setSelfRegister(false))
+  }, [])
 
   // 条件式 Passkey：浏览器把本机 passkey 填进邮箱框的自动填充建议，
   // 用户零点击选中即登录；不支持/没有 passkey 时静默跳过。
@@ -249,14 +259,14 @@ export default function LoginPage() {
       <Card>
         <CardHeader>
           <CardTitle asChild className="text-xl">
-            <h1>{step === 'totp' ? '两步验证' : step === 'force-pw' ? '设置新密码' : '登录 Auth'}</h1>
+            <h1>{step === 'totp' ? t('login.totpTitle') : step === 'force-pw' ? t('login.forceTitle') : t('login.title')}</h1>
           </CardTitle>
           <CardDescription>
             {step === 'totp'
-              ? '输入验证器上的 6 位验证码，或改用恢复码 / 邮箱验证码。'
+              ? t('login.totpSubtitle')
               : step === 'force-pw'
-                ? '管理员要求你设置新密码后才能继续。'
-                : '使用密码、邮箱验证码或 Passkey 登录。'}
+                ? t('login.forceSubtitle')
+                : t('login.subtitle')}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -343,7 +353,7 @@ export default function LoginPage() {
               </div>
               <p className="text-muted-foreground text-xs">至少 8 位。改密后其它设备会被登出。</p>
               <Button type="submit" className="w-full" disabled={busy}>
-                {busy && <Loader2 className="animate-spin" />} 保存并继续
+                {busy && <Loader2 className="animate-spin" />} {t('login.saveContinue')}
               </Button>
             </form>
           )}
@@ -352,23 +362,23 @@ export default function LoginPage() {
             <>
               <Tabs value={tab} onValueChange={(v) => { setTab(v as Tab); setError(''); setNotice('') }}>
                 <TabsList className="w-full">
-                  <TabsTrigger value="password">密码</TabsTrigger>
-                  <TabsTrigger value="code">邮箱验证码</TabsTrigger>
-                  <TabsTrigger value="reset">找回密码</TabsTrigger>
+                  <TabsTrigger value="password">{t('login.tabPassword')}</TabsTrigger>
+                  <TabsTrigger value="code">{t('login.tabCode')}</TabsTrigger>
+                  <TabsTrigger value="reset">{t('login.tabReset')}</TabsTrigger>
                 </TabsList>
 
                 <TabsContent value="password">
                   <form onSubmit={submitPassword} className="space-y-3">
                     <div className="space-y-1.5">
-                      <Label htmlFor="email">邮箱</Label>
+                      <Label htmlFor="email">{t('login.email')}</Label>
                       <Input id="email" type="email" autoComplete="username webauthn" required value={email} onChange={(e) => setEmail(e.target.value)} />
                     </div>
                     <div className="space-y-1.5">
-                      <Label htmlFor="password">密码</Label>
+                      <Label htmlFor="password">{t('login.password')}</Label>
                       <PasswordInput id="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
                     </div>
                     <Button type="submit" className="w-full" disabled={busy}>
-                      {busy && <Loader2 className="animate-spin" />} 登录
+                      {busy && <Loader2 className="animate-spin" />} {t('login.login')}
                     </Button>
                   </form>
                 </TabsContent>
@@ -384,12 +394,12 @@ export default function LoginPage() {
                       <div className="flex gap-2">
                         <OtpInput id="code" value={code} onChange={setCode} className="flex-1" />
                         <Button type="button" variant="outline" onClick={() => void sendCode('login')}>
-                          获取验证码
+                          {t('login.getCode')}
                         </Button>
                       </div>
                     </div>
                     <Button type="submit" className="w-full" disabled={busy || !code}>
-                      {busy && <Loader2 className="animate-spin" />} 登录
+                      {busy && <Loader2 className="animate-spin" />} {t('login.login')}
                     </Button>
                   </form>
                 </TabsContent>
@@ -405,7 +415,7 @@ export default function LoginPage() {
                       <div className="flex gap-2">
                         <OtpInput id="reset-code" value={code} onChange={setCode} className="flex-1" />
                         <Button type="button" variant="outline" onClick={() => void sendCode('reset')}>
-                          获取验证码
+                          {t('login.getCode')}
                         </Button>
                       </div>
                     </div>
@@ -428,12 +438,21 @@ export default function LoginPage() {
               </div>
 
               <Button type="button" variant="outline" className="w-full" onClick={byPasskey} disabled={busy || !window.PublicKeyCredential}>
-                <Fingerprint /> 使用 Passkey 登录
+                <Fingerprint /> {t('login.passkey')}
               </Button>
 
               <p className="text-muted-foreground flex items-center justify-center gap-1.5 text-center text-xs">
                 <Mail className="size-3.5" />
-                没有账号？联系管理员获取邀请链接。
+                {selfRegister ? (
+                  <>
+                    没有账号？
+                    <Link to="/web/register" className="text-foreground underline-offset-4 hover:underline">
+                      {t('login.create')}
+                    </Link>
+                  </>
+                ) : (
+                  '没有账号？联系管理员获取邀请链接。'
+                )}
               </p>
             </>
           )}

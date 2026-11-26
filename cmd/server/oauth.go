@@ -65,6 +65,7 @@ func oauthAuthorize(svc *auth.Service) http.HandlerFunc {
 			State:               q.Get("state"),
 			CodeChallenge:       q.Get("code_challenge"),
 			CodeChallengeMethod: q.Get("code_challenge_method"),
+			Scope:               q.Get("scope"),
 		})
 		if err != nil {
 			renderOAuthError(w, r, err, "无法发起授权")

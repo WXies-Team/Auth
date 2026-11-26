@@ -95,6 +95,8 @@ func contentType(name string) string {
 		return "font/woff2"
 	case ".json":
 		return "application/json; charset=utf-8"
+	case ".webmanifest":
+		return "application/manifest+json; charset=utf-8"
 	case ".map":
 		return "application/json; charset=utf-8"
 	}

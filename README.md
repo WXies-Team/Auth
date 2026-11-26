@@ -76,7 +76,9 @@ Web 端点（**全部新增路径，老端点形状不变**；写操作需 `X-CS
 | `GET /api/security-log?limit=&offset=` | 自己的安全活动（actor 或 target 命中本 uid） |
 | `POST /api/account/export` | 导出账号数据（JSON；需 2 小时内强认证） |
 | `POST /admin/users/{uid}/mfa-reset` | 管理员重置 TOTP + Passkey 并吊销会话（super） |
-| `GET /admin/status` | 系统状态：版本、运行时长、DB 延迟、邮件/WebAuthn 自检、计数 |
+| `GET /admin/status` | 系统状态：版本/commit、运行时长、DB 延迟、邮件/WebAuthn 自检、schema 版本、表/索引计数 |
+| `POST /admin/users/{uid}/impersonate`、`POST /api/impersonation/stop` | 平台管理员**只读**模拟查看（独立 cookie、15 分钟、必填原因、起止审计；目标不能是 super） |
+| `GET /web/register/config`、`POST /web/register/send-code`、`POST /web/register` | 自助注册（**默认关闭**，`allow_self_register=1` 才开放）：开关查询 / 发注册码 / 建号并直接登录 |
 | `GET /web/invite/info?token=`、`POST /web/invite` | SPA 邀请信息 / 接受邀请（JSON，旧表单 POST 仍兼容） |
 | `GET /web/setup-password/info?token=`、`POST /web/setup-password` | SPA 一次性设密信息 / 提交（JSON，旧表单 POST 仍兼容） |
 | `GET /oauth/authorize?format=json` | 授权确认页数据（tx / 应用名 / 回跳域 / scope） |
@@ -122,6 +124,10 @@ ci/build-server.sh    # 测试 + 打包 dist/server.tar（CI 部署用的同一�
 | `app_config` 表 | `webauthn_opaque_origins`（可选） | 逗号分隔的 `android:apk-key-hash:<签名证书指纹>`；**两个 App 各至少一条**（debug/release 可并行，最多 8 条）。精确串匹配，写错只让对应 App 的原生仪式被拒；格式非法时整批降级为「仅网页端」并记启动日志，不拒启 |
 | `app_config` 表 | `totp_enforce_apps`（可选） | 逗号分隔的 App 名单，**默认空 = 零影响**；名单内的 App 在用户开了两步验证后走 `/auth/login` 会回 401「请升级应用后使用新版登录」——老客户端唯一的行为开关，翻它是作者的显式动作 |
 | `app_config` 表 | `ai_rate_per_minute` / `ai_concurrency` / `ai_daily_per_user` / `ai_daily_global` | AI 限额看板读这四键（缺省 20 / 8 / 500 / 5000，与日记侧 quota.go 同名同义） |
+| `app_config` 表 | `allow_self_register`（可选） | `1` 开放 Web 自助注册，缺省/其它值 = 邀请制 |
+| `app_config` 表 | `password_breach_check`（可选） | `0`/`off` 关闭 HIBP k-Anonymity 泄露库校验；缺省开启（第三方不可用时失败开放） |
+| `app_config` 表 | `risk_new_ip_mfa`（可选） | `0`/`off` 关闭「新 IP 登录即使有可信设备也要求 2FA」；缺省开启（仍会发新地点提醒邮件） |
+| `app_config` 表 | `audit_retention_days`（可选） | 审计保留天数，7–365，缺省 90；非法值按 90 |
 
 **管理员自举与根管理员**：`users.role` 默认 `user`，首个管理员部署时手工执行一次
 `UPDATE users SET role = 'admin' WHERE email = '<你的邮箱>';`（也进审计的正常路径）。

@@ -9,6 +9,9 @@ export type WebSession = {
   passkeyCount: number
   passwordSet: boolean
   isRoot: boolean
+  /** 非零 = 管理员模拟会话（只读）；值是发起人 uid。 */
+  impersonatorUid?: number
+  impersonatorEmail?: string
 }
 
 export type LoginResponse = {
@@ -198,7 +201,11 @@ export type SystemStatus = {
   mailConfigured: boolean
   jwtConfigured: boolean
   passkeysConfigured: boolean
-  counts: { users: number; sessions: number; passkeys: number; totp: number }
+  buildCommit: string
+  goVersion: string
+  mailLastError: string
+  schemaVersion: string
+  counts: { users: number; sessions: number; passkeys: number; totp: number; tables: number; indexes: number }
 }
 
 export type InviteInfo = { email: string; app: string; appName: string }

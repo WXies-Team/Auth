@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
   Ban,
@@ -19,6 +19,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
+import { SavedViews } from '@/components/ui/saved-views'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -36,10 +37,11 @@ function inviteState(state: AdminInvite['state']): string {
 
 export default function AdminUsersPage() {
   const qc = useQueryClient()
-  const [query, setQuery] = React.useState('')
-  const [role, setRole] = React.useState('')
-  const [status, setStatus] = React.useState('')
-  const [page, setPage] = React.useState(1)
+  const [params, setParams] = useSearchParams()
+  const [query, setQuery] = React.useState(params.get('query') ?? '')
+  const [role, setRole] = React.useState(params.get('role') ?? '')
+  const [status, setStatus] = React.useState(params.get('status') ?? '')
+  const [page, setPage] = React.useState(Math.max(1, Number(params.get('page')) || 1))
   const [selected, setSelected] = React.useState<Set<number>>(new Set())
   const [inviteOpen, setInviteOpen] = React.useState(false)
   const [inviteEmail, setInviteEmail] = React.useState('')
@@ -50,14 +52,23 @@ export default function AdminUsersPage() {
   const [bulkKind, setBulkKind] = React.useState<'ban' | 'unban' | 'password_reset' | 'session_revoke'>('ban')
   const [reason, setReason] = React.useState('')
 
-  const params = new URLSearchParams({ limit: String(PAGE), offset: String((page - 1) * PAGE) })
-  if (query) params.set('query', query)
-  if (role) params.set('role', role)
-  if (status) params.set('banned', status)
+  React.useEffect(() => {
+    const p = new URLSearchParams()
+    if (query) p.set('query', query)
+    if (role) p.set('role', role)
+    if (status) p.set('status', status)
+    if (page > 1) p.set('page', String(page))
+    setParams(p, { replace: true })
+  }, [query, role, status, page, setParams])
+
+  const apiParams = new URLSearchParams({ limit: String(PAGE), offset: String((page - 1) * PAGE) })
+  if (query) apiParams.set('query', query)
+  if (role) apiParams.set('role', role)
+  if (status) apiParams.set('banned', status)
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-users', query, role, status, page],
-    queryFn: () => api.get<Page<AdminUser>>(`/admin/users?${params}`),
+    queryFn: () => api.get<Page<AdminUser>>(`/admin/users?${apiParams}`),
   })
   const invites = useQuery({
     queryKey: ['admin-invites', query],
@@ -177,6 +188,17 @@ export default function AdminUsersPage() {
               <option value="false">正常</option>
             </Select>
           </form>
+
+          <SavedViews
+            storageKey="auth.views.users"
+            state={{ query, role, status }}
+            onApply={(v) => {
+              setQuery(v.query ?? '')
+              setRole(v.role ?? '')
+              setStatus(v.status ?? '')
+              setPage(1)
+            }}
+          />
 
           {selected.size > 0 && (
             <div className="bg-muted flex flex-wrap items-center gap-2 rounded-lg px-3 py-2">

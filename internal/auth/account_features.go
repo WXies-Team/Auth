@@ -28,19 +28,27 @@ const consentScopes = "uid email"
 // RecordConsent 在用户点「继续授权」后落一行（重复授权只刷新时间）。
 // 授权主流程不因这张表失败而中止——它是可撤销的展示层，不是凭证。
 func (s *Service) RecordConsent(uid int64, app string) {
+	s.recordConsentScopes(uid, app, consentScopes)
+}
+
+// recordConsentScopes 与 RecordConsent 同一实现，多带本次请求的 scope 串。
+func (s *Service) recordConsentScopes(uid int64, app, scopes string) {
+	if strings.TrimSpace(scopes) == "" {
+		scopes = consentScopes
+	}
 	now := time.Now().UnixMilli()
 	_, err := s.pool.ExecContext(db.QueryCtx(),
 		`INSERT INTO oauth_consents (app, uid, scopes, created_at, last_used_at)
 		 VALUES (?, ?, ?, ?, ?)
 		 ON DUPLICATE KEY UPDATE last_used_at = VALUES(last_used_at), scopes = VALUES(scopes)`,
-		app, uid, consentScopes, now, now)
+		app, uid, scopes, now, now)
 	if err != nil {
 		slog.Warn("记录 OAuth 授权失败（不阻断授权）", "uid", uid, "app", app, "err", err)
 		return
 	}
 	s.Audit(AuditEvent{
 		Action: AuditConsentGrant, OK: true, ActorUID: uidPtr(uid),
-		TargetUID: uidPtr(uid), Detail: map[string]string{"app": app},
+		TargetUID: uidPtr(uid), Detail: map[string]string{"app": app, "scope": scopes},
 	})
 }
 
@@ -276,6 +284,8 @@ type SystemCounts struct {
 	Sessions int `json:"sessions"`
 	Passkeys int `json:"passkeys"`
 	TOTP     int `json:"totp"`
+	Tables   int `json:"tables"`
+	Indexes  int `json:"indexes"`
 }
 
 func (s *Service) PingDB() (time.Duration, error) {
@@ -296,6 +306,8 @@ func (s *Service) SystemCounts() (SystemCounts, error) {
 		{"SELECT COUNT(*) FROM sessions WHERE revoked_at IS NULL", &c.Sessions},
 		{"SELECT COUNT(*) FROM passkeys", &c.Passkeys},
 		{"SELECT COUNT(*) FROM totp_factors WHERE enabled = 1", &c.TOTP},
+		{"SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE()", &c.Tables},
+		{"SELECT COUNT(DISTINCT table_name, index_name) FROM information_schema.statistics WHERE table_schema = DATABASE()", &c.Indexes},
 	}
 	for _, it := range qs {
 		if err := s.pool.QueryRowContext(db.QueryCtx(), it.q).Scan(it.dst); err != nil {

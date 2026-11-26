@@ -91,6 +91,9 @@ CREATE TABLE IF NOT EXISTS sessions (
     prev_token_hash     CHAR(64) NULL,
     prev_csrf_hash      CHAR(64) NULL,
     prev_valid_until    BIGINT NOT NULL DEFAULT 0,
+    -- impersonator_uid 非 0 = 管理员模拟会话（只读、15 分钟绝对到期）：
+    -- 值是发起模拟的管理员 uid，0 是正常会话。见 internal/auth/impersonate.go。
+    impersonator_uid    BIGINT NOT NULL DEFAULT 0,
     PRIMARY KEY (id),
     UNIQUE KEY uq_sessions_prev_token (prev_token_hash),
     KEY idx_sessions_user (user_id, revoked_at),
@@ -324,4 +327,16 @@ CREATE TABLE IF NOT EXISTS trusted_devices (
   PRIMARY KEY (id),
   UNIQUE KEY uq_trusted_token (token_hash),
   KEY idx_trusted_uid (uid, expires_at)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci;
+
+-- 登录 IP 记忆（风险登录）：每个用户见过的 IP 一行（最多 40 个，超出按最久未用淘汰）。
+-- 只有「新 IP」才有提醒/可选强制 2FA 的价值；独立成表而不是查 sessions，是因为
+-- 会话行会被定期清掉，清掉后老 IP 又被当成新 IP 会反复误报。
+CREATE TABLE IF NOT EXISTS login_ips (
+  uid BIGINT NOT NULL,
+  ip VARCHAR(45) NOT NULL,
+  first_seen_at BIGINT NOT NULL,
+  last_seen_at BIGINT NOT NULL,
+  PRIMARY KEY (uid, ip),
+  KEY idx_login_ips_last (uid, last_seen_at)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci;

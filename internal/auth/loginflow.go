@@ -204,7 +204,13 @@ func (s *Service) webLoginPassword(rawEmail, password string, meta SessionMeta, 
 	if err != nil {
 		return nil, err
 	}
-	if !enabled || (app == "" && s.CheckTrustedDevice(uid, trustedToken, meta.UserAgent)) {
+	// 风险登录：记一次来源 IP；新 IP + 开关开启时不信可信设备，强制过 2FA。
+	newIP, _ := s.observeLoginIP(uid, meta.IP)
+	trusted := app == "" && s.CheckTrustedDevice(uid, trustedToken, meta.UserAgent)
+	if trusted && newIP && s.riskNewIPMFA() {
+		trusted = false
+	}
+	if !enabled || trusted {
 		return s.completeLogin(uid, email, app, meta)
 	}
 	token, err := s.beginLoginState(uid, app)

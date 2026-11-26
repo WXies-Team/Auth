@@ -116,6 +116,11 @@ func main() {
 		slog.Error("初始化认证服务", "err", err)
 		os.Exit(1)
 	}
+	// 配置中心热读：老客户端 2FA 兼容开关 + 风险登录/泄露库/自助注册等缺省开值。
+	// 两者都传 cfg.Require（10 秒缓存）；此前 SetEnforceApps 从未接线，
+	// totp_enforce_apps 实际是死键，这里一并修好。
+	authSvc.SetEnforceApps(cfg.Require)
+	authSvc.SetConfig(cfg.Require)
 
 	mux := http.NewServeMux()
 	// 路由注册整体挪进 registerRoutes：端点形状只有打到 handler 上才作数，
@@ -599,7 +604,16 @@ func withUID(svc *auth.Service, next http.Handler) http.Handler {
 			return
 		}
 		wc.Meta = sessMeta(r)
-		if wc.ViaCookie && !readMethod(r.Method) && !wc.CheckCSRF(r.Header.Get("X-CSRF-Token")) {
+		// 模拟会话只读：除「退出模拟」与登出外，一律不接受写操作。集中在这里判定，
+		// 比逐个端点记着加闸可靠——漏一个端点就是一个提权口子。
+		if wc.ImpersonatorUID > 0 && !readMethod(r.Method) &&
+			r.URL.Path != "/api/impersonation/stop" && r.URL.Path != "/web/logout" {
+			writeDenied(w, "模拟登录为只读模式，不能修改目标账号或进入管理后台", auth.ReasonPermission)
+			return
+		}
+		// 模拟会话没有自己的 CSRF cookie（不能覆盖管理员的那枚），两条允许的写路径
+		//（退出模拟 / 登出）改由 SameSite=Lax + 路由内 originGuard 兜底。
+		if wc.ViaCookie && wc.ImpersonatorUID == 0 && !readMethod(r.Method) && !wc.CheckCSRF(r.Header.Get("X-CSRF-Token")) {
 			// 不带 reason：CSRF 失配是「页面/请求过期」，既不是 policy（策略拦截）
 			// 也不是 permission（授权不足），前端按 message 提示刷新即可。
 			writeError(w, http.StatusForbidden, "请求校验失败，请刷新页面后重试")
@@ -633,6 +647,12 @@ func readMethod(method string) bool {
 // 两者皆败才 401。
 func resolveCaller(svc *auth.Service, r *http.Request) (auth.WebCaller, error) {
 	header := r.Header.Get("Authorization")
+	// 模拟会话优先：独立 cookie 不覆盖管理员自己的 web 会话，关掉模拟即回原身份。
+	if ck, err := r.Cookie(auth.ImpersonationCookieName); err == nil && ck.Value != "" {
+		if wc, werr := svc.ValidWebSession(ck.Value); werr == nil && wc.ImpersonatorUID > 0 {
+			return wc, nil
+		}
+	}
 	if ck, err := r.Cookie(auth.WebCookieName); err == nil && ck.Value != "" {
 		wc, werr := svc.ValidWebSession(ck.Value)
 		if werr == nil {

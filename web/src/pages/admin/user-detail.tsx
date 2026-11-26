@@ -5,6 +5,7 @@ import { toast } from 'sonner'
 import {
   ArrowLeft,
   Ban,
+  Eye,
   Fingerprint,
   KeyRound,
   Loader2,
@@ -37,7 +38,7 @@ import { CopyButton } from '@/components/ui/copy-button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { initials } from '@/lib/format'
 
-type DialogKind = 'password' | 'email' | 'ban' | 'mfa' | 'profile' | null
+type DialogKind = 'password' | 'email' | 'ban' | 'mfa' | 'profile' | 'impersonate' | null
 
 export default function AdminUserDetailPage() {
   const { uid = '' } = useParams()
@@ -46,6 +47,7 @@ export default function AdminUserDetailPage() {
   const [busy, setBusy] = React.useState(false)
   const [tempPassword, setTempPassword] = React.useState('')
   const [pendingRole, setPendingRole] = React.useState<string | null>(null)
+  const [impReason, setImpReason] = React.useState('')
   const { session } = useAuth()
 
   const { data, isLoading, refetch } = useQuery({
@@ -178,6 +180,14 @@ export default function AdminUserDetailPage() {
               disabled={data.isRoot && !session?.isRoot}
             >
               <ShieldOff /> 重置 MFA
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDialog('impersonate')}
+              disabled={data.role === 'super'}
+            >
+              <Eye /> 模拟查看
             </Button>
           </>
         }
@@ -402,6 +412,53 @@ export default function AdminUserDetailPage() {
         onConfirm={resetMfa}
       />
       <ProfileResetDialog open={dialog === 'profile'} onOpenChange={(v) => !v && setDialog(null)} busy={busy} onDone={resetProfile} />
+      <Dialog
+        open={dialog === 'impersonate'}
+        onOpenChange={(v) => {
+          if (!v) {
+            setDialog(null)
+            setImpReason('')
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>在只读模式下查看该用户？</DialogTitle>
+            <DialogDescription>
+              会以独立 cookie 打开仅 15 分钟的只读会话（不覆盖你当前的登录），所有写操作被禁用；起止都会写入审计。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="imp-reason">模拟原因（写入审计，至少 4 个字）</Label>
+            <Input
+              id="imp-reason"
+              value={impReason}
+              onChange={(e) => setImpReason(e.target.value)}
+              placeholder="例如：核对用户反馈的会话异常"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialog(null)}>
+              取消
+            </Button>
+            <Button
+              disabled={busy || impReason.trim().length < 4}
+              onClick={async () => {
+                setBusy(true)
+                try {
+                  await api.post(`/admin/users/${uid}/impersonate`, { reason: impReason.trim() })
+                  window.location.assign('/web/console')
+                } catch (err) {
+                  toast.error(err instanceof Error ? err.message : '模拟失败')
+                  setBusy(false)
+                }
+              }}
+            >
+              {busy ? <Loader2 className="animate-spin" /> : <Eye />} 开始模拟
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!tempPassword} onOpenChange={(v) => !v && setTempPassword('')}>
         <DialogContent>

@@ -36,6 +36,16 @@ const GROUPS: { title: string; desc: string; keys: string[] }[] = [
     desc: '看板与限额闸共用的四档值。',
     keys: ['ai_rate_per_minute', 'ai_concurrency', 'ai_daily_per_user', 'ai_daily_global'],
   },
+  {
+    title: '审计',
+    desc: '审计日志保留天数（7–365，缺省 90）。',
+    keys: ['audit_retention_days'],
+  },
+  {
+    title: '注册与风险控制',
+    desc: '自助注册默认关闭；泄露库校验与「新 IP 强制 2FA」默认开启（填 0 关闭）。',
+    keys: ['allow_self_register', 'password_breach_check', 'risk_new_ip_mfa'],
+  },
 ]
 
 const LABELS: Record<string, string> = {
@@ -52,6 +62,10 @@ const LABELS: Record<string, string> = {
   ai_concurrency: '并发上限',
   ai_daily_per_user: '每用户每日',
   ai_daily_global: '全站每日',
+  audit_retention_days: '审计保留天数',
+  allow_self_register: '开放自助注册',
+  password_breach_check: '密码泄露库校验',
+  risk_new_ip_mfa: '新 IP 强制 2FA',
 }
 
 export default function AdminConfigPage() {
@@ -109,8 +123,14 @@ export default function AdminConfigPage() {
             </CardHeader>
             <CardContent className="divide-y p-0">
               {g.keys.map((key) => {
-                const item = byKey.get(key)
-                if (!item) return null
+                // 尚未入库的键也显示出来（badge=未配置），否则新开关没有创建入口。
+                const item = byKey.get(key) ?? {
+                  key,
+                  value: '',
+                  configured: false,
+                  secret: false,
+                  hint: '',
+                }
                 return (
                   <div key={key} className="flex items-center gap-3 px-4 py-3">
                     <div className="min-w-0 flex-1">

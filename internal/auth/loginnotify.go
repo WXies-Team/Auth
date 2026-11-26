@@ -65,6 +65,27 @@ func loginNotifyAppLabel(app string) string {
 	return brandFor(app).name
 }
 
+// otherSessionIPs 取该用户**除本次会话外**全部未吊销会话的 IP 集合（新地点判定用）。
+func (s *Service) otherSessionIPs(uid, sid int64) (map[string]bool, error) {
+	rows, err := s.pool.QueryContext(db.QueryCtx(),
+		"SELECT ip FROM sessions WHERE user_id = ? AND revoked_at IS NULL AND id <> ?", uid, sid)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	known := map[string]bool{}
+	for rows.Next() {
+		var ip string
+		if err := rows.Scan(&ip); err != nil {
+			return nil, err
+		}
+		if ip != "" {
+			known[ip] = true
+		}
+	}
+	return known, rows.Err()
+}
+
 // notifyNewLoginDevice 登录成功后的提醒收口。sid 是本次新建的会话 id；email 是本次
 // 登录的账号邮箱；app 空 = web 流程（中性品牌），非空 = App 流程（该 App 品牌）。
 // 任何失败只记日志——通知是派生动作，不参与登录成败。
@@ -89,11 +110,25 @@ func (s *Service) notifyNewLoginDevice(uid, sid int64, email, app string, meta S
 	// 这里算的必须与 otherSessionFingerprints 读列现算的同一口径——否则带 CH 的
 	// 每次登录都对不上指纹，每次登录都发一封「新设备」提醒。
 	stored := meta.uaWithCH()
-	if !isNewDevice(known, stored) {
+	deviceNew := isNewDevice(known, stored)
+	ipNew := false
+	if !deviceNew && meta.IP != "" {
+		// IP 判定复用登录会话表：宁可漏报一次，也不为提醒多建一张表（强制 2FA 的
+		// 持久记忆另见 risk.go 的 login_ips）。
+		if ips, ierr := s.otherSessionIPs(uid, sid); ierr == nil {
+			ipNew = !ips[meta.IP]
+		}
+	}
+	if !deviceNew && !ipNew {
 		return
 	}
 	b := brandFor(app)
-	subject, htmlBody, text := loginNotifyEmail(b, shortDevice(stored), loginNotifyAppLabel(app), time.Now())
+	var subject, htmlBody, text string
+	if deviceNew {
+		subject, htmlBody, text = loginNotifyEmail(b, shortDevice(stored), loginNotifyAppLabel(app), time.Now())
+	} else {
+		subject, htmlBody, text = loginIPNotifyEmail(b, shortDevice(stored), loginNotifyAppLabel(app), meta.IP, time.Now())
+	}
 	// 不接请求 ctx：发送器自带 15s 总超时，最坏也只是把这一次登录的收尾拖住
 	if err := s.mailer.Send(context.Background(), b.name, email, subject, htmlBody, text); err != nil {
 		slog.Error("发送新设备登录提醒失败", "uid", uid, "email", maskEmail(email), "err", err)

@@ -306,6 +306,16 @@ type WebSessionResponse struct {
 	// 判定与 internal/auth 的 RootUID 同源（不是前端硬编码 uid）：UI 用它决定
 	// 是否显示「平台管理员」任命入口，避免把 5939716 抄进模板后又与服务端漂移。
 	IsRoot bool `json:"isRoot"`
+	// ImpersonatorUID / ImpersonatorEmail 非零 = 当前是管理员模拟会话（只读）。
+	// 前端据此显示顶部横幅与「退出模拟」，并隐藏所有写操作入口。
+	ImpersonatorUID   int64  `json:"impersonatorUid,omitempty"`
+	ImpersonatorEmail string `json:"impersonatorEmail,omitempty"`
+}
+
+// ImpersonateRequest 是 POST /admin/users/{uid}/impersonate 的请求体：
+// reason 必填且写入审计（detail.reason），长度 4~200 字。
+type ImpersonateRequest struct {
+	Reason string `json:"reason"`
 }
 
 // WebReauthRequest 是 POST /web/reauth 的请求体：Password / TOTPCode /

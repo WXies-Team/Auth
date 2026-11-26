@@ -23,6 +23,7 @@ const (
 
 func registerPageRoutes(mux *http.ServeMux, svc *auth.Service) {
 	mux.Handle("GET /web/login", pageHandler(svc, "login", gatePublic))
+	mux.Handle("GET /web/register", pageHandler(svc, "register", gatePublic))
 	mux.Handle("GET /web/invite", pageHandler(svc, "invite", gateNone))
 	mux.Handle("GET /web/setup-password", pageHandler(svc, "setup", gateNone))
 
@@ -63,7 +64,7 @@ func registerStaticRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /assets/{rest...}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		serveAsset(w, r, "assets/"+r.PathValue("rest"), "public, max-age=31536000, immutable")
 	}))
-	for _, name := range []string{"theme.js", "favicon.svg", "favicon.ico", "apple-touch-icon.png"} {
+	for _, name := range []string{"theme.js", "favicon.svg", "favicon.ico", "apple-touch-icon.png", "manifest.webmanifest", "sw.js", "offline.html", "icon-192.png", "icon-512.png"} {
 		mux.Handle("GET /"+name, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			serveAsset(w, r, name, "public, max-age=604800")
 		}))
@@ -106,14 +107,27 @@ func serveAsset(w http.ResponseWriter, r *http.Request, name, cache string) {
 func pageHandler(svc *auth.Service, name string, gate pageGate) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var (
-			ok   bool
-			role string
+			ok           bool
+			role         string
+			impersonator int64
 		)
-		if ck, err := r.Cookie(auth.WebCookieName); err == nil && ck.Value != "" {
-			if c, err := svc.ValidWebSession(ck.Value); err == nil {
-				ok = true
-				role = c.Role
+		// 模拟会话优先（独立 cookie）：模拟期间不进管理后台页面，数据层也会 403。
+		if ck, err := r.Cookie(auth.ImpersonationCookieName); err == nil && ck.Value != "" {
+			if c, err := svc.ValidWebSession(ck.Value); err == nil && c.ImpersonatorUID > 0 {
+				ok, role, impersonator = true, c.Role, c.ImpersonatorUID
 			}
+		}
+		if !ok {
+			if ck, err := r.Cookie(auth.WebCookieName); err == nil && ck.Value != "" {
+				if c, err := svc.ValidWebSession(ck.Value); err == nil {
+					ok = true
+					role = c.Role
+				}
+			}
+		}
+		if ok && impersonator > 0 && (gate == gateAdmin || gate == gateSuper) {
+			http.Redirect(w, r, "/web/console", http.StatusFound)
+			return
 		}
 		switch gate {
 		case gatePublic:
@@ -170,10 +184,14 @@ func serveSPAStatus(w http.ResponseWriter, status int) {
 }
 
 func webSessionOK(svc *auth.Service, r *http.Request) bool {
-	ck, err := r.Cookie(auth.WebCookieName)
-	if err != nil || ck.Value == "" {
-		return false
+	for _, name := range []string{auth.ImpersonationCookieName, auth.WebCookieName} {
+		ck, err := r.Cookie(name)
+		if err != nil || ck.Value == "" {
+			continue
+		}
+		if _, err = svc.ValidWebSession(ck.Value); err == nil {
+			return true
+		}
 	}
-	_, err = svc.ValidWebSession(ck.Value)
-	return err == nil
+	return false
 }

@@ -52,6 +52,9 @@ type OAuthAuthorizeRequest struct {
 	State               string
 	CodeChallenge       string
 	CodeChallengeMethod string
+	// Scope 是空格分隔的授权范围（可选）：只接受 uid / email 两个值，缺省 = 两者都要。
+	// 未知值按 invalid_scope 拒绝（RFC 6749 §4.1.2.1），不静默降级。
+	Scope string
 }
 
 // OAuthBeginAuthorize 是授权第一步的 fail-fast 校验（顺序钉死：response_type →
@@ -72,6 +75,10 @@ func (s *Service) OAuthBeginAuthorize(req OAuthAuthorizeRequest) (tx string, app
 	if !pkceValueOK(challenge) {
 		return "", "", badRequest("授权请求的 code_challenge 格式不正确（应为 43~128 位 base64url）")
 	}
+	scopes, err := parseOAuthScope(req.Scope)
+	if err != nil {
+		return "", "", err
+	}
 	client, err := s.oauthClientByClientID(req.ClientID)
 	if err != nil {
 		return "", "", err
@@ -86,6 +93,7 @@ func (s *Service) OAuthBeginAuthorize(req OAuthAuthorizeRequest) (tx string, app
 	s.oauthStore.putTx(tx, &oauthTx{
 		ClientID: client.ClientID, App: client.App,
 		RedirectURI: req.RedirectURI, State: req.State, Challenge: challenge,
+		Scopes: scopes,
 	})
 	return tx, client.App, nil
 }
@@ -139,10 +147,16 @@ func (s *Service) OAuthAuthorizeView(tx string, uid int64) (*OAuthView, error) {
 	if u, uerr := url.Parse(e.RedirectURI); uerr == nil {
 		host = u.Host
 	}
+	labels := make([]string, 0, len(e.Scopes))
+	for _, sc := range e.Scopes {
+		if l, ok := oauthScopeLabels[sc]; ok {
+			labels = append(labels, l)
+		}
+	}
 	return &OAuthView{
 		Tx: tx, App: e.App, AppName: appName(e.App),
 		RedirectHost: host, Email: email,
-		Scopes: append([]string(nil), oauthScopes...),
+		Scopes: labels,
 	}, nil
 }
 
@@ -170,10 +184,10 @@ func (s *Service) OAuthDecide(uid int64, tx, decision string, meta SessionMeta) 
 	if err != nil {
 		return "", err
 	}
-	s.RecordConsent(uid, e.App)
+	s.recordConsentScopes(uid, e.App, strings.Join(e.Scopes, " "))
 	s.oauthStore.putCode(code, &oauthCode{
 		UID: uid, App: e.App, RedirectURI: e.RedirectURI,
-		ClientID: e.ClientID, Challenge: e.Challenge,
+		ClientID: e.ClientID, Challenge: e.Challenge, Scopes: e.Scopes,
 		// UA 按存储串口径并入 CH 后缀（uaWithCH）：token 兑换来自应用后端，
 		// Client Hints 只有浏览器确认这一刻的请求带着——此时不并，之后就没机会了。
 		IP: meta.IP, UA: meta.uaWithCH(), Exp: time.Now().Add(oauthCodeTTL),
@@ -199,6 +213,8 @@ type OAuthTokenResult struct {
 	ExpiresIn   int    `json:"expires_in"`
 	UID         int64  `json:"uid"`
 	Email       string `json:"email"`
+	// Scope 是本次授权实际授予的范围（空格分隔，与请求一致）。附加字段，老调用方忽略即可。
+	Scope string `json:"scope,omitempty"`
 }
 
 // OAuthError 是 OAuth 端点的结构化失败（RFC 6749 §5.2 形状 {error,error_description}）。
@@ -290,6 +306,7 @@ func (s *Service) OAuthExchangeToken(req OAuthTokenRequest) (*OAuthTokenResult, 
 	return &OAuthTokenResult{
 		AccessToken: token, TokenType: "Bearer",
 		ExpiresIn: int(tokenTTL.Seconds()), UID: code.UID, Email: email,
+		Scope: strings.Join(code.Scopes, " "),
 	}, nil
 }
 
@@ -497,6 +514,44 @@ func pkceS256(verifier string) string {
 	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
 
+// oauthScopeLabels 是 scope 标识到同意页文案的映射；只暴露 uid/email 两个字段，
+// 因为 token（JWT）里实际也只有这两个身份声明——同意页不承诺服务端不签发的东西。
+var oauthScopeLabels = map[string]string{
+	"uid":   "你的账号标识（uid）",
+	"email": "你的邮箱地址",
+}
+
+// parseOAuthScope 归一化 scope：空 = uid+email（向后兼容老客户端）；
+// 未知值/空集合一律 400，不做「忽略未知 scope」的宽松处理。
+func parseOAuthScope(raw string) ([]string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return []string{"uid", "email"}, nil
+	}
+	seen := map[string]bool{}
+	out := make([]string, 0, 2)
+	for _, f := range strings.Fields(raw) {
+		if _, known := oauthScopeLabels[f]; !known {
+			return nil, badRequest("授权请求包含不支持的 scope：" + f)
+		}
+		if !seen[f] {
+			seen[f] = true
+			out = append(out, f)
+		}
+	}
+	if len(out) == 0 {
+		return nil, badRequest("授权请求的 scope 不能为空")
+	}
+	// 固定返回顺序（uid 在前），同意页与 consent 记录不因客户端传参顺序抖动。
+	ordered := make([]string, 0, len(out))
+	for _, k := range []string{"uid", "email"} {
+		if seen[k] {
+			ordered = append(ordered, k)
+		}
+	}
+	return ordered, nil
+}
+
 // pkceValueOK 判定 verifier/challenge 的格式：43~128 位 base64url 字符
 // （RFC 7636 §4.1/§4.2 的 unreserved 集在 base64url 下的取值）。
 func pkceValueOK(v string) bool {
@@ -517,6 +572,7 @@ func pkceValueOK(v string) bool {
 
 type oauthTx struct {
 	ClientID, App, RedirectURI, State, Challenge string
+	Scopes                                       []string
 	UID                                          int64 // 0 = 尚未绑定（用户还没登录/确认）
 	CreatedAt                                    time.Time
 }
@@ -525,6 +581,7 @@ type oauthCode struct {
 	UID                 int64
 	App, RedirectURI    string
 	ClientID, Challenge string
+	Scopes              []string
 	IP, UA              string
 	Exp                 time.Time
 }

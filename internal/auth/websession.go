@@ -124,6 +124,9 @@ type WebCaller struct {
 	// Role 是 users.role 的现查结果（web 会话解析时顺带取回，省一次点查）；
 	// 管理端点的最终判定仍要再查一次——撤销必须当场生效。
 	Role string
+	// ImpersonatorUID 非 0 = 这条是管理员模拟会话（值是发起人 uid）。
+	// withUID 据此把全部非 GET 请求挡成 403（只读边界）。
+	ImpersonatorUID int64
 }
 
 // ValidWebSession 用会话 cookie 的明文 token 换身份：sha256 点查 → 行活着 →
@@ -141,7 +144,7 @@ func (s *Service) ValidWebSession(token string) (WebCaller, error) {
 		sid, uid, createdAt, lastSeen, absExpires int64
 		revokedAt                                 sql.NullInt64
 		csrfHash, prevCSRF, email, role           string
-		prevValid, familyID                       int64
+		prevValid, familyID, impersonator         int64
 	}
 	// 列名只在本函数内由常量给出（web_token_hash / prev_token_hash），不是用户输入。
 	load := func(column, hash string) (webRow, error) {
@@ -149,11 +152,11 @@ func (s *Service) ValidWebSession(token string) (WebCaller, error) {
 		err := s.pool.QueryRowContext(ctx,
 			`SELECT s.id, s.user_id, s.created_at, s.last_seen_at, s.absolute_expires_at,
 			        s.revoked_at, s.web_csrf_hash, COALESCE(s.prev_csrf_hash, ''), s.prev_valid_until,
-			        s.family_id, u.email, u.role
+			        s.family_id, s.impersonator_uid, u.email, u.role
 			 FROM sessions s JOIN users u ON u.id = s.user_id
 			 WHERE `+column+` = ?`, hash).
 			Scan(&r.sid, &r.uid, &r.createdAt, &r.lastSeen, &r.absExpires, &r.revokedAt,
-				&r.csrfHash, &r.prevCSRF, &r.prevValid, &r.familyID, &r.email, &r.role)
+				&r.csrfHash, &r.prevCSRF, &r.prevValid, &r.familyID, &r.impersonator, &r.email, &r.role)
 		return r, err
 	}
 	row, err := load("s.web_token_hash", presented)
@@ -183,6 +186,7 @@ func (s *Service) ValidWebSession(token string) (WebCaller, error) {
 	}
 	sid, uid, createdAt, lastSeen, absExpires := row.sid, row.uid, row.createdAt, row.lastSeen, row.absExpires
 	revokedAt, csrfHash, email, role := row.revokedAt, row.csrfHash, row.email, row.role
+	impersonator := row.impersonator
 	now := time.Now().UnixMilli()
 	switch {
 	case revokedAt.Valid:
@@ -205,11 +209,12 @@ func (s *Service) ValidWebSession(token string) (WebCaller, error) {
 		}
 	}
 	return WebCaller{
-		Caller:    Caller{UID: uid, Email: email, App: webAppLabel, SID: sid},
-		CSRFHash:  csrfHash,
-		ViaCookie: true,
-		TokenHash: presented,
-		Role:      role,
+		Caller:          Caller{UID: uid, Email: email, App: webAppLabel, SID: sid},
+		CSRFHash:        csrfHash,
+		ViaCookie:       true,
+		TokenHash:       presented,
+		Role:            role,
+		ImpersonatorUID: impersonator,
 	}, nil
 }
 

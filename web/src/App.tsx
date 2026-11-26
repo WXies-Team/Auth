@@ -4,6 +4,7 @@ import { AppShell, RequireAdmin, RequireAuth, RequireSuper } from '@/components/
 import { Skeleton } from '@/components/ui/skeleton'
 
 const LoginPage = lazy(() => import('@/pages/login'))
+const RegisterPage = lazy(() => import('@/pages/register'))
 const InvitePage = lazy(() => import('@/pages/invite'))
 const SetupPasswordPage = lazy(() => import('@/pages/setup-password'))
 const DeleteCancelPage = lazy(() => import('@/pages/delete-cancel'))
@@ -41,6 +42,7 @@ export default function App() {
     <Suspense fallback={<Loading />}>
       <Routes>
         <Route path="/web/login" element={<LoginPage />} />
+        <Route path="/web/register" element={<RegisterPage />} />
         <Route path="/web/invite" element={<InvitePage />} />
         <Route path="/web/setup-password" element={<SetupPasswordPage />} />
         <Route path="/web/delete-cancel" element={<DeleteCancelPage />} />

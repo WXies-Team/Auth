@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 )
@@ -461,8 +462,19 @@ func antiPhishHTML() string {
 // mailLog 发信失败要留排障线索：客户端只看到白话，根因（SMTP 会话错误、
 // 服务器拒绝码与响应）只在服务端日志。邮箱过 maskEmail 脱敏——日志会进排障链路与备份，
 // 全文邮箱是 PII。
+var lastMailError atomic.Value // string
+
 func mailLog(err error, purpose, email string) {
+	lastMailError.Store(err.Error())
 	slog.Error("发送邮件失败", "purpose", purpose, "email", maskEmail(email), "err", err)
+}
+
+// LastMailError 是进程内最近一次发信失败的原文；系统状态页用来定位 SMTP 问题。
+func LastMailError() string {
+	if v, ok := lastMailError.Load().(string); ok {
+		return v
+	}
+	return ""
 }
 
 // safeTime 是通知信里时间戳的统一形态（本地时区，分钟精度够用户对时）。
@@ -838,6 +850,42 @@ func loginNotifyEmail(b brand, device, appLabel string, at time.Time) (subject, 
 			panel{rows: []row{
 				{label: "设备", value: device},
 				{label: "项目", value: appLabel},
+				{label: "时间", value: safeTime(at)},
+			}},
+			para{kind: pWarn, segs: []seg{
+				plain("如果这不是你本人的操作，请"),
+				linked("立即修改密码并退出其它设备", securityURL),
+				plain("。"),
+			}},
+			cta{label: "审查登录设备", href: sessionsURL},
+			para{kind: pMeta, segs: []seg{
+				plain("管理登录提醒设置："),
+				linked("前往账号设置", accountURL),
+			}},
+		},
+	}
+	htmlBody, text = m.render(b)
+	return subject, htmlBody, text
+}
+
+// loginIPNotifyEmail 新地点登录提醒（W9）：UA 没变、IP 是首次出现时发这一封。
+// 与「新设备」分开措辞的原因是用户看到的判断依据不同——设备还是那台，位置变了。
+// 结构与 loginNotifyEmail 同源（面板 + 警示 + CTA），不加新样式。
+func loginIPNotifyEmail(b brand, device, appLabel, ip string, at time.Time) (subject, htmlBody, text string) {
+	subject = b.prefix + "新地点登录提醒"
+	securityURL, sessionsURL := siteBase+"/web/console/security", siteBase+"/web/console/sessions"
+	const reassure = "如果是你本人（换了网络、开了 VPN），无需任何行动。"
+	m := mailBody{
+		scene:     "账号安全",
+		title:     "检测到新地点登录",
+		preheader: "检测到新地点登录（" + ip + "）。" + reassure,
+		blocks: []block{
+			para{segs: []seg{plain("你的账号刚刚从一个以前没见过的 IP 地址登录。")}},
+			para{segs: []seg{plain(reassure)}},
+			panel{rows: []row{
+				{label: "设备", value: device},
+				{label: "项目", value: appLabel},
+				{label: "IP", value: ip},
 				{label: "时间", value: safeTime(at)},
 			}},
 			para{kind: pWarn, segs: []seg{

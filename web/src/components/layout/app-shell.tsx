@@ -1,11 +1,12 @@
 import * as React from 'react'
-import { Link, Navigate, Outlet, useLocation } from 'react-router-dom'
+import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   Activity,
   AppWindow,
   ChartColumn,
   ChevronDown,
   KeyRound,
+  Languages,
   LayoutDashboard,
   Lock,
   LogOut,
@@ -13,6 +14,7 @@ import {
   Monitor,
   Moon,
   ScrollText,
+  Search,
   Settings,
   ShieldCheck,
   SlidersHorizontal,
@@ -21,6 +23,8 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/lib/auth'
+import { useI18n, type Lang } from '@/lib/i18n'
+import { api } from '@/lib/api'
 import { useTheme, type Theme } from '@/lib/theme'
 import { AVATAR_PALETTE, avatarDataUrl, roleLabel, initials } from '@/lib/format'
 import { useProfile } from '@/lib/queries'
@@ -36,28 +40,30 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 
-type NavItem = { to: string; label: string; icon: React.ComponentType<{ className?: string }> }
+type NavItem = { to: string; labelKey: string; icon: React.ComponentType<{ className?: string }> }
 
 const userNav: NavItem[] = [
-  { to: '/web/console', label: '概览', icon: LayoutDashboard },
-  { to: '/web/console/sessions', label: '登录会话', icon: Monitor },
-  { to: '/web/console/passkeys', label: 'Passkey', icon: KeyRound },
-  { to: '/web/console/security', label: '两步验证', icon: ShieldCheck },
-  { to: '/web/console/connections', label: '已授权应用', icon: AppWindow },
-  { to: '/web/console/activity', label: '安全活动', icon: Activity },
-  { to: '/web/console/account', label: '账号', icon: Settings },
+  { to: '/web/console', labelKey: 'nav.console', icon: LayoutDashboard },
+  { to: '/web/console/sessions', labelKey: 'nav.sessions', icon: Monitor },
+  { to: '/web/console/passkeys', labelKey: 'nav.passkeys', icon: KeyRound },
+  { to: '/web/console/security', labelKey: 'nav.security', icon: ShieldCheck },
+  { to: '/web/console/connections', labelKey: 'nav.connections', icon: AppWindow },
+  { to: '/web/console/activity', labelKey: 'nav.activity', icon: Activity },
+  { to: '/web/console/account', labelKey: 'nav.account', icon: Settings },
 ]
 
 const adminNav: NavItem[] = [
-  { to: '/web/admin', label: '用户', icon: Users },
-  { to: '/web/admin/access', label: '项目访问', icon: Lock },
-  { to: '/web/admin/sessions', label: '会话总览', icon: Monitor },
-  { to: '/web/admin/audit', label: '审计日志', icon: ScrollText },
-  { to: '/web/admin/config', label: '配置中心', icon: SlidersHorizontal },
-  { to: '/web/admin/ai-usage', label: 'AI 用量', icon: ChartColumn },
-  { to: '/web/admin/system', label: '系统状态', icon: Activity },
+  { to: '/web/admin', labelKey: 'nav.users', icon: Users },
+  { to: '/web/admin/access', labelKey: 'nav.access', icon: Lock },
+  { to: '/web/admin/sessions', labelKey: 'nav.adminSessions', icon: Monitor },
+  { to: '/web/admin/audit', labelKey: 'nav.audit', icon: ScrollText },
+  { to: '/web/admin/config', labelKey: 'nav.config', icon: SlidersHorizontal },
+  { to: '/web/admin/ai-usage', labelKey: 'nav.ai', icon: ChartColumn },
+  { to: '/web/admin/system', labelKey: 'nav.system', icon: Activity },
 ]
 
 function isNavActive(pathname: string, to: string): boolean {
@@ -69,6 +75,7 @@ function isNavActive(pathname: string, to: string): boolean {
 
 function NavList({ items, onNavigate }: { items: NavItem[]; onNavigate?: () => void }) {
   const { pathname } = useLocation()
+  const { t } = useI18n()
   return (
     <nav className="space-y-0.5">
       {items.map((item) => {
@@ -87,7 +94,7 @@ function NavList({ items, onNavigate }: { items: NavItem[]; onNavigate?: () => v
             )}
           >
             <item.icon className="size-4" />
-            {item.label}
+            {t(item.labelKey)}
           </Link>
         )
       })}
@@ -106,6 +113,7 @@ function Brand() {
 
 function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   const { session } = useAuth()
+  const { t } = useI18n()
   const location = useLocation()
   const inAdmin = location.pathname.startsWith('/web/admin')
   const isAdmin = session?.role === 'super' || session?.role === 'admin'
@@ -118,7 +126,9 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
     <div className="flex h-full flex-col gap-4 p-3">
       <Brand />
       <div className="flex-1 overflow-y-auto">
-        <p className="text-muted-foreground px-2.5 pb-2 text-xs font-medium">{inAdmin ? '管理后台' : '控制台'}</p>
+        <p className="text-muted-foreground px-2.5 pb-2 text-xs font-medium">
+          {inAdmin ? t('nav.adminSection') : t('nav.consoleSection')}
+        </p>
         <NavList items={items} onNavigate={onNavigate} />
       </div>
       <div className="space-y-2">
@@ -129,7 +139,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
             onClick={onNavigate}
             className="text-muted-foreground hover:bg-sidebar-accent hover:text-foreground flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium"
           >
-            <LayoutDashboard className="size-4" /> 返回控制台
+            <LayoutDashboard className="size-4" /> {t('nav.backConsole')}
           </Link>
         ) : (
           isAdmin && (
@@ -138,7 +148,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
               onClick={onNavigate}
               className="text-muted-foreground hover:bg-sidebar-accent hover:text-foreground flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium"
             >
-              <ShieldCheck className="size-4" /> 管理后台
+              <ShieldCheck className="size-4" /> {t('nav.adminConsole')}
             </Link>
           )
         )}
@@ -147,26 +157,47 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   )
 }
 
+function LanguageMenu() {
+  const { lang, setLang } = useI18n()
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" aria-label={lang === 'zh' ? '切换语言' : 'Change language'}>
+          <Languages />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {(['zh', 'en'] as Lang[]).map((l) => (
+          <DropdownMenuItem key={l} onClick={() => setLang(l)}>
+            {l === 'zh' ? '中文' : 'English'}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
 function ThemeMenu() {
   const { theme, setTheme } = useTheme()
+  const { t } = useI18n()
   const icon = theme === 'dark' ? <Moon /> : theme === 'light' ? <Sun /> : <Monitor />
   const choose = (t: Theme) => setTheme(t)
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="切换主题">
+        <Button variant="ghost" size="icon" aria-label={t('shell.theme')}>
           {icon}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem onClick={() => choose('light')}>
-          <Sun /> 亮色
+          <Sun /> {t('shell.themeLight')}
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => choose('dark')}>
-          <Moon /> 暗色
+          <Moon /> {t('shell.themeDark')}
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => choose('system')}>
-          <Monitor /> 跟随系统
+          <Monitor /> {t('shell.themeSystem')}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -175,6 +206,7 @@ function ThemeMenu() {
 
 function AccountMenu() {
   const { session, logout } = useAuth()
+  const { t } = useI18n()
   const { data: profile } = useProfile()
   if (!session) return null
   const name = profile?.nickname?.trim() || session.email.split('@')[0]
@@ -214,7 +246,7 @@ function AccountMenu() {
             void logout().then(() => window.location.assign('/web/login'))
           }}
         >
-          <LogOut /> 退出登录
+          <LogOut /> {t('shell.logout')}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -224,8 +256,9 @@ function AccountMenu() {
 function Topbar() {
   const location = useLocation()
   const { session } = useAuth()
+  const { t } = useI18n()
   const inAdmin = location.pathname.startsWith('/web/admin')
-  const title = inAdmin ? '管理后台' : '控制台'
+  const title = inAdmin ? t('nav.adminSection') : t('nav.consoleSection')
   return (
     <header className="bg-background/80 sticky top-0 z-30 flex h-14 items-center gap-3 border-b px-4 backdrop-blur-md">
       <Sheet>
@@ -242,16 +275,120 @@ function Topbar() {
       <div className="min-w-0 flex-1">
         <p className="text-muted-foreground text-xs">{title}</p>
       </div>
-      {session?.isRoot && <span className="text-muted-foreground hidden text-xs sm:inline">根管理员</span>}
+      {session?.isRoot && <span className="text-muted-foreground hidden text-xs sm:inline">{t('shell.rootAdmin')}</span>}
       <ThemeMenu />
+      <LanguageMenu />
       <AccountMenu />
     </header>
+  )
+}
+
+// 模拟登录横幅：固定在页面顶部（占布局高度，不遮内容），只提供「退出模拟」。
+// 其它写操作入口由服务端只读闸兜底，这里只负责让身份一眼可见。
+function ImpersonationBanner() {
+  const { session } = useAuth()
+  const [busy, setBusy] = React.useState(false)
+  if (!session?.impersonatorUid) return null
+  const stop = async () => {
+    setBusy(true)
+    try {
+      await api.post('/api/impersonation/stop', {})
+    } finally {
+      window.location.assign('/web/console')
+    }
+  }
+  return (
+    <div className="sticky top-0 z-40 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 bg-amber-500 px-3 py-1.5 text-center text-xs font-medium text-amber-950">
+      <span>
+        模拟查看中：{session.email} · 由 {session.impersonatorEmail || '平台管理员'} 发起 · 只读，15 分钟后自动结束
+      </span>
+      <button
+        type="button"
+        onClick={() => void stop()}
+        disabled={busy}
+        className="rounded border border-amber-900/40 px-2 py-0.5 font-semibold hover:bg-amber-400 disabled:opacity-60"
+      >
+        {busy ? '退出中…' : '退出模拟'}
+      </button>
+    </div>
+  )
+}
+
+function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+  const { session } = useAuth()
+  const { t } = useI18n()
+  const navigate = useNavigate()
+  const [q, setQ] = React.useState('')
+  const items = React.useMemo(() => {
+    const all = [...userNav]
+    if (session?.role === 'super' || session?.role === 'admin') all.push(...adminNav)
+    return all.filter((i) => !q.trim() || t(i.labelKey).toLowerCase().includes(q.trim().toLowerCase()))
+  }, [q, session?.role, t])
+
+  React.useEffect(() => {
+    if (open) setQ('')
+  }, [open])
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="top-[20%] max-w-lg translate-y-0 p-0" showClose={false}>
+        <DialogTitle className="sr-only">{t('shell.paletteTitle')}</DialogTitle>
+        <div className="flex items-center gap-2 border-b px-3">
+          <Search className="text-muted-foreground size-4" />
+          <Input
+            autoFocus
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder={t('shell.searchPlaceholder')}
+            className="border-0 shadow-none focus-visible:ring-0"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && items[0]) {
+                onOpenChange(false)
+                navigate(items[0].to)
+              }
+            }}
+          />
+          <kbd className="text-muted-foreground rounded border px-1.5 py-0.5 text-[10px]">Esc</kbd>
+        </div>
+        <div className="max-h-72 overflow-y-auto p-1">
+          {items.length === 0 ? (
+            <p className="text-muted-foreground p-4 text-sm">{t('shell.noResults')}</p>
+          ) : (
+            items.map((item) => (
+              <button
+                key={item.to}
+                type="button"
+                className="hover:bg-accent flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm"
+                onClick={() => {
+                  onOpenChange(false)
+                  navigate(item.to)
+                }}
+              >
+                <item.icon className="size-4" />
+                {t(item.labelKey)}
+              </button>
+            ))
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
 export function AppShell() {
   const { pathname } = useLocation()
   const mainRef = React.useRef<HTMLElement>(null)
+  const [palette, setPalette] = React.useState(false)
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setPalette((v) => !v)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
   React.useEffect(() => {
     window.scrollTo(0, 0)
     // 路由切换后把焦点交给主内容，读屏不会还停在旧页的链接上。
@@ -260,6 +397,7 @@ export function AppShell() {
 
   return (
     <div className="min-h-dvh">
+      <ImpersonationBanner />
       <aside className="bg-sidebar fixed inset-y-0 left-0 z-20 hidden w-60 border-r min-[900px]:block">
         <SidebarBody />
       </aside>
@@ -269,6 +407,7 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+      <CommandPalette open={palette} onOpenChange={setPalette} />
     </div>
   )
 }

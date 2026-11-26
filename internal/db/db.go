@@ -149,6 +149,11 @@ type columnDef struct {
 	table, column, ddl string
 }
 
+// SchemaVersion 是当前 schema 的版本标记（人工递增）：系统状态页显示它，
+// 部署后一眼能看出「库结构是否跟上了这次发布」。只做展示，不做迁移判定——
+// 真迁移仍是 EnsureSchema 的幂等补列/补索引。
+const SchemaVersion = "2026-11-26-w12"
+
 // extraColumns 是 schema.sql 之外的列变更（同一批新增，一次补齐）。
 var extraColumns = []columnDef{
 	{"users", "role",
@@ -218,6 +223,10 @@ var extraColumns = []columnDef{
 		"ALTER TABLE sessions ADD COLUMN prev_csrf_hash CHAR(64) NULL"},
 	{"sessions", "prev_valid_until",
 		"ALTER TABLE sessions ADD COLUMN prev_valid_until BIGINT NOT NULL DEFAULT 0"},
+	// impersonator_uid：管理员模拟会话的发起人（0 = 正常会话）。回滚：
+	//   ALTER TABLE sessions DROP COLUMN impersonator_uid;
+	{"sessions", "impersonator_uid",
+		"ALTER TABLE sessions ADD COLUMN impersonator_uid BIGINT NOT NULL DEFAULT 0"},
 	// 回滚（按依赖倒序；生产回滚前先停进程，避免新旧二进制对缺列各自解释）：
 	//   ALTER TABLE sessions DROP INDEX uq_sessions_prev_token;
 	//   ALTER TABLE sessions DROP COLUMN prev_valid_until, DROP COLUMN prev_csrf_hash,

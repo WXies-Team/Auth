@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { Download, RefreshCw, ScrollText, Search } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { AuditRow, Page } from '@/lib/types'
@@ -10,6 +10,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
+import { SavedViews } from '@/components/ui/saved-views'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -27,21 +28,35 @@ const ACTIONS = [
   'admin.session.revoke', 'admin.config.set', 'admin.bulk_action', 'admin.oauth_client.write',
   'project.access_grant', 'project.access_revoke', 'project.restrict_on', 'project.restrict_off', 'project.policy_update', 'admin.mail_test',
   'internal.ensure', 'account.delete', 'admin.audit.view', 'logout', 'register',
-  'oauth.consent_grant', 'oauth.consent_revoke', 'admin.mfa.reset',
+  'oauth.consent_grant', 'oauth.consent_revoke', 'admin.mfa.reset', 'admin.impersonate',
 ]
 
 const PAGE = 50
 
 export default function AdminAuditPage() {
-  const [action, setAction] = React.useState('')
-  const [actor, setActor] = React.useState('')
-  const [target, setTarget] = React.useState('')
-  const [result, setResult] = React.useState('')
-  const [ip, setIp] = React.useState('')
-  const [from, setFrom] = React.useState('')
-  const [to, setTo] = React.useState('')
-  const [page, setPage] = React.useState(1)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [action, setAction] = React.useState(searchParams.get('action') ?? '')
+  const [actor, setActor] = React.useState(searchParams.get('actor') ?? '')
+  const [target, setTarget] = React.useState(searchParams.get('target') ?? '')
+  const [result, setResult] = React.useState(searchParams.get('result') ?? '')
+  const [ip, setIp] = React.useState(searchParams.get('ip') ?? '')
+  const [from, setFrom] = React.useState(searchParams.get('from') ?? '')
+  const [to, setTo] = React.useState(searchParams.get('to') ?? '')
+  const [page, setPage] = React.useState(Math.max(1, Number(searchParams.get('page')) || 1))
   const [open, setOpen] = React.useState<number | null>(null)
+
+  React.useEffect(() => {
+    const p = new URLSearchParams()
+    if (action) p.set('action', action)
+    if (actor) p.set('actor', actor)
+    if (target) p.set('target', target)
+    if (result) p.set('result', result)
+    if (ip) p.set('ip', ip)
+    if (from) p.set('from', from)
+    if (to) p.set('to', to)
+    if (page > 1) p.set('page', String(page))
+    setSearchParams(p, { replace: true })
+  }, [action, actor, target, result, ip, from, to, page, setSearchParams])
 
   const params = new URLSearchParams({ limit: String(PAGE), offset: String((page - 1) * PAGE) })
   if (action) params.set('action', action)
@@ -104,6 +119,21 @@ export default function AdminAuditPage() {
               <Search /> 重置筛选
             </Button>
           </div>
+
+          <SavedViews
+            storageKey="auth.views.audit"
+            state={{ action, actor, target, result, ip, from, to }}
+            onApply={(v) => {
+              setAction(v.action ?? '')
+              setActor(v.actor ?? '')
+              setTarget(v.target ?? '')
+              setResult(v.result ?? '')
+              setIp(v.ip ?? '')
+              setFrom(v.from ?? '')
+              setTo(v.to ?? '')
+              setPage(1)
+            }}
+          />
 
           {isLoading ? (
             <div className="space-y-2">

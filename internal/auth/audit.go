@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 	"time"
 
@@ -65,6 +66,7 @@ const (
 	AuditProjectRestrictOff  = "project.restrict_off"
 	AuditProjectPolicy       = "project.policy_update"
 	AuditAdminMailTest       = "admin.mail_test"
+	AuditAdminImpersonate    = "admin.impersonate"
 	AuditDeleteRequested     = "account.delete_requested"
 	AuditDeleteCancelled     = "account.delete_cancelled"
 	// B4 OAuth：管理端开通/更新客户端登记（detail 只带 app 与 rotateSecret 位，
@@ -322,9 +324,18 @@ func auditAppOR(n int) string {
 func (s *Service) CleanAuditLogs() { cleanAuditLogs(s.pool) }
 
 // cleanAuditLogs 按保留期删过期审计行（Service 方法与 otp 发码路径共用同一实现）。
+// 保留天数读配置中心 audit_retention_days；缺省/非法/越界一律回 90 天。
 func cleanAuditLogs(pool *sql.DB) {
+	days := 90
+	var raw string
+	if err := pool.QueryRowContext(db.QueryCtx(),
+		"SELECT `value` FROM app_config WHERE `key` = 'audit_retention_days'").Scan(&raw); err == nil {
+		if n, perr := strconv.Atoi(strings.TrimSpace(raw)); perr == nil && n >= 7 && n <= 365 {
+			days = n
+		}
+	}
 	if _, err := pool.ExecContext(db.SlowCtx(),
-		"DELETE FROM audit_logs WHERE ts < ?", time.Now().Add(-auditRetention).UnixMilli()); err != nil {
+		"DELETE FROM audit_logs WHERE ts < ?", time.Now().Add(-time.Duration(days)*24*time.Hour).UnixMilli()); err != nil {
 		slog.Warn("清理过期审计行失败（下次发码再试）", "err", err)
 	}
 }

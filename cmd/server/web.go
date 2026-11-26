@@ -93,6 +93,46 @@ func registerWebRoutes(mux *http.ServeMux, svc *auth.Service) {
 			writeLoginResult(svc, w, res)
 		})))))
 
+	// ---- 自助注册（默认关闭，配置中心 allow_self_register=1 才开放）----
+	mux.Handle("GET /web/register/config", withLogging(limitN("web-register-config", 60,
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			writeJSON(w, http.StatusOK, map[string]bool{"enabled": svc.SelfRegisterEnabled()})
+		}))))
+	mux.Handle("POST /web/register/send-code", withLogging(originGuard(limitN("web-register-code", 5,
+		jsonBody[struct {
+			Email string `json:"email"`
+		}](func(req *struct {
+			Email string `json:"email"`
+		}, w http.ResponseWriter, _ *http.Request) {
+			if !svc.SelfRegisterEnabled() {
+				writeDenied(w, "当前未开放自助注册，请联系管理员获取邀请", auth.ReasonPermission)
+				return
+			}
+			if err := svc.SendCode(req.Email, auth.PurposeRegister, ""); err != nil {
+				writeResult(w, nil, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+		})))))
+	mux.Handle("POST /web/register", withLogging(originGuard(limitN("web-register", 10,
+		jsonBody[struct {
+			Email    string `json:"email"`
+			Password string `json:"password"`
+			Code     string `json:"code"`
+		}](func(req *struct {
+			Email    string `json:"email"`
+			Password string `json:"password"`
+			Code     string `json:"code"`
+		}, w http.ResponseWriter, r *http.Request) {
+			ws, email, err := svc.RegisterWeb(req.Email, req.Password, req.Code, webSessMeta(r))
+			if err != nil {
+				writeResult(w, nil, err)
+				return
+			}
+			setWebCookies(w, ws)
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "email": email})
+		})))))
+
 	// ---- 注销撤销页（W3）：**不挂 withUID**——已登出的用户也要能撤（申请注销时
 	// 全部会话已被吊销），撤销 token 即凭证、不可猜。GET 渲染确认页 / 友好错误页，
 	// POST 提交；两路各吃 IP 10/分 限流。页面 HTML 内嵌在本文件（不进
@@ -209,6 +249,18 @@ func registerWebRoutes(mux *http.ServeMux, svc *auth.Service) {
 			http.Redirect(w, r, "/web/login", http.StatusFound)
 		})))))
 
+	// ---- 模拟登录退出（只读会话的唯一写操作）----
+	mux.Handle("POST /api/impersonation/stop", authed("impersonation-stop", 10,
+		func(c auth.WebCaller, w http.ResponseWriter, r *http.Request) {
+			if !sameOrigin(r) {
+				writeError(w, http.StatusForbidden, "请从本站页面退出模拟")
+				return
+			}
+			svc.StopImpersonation(c)
+			clearImpersonationCookie(w)
+			writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+		}))
+
 	// ---- 会话（当前身份 / 重新验证 / 登出）----
 	// 读身份是幂等 GET；POST 保留给旧前端与既有契约测试，两路同一处理器。
 	webSession := func(c auth.WebCaller, w http.ResponseWriter, r *http.Request) {
@@ -237,7 +289,9 @@ func registerWebRoutes(mux *http.ServeMux, svc *auth.Service) {
 			TotpEnabled: totpOn, PasskeyCount: len(keys), PasswordSet: hasPassword,
 			// isRoot 与 internal/auth 的 RootUID 同源（不是前端再抄一份 5939716）；
 			// UI 接线前硬编码的 ROOT_UID 应改为读这个字段。
-			IsRoot: svc.IsRootUID(c.UID),
+			IsRoot:            svc.IsRootUID(c.UID),
+			ImpersonatorUID:   c.ImpersonatorUID,
+			ImpersonatorEmail: svc.ImpersonatorEmail(c.ImpersonatorUID),
 		})
 	}
 	mux.Handle("GET /web/session", authed("web-session", 60, webSession))
@@ -314,6 +368,13 @@ func registerWebRoutes(mux *http.ServeMux, svc *auth.Service) {
 			})
 			if err != nil {
 				writeResult(w, nil, err)
+				return
+			}
+			// 模拟会话只清自己的独立 cookie：管理员原来的 web 会话还得留着，
+			// 否则「退出模拟」会把管理员一起登出。
+			if c.ImpersonatorUID > 0 {
+				clearImpersonationCookie(w)
+				writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 				return
 			}
 			clearWebCookies(w)
@@ -768,6 +829,24 @@ func setWebCookies(w http.ResponseWriter, ws *auth.WebSession) {
 		Name: auth.WebCSRFCookieName, Value: ws.CSRFToken, Path: "/",
 		HttpOnly: false, Secure: true, SameSite: http.SameSiteLaxMode,
 		MaxAge: auth.WebCookieMaxAgeSeconds, Expires: ws.ExpiresAt,
+	})
+}
+
+// setImpersonationCookie 签发模拟会话的独立 cookie：不覆盖管理员的 web 会话，
+// 关掉模拟标签页/退出模拟即回到原身份。
+func setImpersonationCookie(w http.ResponseWriter, ws *auth.WebSession) {
+	http.SetCookie(w, &http.Cookie{
+		Name: auth.ImpersonationCookieName, Value: ws.Token, Path: "/",
+		HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode,
+		MaxAge: int(time.Until(ws.ExpiresAt).Seconds()), Expires: ws.ExpiresAt,
+	})
+}
+
+func clearImpersonationCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name: auth.ImpersonationCookieName, Value: "", Path: "/",
+		HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode,
+		MaxAge: -1, Expires: time.Unix(1, 0),
 	})
 }
 

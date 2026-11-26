@@ -947,7 +947,7 @@ func (s *Service) AdminRevokeUserSessions(actor Caller, targetUID int64) (err er
 // 非白名单键一律 404：后台不该变成「能改库里任意键」的口子。
 // fcm* 前缀已随 FCM 凭据退出分发端点一并移除（见 cmd/server/config.go 头注释）：
 // 库里的 fcm_* 旧键不再出现在配置中心，也不可再编辑。
-var adminConfigPrefixes = []string{"mail_", "hook_", "llm_", "ai_"}
+var adminConfigPrefixes = []string{"mail_", "hook_", "llm_", "ai_", "audit_"}
 
 // isSecretConfigKey 判定「只显示末 4 位」的键：名字里带凭据语义的一律算。
 // "pass" 覆盖 mail_smtp_pass 这类缩写（SMTP 密码在后台配置中心只回末 4 位）。
@@ -962,7 +962,20 @@ func isSecretConfigKey(key string) bool {
 	return false
 }
 
+// adminConfigExactKeys 是前缀之外的白名单精确键（安全开关类）。
+var adminConfigExactKeys = map[string]bool{
+	"allow_self_register":     true,
+	"password_breach_check":   true,
+	"risk_new_ip_mfa":         true,
+	"audit_retention_days":    true,
+	"webauthn_opaque_origins": true,
+	"totp_enforce_apps":       true,
+}
+
 func allowedConfigKey(key string) bool {
+	if adminConfigExactKeys[key] {
+		return true
+	}
 	for _, prefix := range adminConfigPrefixes {
 		if strings.HasPrefix(key, prefix) {
 			return true

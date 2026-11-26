@@ -15,7 +15,9 @@ import (
 
 	"github.com/WXies-Team/Auth/internal/auth"
 	"github.com/WXies-Team/Auth/internal/config"
+	"github.com/WXies-Team/Auth/internal/db"
 	mailsvc "github.com/WXies-Team/Auth/internal/mail"
+	"github.com/WXies-Team/Auth/internal/protocol"
 )
 
 var processStartedAt = time.Now()
@@ -262,6 +264,28 @@ func registerAdminRoutes(mux *http.ServeMux, svc *auth.Service, cfg *config.Stor
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	}))
+	// POST /admin/users/{uid}/impersonate {reason}：平台管理员以目标视角只读浏览
+	// （15 分钟、独立 cookie、只读、起止审计）。业务边界都在 auth.StartImpersonation。
+	mux.Handle("POST /admin/users/{uid}/impersonate", admin("admin-impersonate", func(ac adminCtx, w http.ResponseWriter, r *http.Request) {
+		if !requireSuper(w, ac) {
+			return
+		}
+		uid, ok := pathInt64(w, r.PathValue("uid"))
+		if !ok {
+			return
+		}
+		var req protocol.ImpersonateRequest
+		if !decodeOr400(w, r, &req) {
+			return
+		}
+		ws, email, err := svc.StartImpersonation(ac.caller.UID, uid, req.Reason, ac.caller.Email, sessMeta(r))
+		if err != nil {
+			writeResult(w, nil, err)
+			return
+		}
+		setImpersonationCookie(w, ws)
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "email": email, "expiresAt": ws.ExpiresAt.UnixMilli()})
 	}))
 	mux.Handle("POST /admin/users/{uid}/revoke-sessions", admin("admin-kick", func(ac adminCtx, w http.ResponseWriter, r *http.Request) {
 		if !requireSuper(w, ac) {
@@ -729,9 +753,17 @@ func registerAdminRoutes(mux *http.ServeMux, svc *auth.Service, cfg *config.Stor
 		if merr != nil {
 			mailOK = false
 		}
-		version := "dev"
-		if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" {
-			version = bi.Main.Version
+		version, commit, goVersion := "dev", "", ""
+		if bi, ok := debug.ReadBuildInfo(); ok {
+			if bi.Main.Version != "" {
+				version = bi.Main.Version
+			}
+			goVersion = bi.GoVersion
+			for _, st := range bi.Settings {
+				if st.Key == "vcs.revision" {
+					commit = st.Value
+				}
+			}
 		}
 		writeJSON(w, http.StatusOK, struct {
 			Version            string            `json:"version"`
@@ -742,9 +774,15 @@ func registerAdminRoutes(mux *http.ServeMux, svc *auth.Service, cfg *config.Stor
 			MailConfigured     bool              `json:"mailConfigured"`
 			JWTConfigured      bool              `json:"jwtConfigured"`
 			PasskeysConfigured bool              `json:"passkeysConfigured"`
+			BuildCommit        string            `json:"buildCommit"`
+			GoVersion          string            `json:"goVersion"`
+			MailLastError      string            `json:"mailLastError"`
+			SchemaVersion      string            `json:"schemaVersion"`
 			Counts             auth.SystemCounts `json:"counts"`
 		}{
-			Version: version, StartedAt: processStartedAt.UnixMilli(),
+			Version: version, BuildCommit: commit, GoVersion: goVersion,
+			MailLastError: auth.LastMailError(), SchemaVersion: db.SchemaVersion,
+			StartedAt:     processStartedAt.UnixMilli(),
 			UptimeSeconds: int64(time.Since(processStartedAt).Seconds()),
 			DBOK:          pingErr == nil, DBLatencyMs: latency.Milliseconds(),
 			MailConfigured: mailOK, JWTConfigured: true, PasskeysConfigured: svc.PasskeysConfigured(),

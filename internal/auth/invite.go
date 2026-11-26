@@ -344,6 +344,9 @@ func (s *Service) AcceptInvite(token, password, nickname string, meta SessionMet
 	if err := validatePassword(password); err != nil {
 		return nil, err
 	}
+	if err := s.rejectBreached(password); err != nil {
+		return nil, err
+	}
 	nick, _, _, perr := validateProfile(nickname, 0, nil)
 	if perr != nil {
 		return nil, perr

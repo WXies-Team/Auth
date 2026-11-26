@@ -56,7 +56,9 @@ export default function AdminSystemPage() {
               <CardHeader>
                 <CardTitle>运行状态</CardTitle>
                 <CardDescription>
-                  {data.version} · 已运行 {Math.floor(data.uptimeSeconds / 3600)} 小时
+                  {data.version}
+                  {data.buildCommit ? ` · ${data.buildCommit.slice(0, 7)}` : ''} · 已运行{' '}
+                  {Math.floor(data.uptimeSeconds / 3600)} 小时
                   {data.startedAt ? `（启动于 ${relativeTime(data.startedAt)}）` : ''}
                 </CardDescription>
               </CardHeader>
@@ -82,6 +84,12 @@ export default function AdminSystemPage() {
                   <Mail className="text-muted-foreground size-4" />
                   <span>{data.mailConfigured ? 'SMTP 四键齐全' : 'SMTP 未配置，验证码邮件发不出去'}</span>
                 </div>
+                {data.mailLastError && (
+                  <p className="text-destructive break-all text-xs">最近发信错误：{data.mailLastError}</p>
+                )}
+                <p className="text-muted-foreground text-xs">
+                  {data.goVersion} · 数据库 {data.counts.tables} 张表 / {data.counts.indexes} 个索引 · schema {data.schemaVersion}
+                </p>
                 <div className="flex items-center gap-2">
                   <KeyRound className="text-muted-foreground size-4" />
                   <span>{data.passkeysConfigured ? 'WebAuthn RP 已就绪' : 'WebAuthn 未配置'}</span>

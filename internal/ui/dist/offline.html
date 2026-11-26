@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>离线 · Auth</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body { margin: 0; min-height: 100dvh; display: grid; place-items: center;
+             font: 15px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+      main { max-width: 22rem; padding: 2rem; text-align: center; }
+      h1 { font-size: 1.25rem; margin: 0 0 .5rem; }
+      p { margin: 0 0 1.25rem; opacity: .7; }
+      button { font: inherit; padding: .5rem 1rem; border-radius: .5rem;
+               border: 1px solid currentColor; background: transparent; cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>当前离线</h1>
+      <p>网络恢复后重试即可。登录与账号操作需要联网，不做离线缓存。</p>
+      <button onclick="location.reload()">重新加载</button>
+    </main>
+  </body>
+</html>

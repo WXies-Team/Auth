@@ -1,5 +1,6 @@
 import * as React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { Globe, Monitor, RefreshCw, Search, Users } from 'lucide-react'
 import { api } from '@/lib/api'
@@ -11,6 +12,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
+import { SavedViews } from '@/components/ui/saved-views'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Pagination } from '@/components/ui/pagination'
@@ -22,21 +24,31 @@ const PAGE = 20
 
 export default function AdminSessionsPage() {
   const qc = useQueryClient()
-  const [query, setQuery] = React.useState('')
-  const [ip, setIp] = React.useState('')
-  const [app, setApp] = React.useState('')
-  const [page, setPage] = React.useState(1)
+  const [params, setParams] = useSearchParams()
+  const [query, setQuery] = React.useState(params.get('query') ?? '')
+  const [ip, setIp] = React.useState(params.get('ip') ?? '')
+  const [app, setApp] = React.useState(params.get('app') ?? '')
+  const [page, setPage] = React.useState(Math.max(1, Number(params.get('page')) || 1))
   const [target, setTarget] = React.useState<AdminSession | null>(null)
   const [busy, setBusy] = React.useState(false)
 
-  const params = new URLSearchParams({ limit: String(PAGE), offset: String((page - 1) * PAGE) })
-  if (query) params.set('query', query)
-  if (ip) params.set('ip', ip)
-  if (app) params.set('app', app)
+  React.useEffect(() => {
+    const p = new URLSearchParams()
+    if (query) p.set('query', query)
+    if (ip) p.set('ip', ip)
+    if (app) p.set('app', app)
+    if (page > 1) p.set('page', String(page))
+    setParams(p, { replace: true })
+  }, [query, ip, app, page, setParams])
+
+  const apiParams = new URLSearchParams({ limit: String(PAGE), offset: String((page - 1) * PAGE) })
+  if (query) apiParams.set('query', query)
+  if (ip) apiParams.set('ip', ip)
+  if (app) apiParams.set('app', app)
 
   const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['admin-sessions', query, ip, app, page],
-    queryFn: () => api.get<SessionPage>(`/admin/sessions?${params}`),
+    queryFn: () => api.get<SessionPage>(`/admin/sessions?${apiParams}`),
   })
 
   async function kick() {
@@ -105,6 +117,17 @@ export default function AdminSessionsPage() {
               ))}
             </Select>
           </div>
+
+          <SavedViews
+            storageKey="auth.views.sessions"
+            state={{ query, ip, app }}
+            onApply={(v) => {
+              setQuery(v.query ?? '')
+              setIp(v.ip ?? '')
+              setApp(v.app ?? '')
+              setPage(1)
+            }}
+          />
 
           {isLoading ? (
             <div className="space-y-2">
