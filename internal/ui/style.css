@@ -1111,8 +1111,20 @@ td .user-cell .truncate { max-width: 24ch; }
    .content 的 grid gap 只作用于它的直接子项，进不来——缺了它两张卡会黏连。 */
 #sess-users-view > .toolbar { margin-bottom: var(--gap); }
 
-/* 分页条 */
-.pager { display: flex; align-items: center; gap: var(--sp-2); justify-content: flex-end; }
+/* 分页条：上一页/下一页 + 数字页码（当前页 aria-current + 非颜色区分） */
+.pager { display: flex; align-items: center; gap: var(--sp-2); justify-content: flex-end; flex-wrap: wrap; }
+.pager-pages { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; }
+.page-btn {
+  min-width: 36px; height: 36px; padding: 0 8px;
+  border: 0; border-radius: 10px; background: transparent;
+  color: var(--dim); font: inherit; font-size: 13px; cursor: pointer;
+}
+.page-btn:hover { background: var(--card); color: var(--ink); }
+.page-btn.on {
+  background: var(--primary-soft); color: var(--primary-text);
+  font-weight: 600; cursor: default;
+}
+.pager-ellipsis { min-width: 24px; text-align: center; color: var(--dim); font-size: 13px; }
 
 /* ================= ⑬ 详情面板与图表 ================= */
 /* 页内钻取面板（用户详情/会话明细/AI 明细） */

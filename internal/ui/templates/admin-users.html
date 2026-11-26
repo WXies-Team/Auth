@@ -86,11 +86,12 @@
   </table>
 </div>
 
-<div class="pager" style="margin-top:10px">
+<nav class="pager" aria-label="用户分页" style="margin-top:10px">
   <button type="button" class="btn small" id="users-prev">上一页</button>
+  <span class="pager-pages" id="users-pages"></span>
   <span class="dim" id="users-page">—</span>
   <button type="button" class="btn small" id="users-next">下一页</button>
-</div>
+</nav>
 
 <!-- 待处理邀请：折叠的次级表，四态徽标 + 行内重发/撤销；过滤复用上面的搜索框 -->
 <details class="section" id="invites-wrap">

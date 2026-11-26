@@ -714,6 +714,21 @@ func TestAdminAuthzMatrix(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Errorf("未知项目搜索候选应 400，得到 %d %s", rec.Code, rec.Body.String())
 	}
+	// 项目登录名单的删除端点必须真的能删（前端「移出项目」的最后一步）。
+	rec = e.do(t, "POST", "/admin/projects/CalorieDiary/access",
+		`{"email":"worker@example.com"}`, withCSRF)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("加入项目名单应 200，得到 %d %s", rec.Code, rec.Body.String())
+	}
+	rec = e.do(t, "DELETE", "/admin/projects/CalorieDiary/access",
+		`{"email":"worker@example.com"}`, withCSRF)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("移出项目名单应 200，得到 %d %s", rec.Code, rec.Body.String())
+	}
+	var left int
+	if err := e.pool.QueryRow("SELECT COUNT(*) FROM project_access WHERE app = 'CalorieDiary' AND uid = ?", worker).Scan(&left); err != nil || left != 0 {
+		t.Errorf("移出后 project_access 不应留行，得到 %d err=%v", left, err)
+	}
 
 	// ④ 降级自己 → 400（服务端守卫；前端禁用只是提示）。角色调整唯一入口是
 	//    POST /admin/users/{uid}/role（旧 PATCH /admin/users/{uid} 已并入并删除）

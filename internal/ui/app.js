@@ -384,22 +384,75 @@ function setListBusy(el, busy) {
   if (el) el.setAttribute('aria-busy', busy ? 'true' : 'false');
 }
 
-/* ---------- 分页（用户/审计/后台会话三页共用） ---------- */
+/* ---------- 分页（用户/审计/后台会话/项目成员共用） ----------
+   参考 GOV.UK / NHS / USWDS 的数字分页：当前页 + 前后各一页 + 首尾页，
+   间隔用省略号；当前页 aria-current="page"；小于 7 页时只显示数字。 */
+function pagerSequence(current, pages) {
+  if (pages <= 7) return Array.from({ length: pages }, (_, i) => i + 1);
+  const keep = new Set([1, pages, current - 1, current, current + 1]);
+  if (current <= 3) [2, 3, 4].forEach(n => keep.add(n));
+  if (current >= pages - 2) [pages - 3, pages - 2, pages - 1].forEach(n => keep.add(n));
+  const nums = [...keep].filter(n => n >= 1 && n <= pages).sort((a, b) => a - b);
+  const out = [];
+  nums.forEach((n, i) => {
+    if (i && n - nums[i - 1] > 1) out.push('…');
+    out.push(n);
+  });
+  return out;
+}
+
+function renderPagerPages(el, current, pages, onGo) {
+  if (!el) return;
+  el.innerHTML = '';
+  el.hidden = pages <= 1;
+  if (pages <= 1) return;
+  pagerSequence(current, pages).forEach(item => {
+    if (item === '…') {
+      const dots = document.createElement('span');
+      dots.className = 'pager-ellipsis';
+      dots.setAttribute('aria-hidden', 'true');
+      dots.textContent = '…';
+      el.appendChild(dots);
+      return;
+    }
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'page-btn' + (item === current ? ' on' : '');
+    b.textContent = String(item);
+    b.setAttribute('aria-label', `第 ${item} 页`);
+    if (item === current) b.setAttribute('aria-current', 'page');
+    else b.addEventListener('click', () => onGo(item));
+    el.appendChild(b);
+  });
+}
+
 function makePager(opts) {
   const st = { offset: 0, limit: opts.limit || 20, total: 0 };
   const prev = $(opts.prev), next = $(opts.next), label = $(opts.label);
+  const pagesEl = $(opts.pages);
+  let reloadFn = null;
+  const pageCount = () => Math.max(1, Math.ceil(st.total / st.limit));
+  const currentPage = () => Math.floor(st.offset / st.limit) + 1;
   return {
     state: st,
     set(total, shown) {
       st.total = total;
+      const pages = pageCount();
+      if (st.offset >= total && total > 0) st.offset = (pages - 1) * st.limit;
       if (label) {
         label.textContent = total
-          ? `${st.offset + 1}–${st.offset + shown} / ${total}` : '—';
+          ? `第 ${currentPage()} / ${pages} 页 · 共 ${total} 条`
+          : '—';
       }
+      renderPagerPages(pagesEl, currentPage(), pages, p => {
+        st.offset = (p - 1) * st.limit;
+        if (reloadFn) reloadFn();
+      });
       if (prev) prev.disabled = st.offset <= 0;
       if (next) next.disabled = st.offset + shown >= total;
     },
     wire(reload) {
+      reloadFn = reload;
       if (prev) prev.addEventListener('click', () => { st.offset = Math.max(0, st.offset - st.limit); reload(); });
       if (next) next.addEventListener('click', () => { st.offset += st.limit; reload(); });
     },
@@ -2185,7 +2238,7 @@ function initAdminUsers() {
   const body = $('#users-body');
   if (!body) return;
   const APPS = knownApps();
-  const pager = makePager({ prev: '#users-prev', next: '#users-next', label: '#users-page', limit: 20 });
+  const pager = makePager({ prev: '#users-prev', next: '#users-next', label: '#users-page', pages: '#users-pages', limit: 20 });
 
   // 确认弹窗：一次挂一个待执行动作 + 它的成功提示；after 可选拿回执收尾
   let pending = null;
@@ -3231,7 +3284,7 @@ function initAdminAccess() {
   /* ---- 添加成员：搜索已注册用户 → 勾选 → 选角色 → 添加 ----
      候选接口按项目鉴权（app-admin 只搜自己的项目），不在前端手输邮箱。 */
   function openMemberPicker(p) {
-    picker = { p, selected: new Map(), timer: null, offset: 0, total: 0, loading: false };
+    picker = { p, selected: new Map(), timer: null, page: 1, total: 0, loading: false };
     $('#member-dlg-title').textContent = `添加成员 · ${p.name || p.app}`;
     $('#member-dlg-desc').textContent =
       '搜索已注册用户，选择「可登录」或「项目管理员」。项目管理员可管理本项目成员，并始终可以登录。';
@@ -3263,34 +3316,38 @@ function initAdminAccess() {
     const box = $('#member-results');
     const empty = $('#member-empty');
     const count = $('#member-count');
-    const more = $('#member-more');
+    const pager = $('#member-pager');
+    const limit = 20;
     if (reset) {
-      picker.offset = 0;
+      picker.page = 1;
       picker.total = 0;
       picker.selected.clear();
       updateAddBtn();
       box.innerHTML = '';
-      more.hidden = true;
+      pager.hidden = true;
     }
     picker.loading = true;
     showErr('#member-error', '');
     try {
-      const res = await api(`/admin/projects/${encodeURIComponent(picker.p.app)}/candidates?query=${encodeURIComponent(q)}&limit=100&offset=${picker.offset}`);
+      const offset = (picker.page - 1) * limit;
+      const res = await api(`/admin/projects/${encodeURIComponent(picker.p.app)}/candidates?query=${encodeURIComponent(q)}&limit=${limit}&offset=${offset}`);
       const existing = new Map(peopleOf(picker.p).map(x => [String(x.email).toLowerCase(), x.role]));
       const items = res.items || [];
       picker.total = Number(res.total) || 0;
-      picker.offset += items.length;
+      const pages = Math.max(1, Math.ceil(picker.total / limit));
+      if (picker.page > pages) picker.page = pages;
       if (!picker.total) {
         empty.hidden = false;
         count.hidden = true;
-        more.hidden = true;
+        pager.hidden = true;
         return;
       }
       empty.hidden = true;
       count.hidden = false;
       count.textContent = q
-        ? `找到 ${picker.total} 位匹配用户 · 已显示 ${Math.min(picker.offset, picker.total)} 位`
-        : `共 ${picker.total} 位已注册用户 · 已显示 ${Math.min(picker.offset, picker.total)} 位（输入关键词可筛选）`;
+        ? `找到 ${picker.total} 位匹配用户`
+        : `共 ${picker.total} 位已注册用户`;
+      box.innerHTML = '';
       items.forEach(u => {
         const role = existing.get(String(u.email).toLowerCase());
         const disabled = !!role;
@@ -3309,8 +3366,14 @@ function initAdminAccess() {
         });
         box.appendChild(row);
       });
-      more.hidden = picker.offset >= picker.total;
-      if (!more.hidden) more.textContent = `加载更多（剩余 ${picker.total - picker.offset} 位）`;
+      pager.hidden = pages <= 1;
+      renderPagerPages($('#member-pages'), picker.page, pages, nextPage => {
+        picker.page = nextPage;
+        searchCandidates(false);
+      });
+      $('#member-page').textContent = `第 ${picker.page} / ${pages} 页`;
+      $('#member-prev').disabled = picker.page <= 1;
+      $('#member-next').disabled = picker.page >= pages;
     } catch (err) {
       showErr('#member-error', err.message);
     } finally {
@@ -3330,7 +3393,18 @@ function initAdminAccess() {
     clearTimeout(picker.timer);
     searchCandidates(true);
   });
-  $('#member-more').addEventListener('click', () => searchCandidates(false));
+  $('#member-prev').addEventListener('click', () => {
+    if (!picker || picker.page <= 1) return;
+    picker.page -= 1;
+    searchCandidates(false);
+  });
+  $('#member-next').addEventListener('click', () => {
+    if (!picker) return;
+    const pages = Math.max(1, Math.ceil(picker.total / 20));
+    if (picker.page >= pages) return;
+    picker.page += 1;
+    searchCandidates(false);
+  });
   $('#member-cancel').addEventListener('click', () => { picker = null; closeDialog($('#member-dlg')); });
   $('#member-add').addEventListener('click', async () => {
     if (!picker || !picker.selected.size) return;
@@ -3377,7 +3451,7 @@ function initAdminSessions() {
   const ubody = $('#sess-users-body');
   if (!ubody) return;
   // 不给 makePager 传 label：页码文案按**用户**说，按钮仍按会话数分页
-  const pager = makePager({ prev: '#sess-prev', next: '#sess-next', limit: 100 });
+  const pager = makePager({ prev: '#sess-prev', next: '#sess-next', pages: '#sess-pages', limit: 100 });
 
   let pendingKick = null;
   let pendingAll = null;
@@ -3643,7 +3717,7 @@ function detailText(d) {
 function initAdminAudit() {
   const body = $('#audit-body');
   if (!body) return;
-  const pager = makePager({ prev: '#audit-prev', next: '#audit-next', label: '#audit-page', limit: 50 });
+  const pager = makePager({ prev: '#audit-prev', next: '#audit-next', label: '#audit-page', pages: '#audit-pages', limit: 50 });
 
   function filters() {
     const p = new URLSearchParams();

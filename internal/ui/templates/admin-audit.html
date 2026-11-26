@@ -125,10 +125,11 @@
 <div class="row between" style="margin-top:10px">
   <!-- 导出走同一套筛选（format=csv，跳过分页取全量，上限 5000 行） -->
   <button type="button" class="btn small" id="audit-export">导出 CSV</button>
-  <span class="pager">
+  <nav class="pager" aria-label="审计分页">
     <button type="button" class="btn small" id="audit-prev">上一页</button>
+    <span class="pager-pages" id="audit-pages"></span>
     <span class="dim" id="audit-page">—</span>
     <button type="button" class="btn small" id="audit-next">下一页</button>
-  </span>
+  </nav>
 </div>
 {{end}}

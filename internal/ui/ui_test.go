@@ -1929,7 +1929,7 @@ func TestAdminAccessMembersAndPicker(t *testing.T) {
 	for _, want := range []string{
 		`id="access-ladder"`, `id="access-stats"`, `id="access-denied"`,
 		`id="member-dlg"`, `id="member-query"`, `id="member-results"`,
-		`id="member-role"`, `id="member-more"`, `id="access-dlg"`,
+		`id="member-role"`, `id="member-pager"`, `id="access-dlg"`,
 		"谁可以访问项目", "平台管理员", "项目管理员", "登录名单", "添加成员",
 	} {
 		if !strings.Contains(tpl, want) {
@@ -2061,6 +2061,30 @@ func TestAdminSessionsOverviewAggregation(t *testing.T) {
 	}
 	if i < 0 || j < 0 || i-j > 200 {
 		t.Error("全量退出按钮应按 IS_SUPER 显隐（端点仅平台管理员可用）")
+	}
+}
+
+// 分页统一显示页码：当前页/前后页/首尾页，超过 7 页用省略号；页码按钮有 aria-current。
+func TestPaginationPageNumbers(t *testing.T) {
+	js := mustJS(t)
+	for _, want := range []string{
+		"function pagerSequence(current, pages)",
+		"function renderPagerPages(el, current, pages, onGo)",
+		`b.setAttribute('aria-current', 'page')`,
+		"第 ${currentPage()} / ${pages} 页 · 共 ${total} 条",
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("分页缺页码结构 %q", want)
+		}
+	}
+	for _, f := range []string{"admin-users", "admin-sessions", "admin-audit", "admin-access"} {
+		b, err := files.ReadFile("templates/" + f + ".html")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(b), "pager-pages") {
+			t.Errorf("%s 缺 pager-pages 容器", f)
+		}
 	}
 }
 

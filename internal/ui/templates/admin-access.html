@@ -70,7 +70,12 @@
   </label>
   <p class="hint" id="member-count" hidden></p>
   <div class="list" id="member-results" style="margin-top:8px;max-height:300px;overflow:auto"></div>
-  <button type="button" class="btn small" id="member-more" hidden style="margin-top:8px">加载更多</button>
+  <nav class="pager" id="member-pager" aria-label="候选用户分页" style="margin-top:8px" hidden>
+    <button type="button" class="btn small" id="member-prev">上一页</button>
+    <span class="pager-pages" id="member-pages"></span>
+    <span class="dim" id="member-page">—</span>
+    <button type="button" class="btn small" id="member-next">下一页</button>
+  </nav>
   <p class="hint" id="member-empty" hidden>没有匹配的已注册用户。可到「用户」页发出邀请。</p>
   <p class="err" id="member-error" role="alert" hidden></p>
   <div class="dlg-actions">
