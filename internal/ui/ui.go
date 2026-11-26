@@ -154,7 +154,7 @@ var knownApps = []struct{ key, label string }{
 	{"CalorieDiary", "热量日记"},
 	{"ExpenseDiary", "开支日记"},
 	{"EPassportForMikey", "奇奇岛护照"},
-	{"PersonalShortener", "屑涵短链"},
+	{"Shortener", "屑涵短链"},
 }
 
 func Registry() []RegistryApp {

@@ -414,7 +414,7 @@ func TestProjectRestrictionAndAccess(t *testing.T) {
 		t.Errorf("super 项目列表应为 knownAppOrder 全量且首项是 calorie，得到 %+v", projects)
 	}
 	if projects[2].App != "EPassportForMikey" || projects[2].Name != "奇奇岛护照" ||
-		projects[3].App != "PersonalShortener" || projects[3].Name != "屑涵短链" {
+		projects[3].App != "Shortener" || projects[3].Name != "屑涵短链" {
 		t.Errorf("项目列表应带上两个外部项目与展示名，得到 %+v", projects)
 	}
 	foundMember := false

@@ -145,10 +145,10 @@ var brands = map[string]brand{
 		prefix: "【奇奇岛护照】", account: "奇奇岛护照账号",
 		primaryHex: "#1363D6", logoPath: "/brand/EPassportForMikey-v1.png",
 	},
-	"PersonalShortener": {
-		name: "屑涵短链", latin: "PersonalShortener", footer: "屑涵短链 PersonalShortener",
+	"Shortener": {
+		name: "屑涵短链", latin: "Shortener", footer: "屑涵短链 Shortener",
 		prefix: "【屑涵短链】", account: "屑涵短链账号",
-		primaryHex: "#1363D6", logoPath: "/brand/PersonalShortener-v1.png",
+		primaryHex: "#1363D6", logoPath: "/brand/Shortener-v1.png",
 	},
 }
 

@@ -77,7 +77,7 @@ var allowedApps = map[string]bool{
 	// 2026-11 接入统一授权的外部项目（OAuth 授权码 + PKCE，client 登记在
 	// oauth_clients 表）。它们在 auth 侧只有身份，没有业务数据 hook。
 	"EPassportForMikey": true,
-	"PersonalShortener": true,
+	"Shortener": true,
 }
 
 // HTTPError 携带状态码，由路由层翻译成 ApiError 响应体。

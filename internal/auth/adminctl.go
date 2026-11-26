@@ -22,7 +22,7 @@ import (
 // knownAppOrder 是项目展示序（allowedApps 的定序视图）：Go map 遍历无序，
 // 后台项目列表每请求要稳定排序。**新增应用时与 allowedApps 一起加**
 // （TestKnownAppOrderMatchesWhitelist 对拍漂移）。
-var knownAppOrder = []string{"CalorieDiary", "ExpenseDiary", "EPassportForMikey", "PersonalShortener"}
+var knownAppOrder = []string{"CalorieDiary", "ExpenseDiary", "EPassportForMikey", "Shortener"}
 
 // appName 取项目展示名：走品牌注册表（与 internal/ui 的 knownApps 同键，
 // TestBrandForSelection 钉住 brands ↔ allowedApps 同步）。未登记回 slug 兜底。

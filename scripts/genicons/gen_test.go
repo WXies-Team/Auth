@@ -40,10 +40,10 @@ func TestGeneratedAssetsInSync(t *testing.T) {
 func TestBrandLogoFilenamesMatchRegistryConvention(t *testing.T) {
 	want := map[string]bool{
 		"CalorieDiary-v1.png": true, "ExpenseDiary-v1.png": true,
-		"EPassportForMikey-v1.png": true, "PersonalShortener-v1.png": true,
+		"EPassportForMikey-v1.png": true, "Shortener-v1.png": true,
 		"auth-v1.png":      true,
 		"CalorieDiary.svg": true, "ExpenseDiary.svg": true,
-		"EPassportForMikey.svg": true, "PersonalShortener.svg": true,
+		"EPassportForMikey.svg": true, "Shortener.svg": true,
 		"auth.svg": true,
 	}
 	files, err := generate()
@@ -190,7 +190,7 @@ func TestFaviconTransparentBlueAndBrandLogosUnchanged(t *testing.T) {
 	}
 
 	// ---- 品牌邮件 logo：纯色 #3482FF 实底（**零渐变**）+ 白矢量 + 超椭圆切角 ----
-	for _, name := range []string{"CalorieDiary", "ExpenseDiary", "EPassportForMikey", "PersonalShortener", "auth"} {
+	for _, name := range []string{"CalorieDiary", "ExpenseDiary", "EPassportForMikey", "Shortener", "auth"} {
 		img, err := png.Decode(bytes.NewReader(readAsset(t, "internal/ui/static/brand/"+name+"-v1.png")))
 		if err != nil {
 			t.Fatalf("解码 %s-v1.png: %v", name, err)
@@ -294,7 +294,7 @@ func TestBrandLogoGlyphMapping(t *testing.T) {
 		{"CalorieDiary", flamePaths},
 		{"ExpenseDiary", receiptPaths},
 		{"EPassportForMikey", stampPaths},
-		{"PersonalShortener", linkPaths},
+		{"Shortener", linkPaths},
 		{"auth", shieldPaths},
 	}
 	for _, c := range cases {

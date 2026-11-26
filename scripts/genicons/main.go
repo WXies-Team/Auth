@@ -66,7 +66,7 @@ var brandGlyphs = map[string][]string{
 	"CalorieDiary":      flamePaths,
 	"ExpenseDiary":      receiptPaths,
 	"EPassportForMikey": stampPaths,
-	"PersonalShortener": linkPaths,
+	"Shortener": linkPaths,
 	"auth":              shieldPaths,
 }
 
@@ -75,7 +75,7 @@ var brandLabels = map[string]string{
 	"CalorieDiary":      "热量日记",
 	"ExpenseDiary":      "开支日记",
 	"EPassportForMikey": "奇奇岛护照",
-	"PersonalShortener": "屑涵短链",
+	"Shortener": "屑涵短链",
 	"auth":              "Auth",
 }
 
@@ -91,7 +91,7 @@ func generate() ([]fileOut, error) {
 
 	// 品牌邮件 logo：64px 设计尺寸 @2x = 128px，超椭圆切角 + 纯色 #3482FF 实底 +
 	// 白字形（字形外包盒占 76% ≈ 四周 12% 内边距）。矢量源同款（squircle 用采样折线逼近）。
-	for _, name := range []string{"CalorieDiary", "ExpenseDiary", "EPassportForMikey", "PersonalShortener", "auth"} {
+	for _, name := range []string{"CalorieDiary", "ExpenseDiary", "EPassportForMikey", "Shortener", "auth"} {
 		png, err := encodePNG(iconSpec{size: 128, cutCorners: true, boxFrac: 0.76, paths: brandGlyphs[name]})
 		if err != nil {
 			return nil, fmt.Errorf("画 %s 品牌 logo: %w", name, err)

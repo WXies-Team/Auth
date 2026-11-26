@@ -65,11 +65,11 @@ func TestBrandLogoRoutesServed(t *testing.T) {
 		{"/brand/CalorieDiary-v1.png", "image/png", []byte("\x89PNG\r\n\x1a\n")},
 		{"/brand/ExpenseDiary-v1.png", "image/png", []byte("\x89PNG\r\n\x1a\n")},
 		{"/brand/EPassportForMikey-v1.png", "image/png", []byte("\x89PNG\r\n\x1a\n")},
-		{"/brand/PersonalShortener-v1.png", "image/png", []byte("\x89PNG\r\n\x1a\n")},
+		{"/brand/Shortener-v1.png", "image/png", []byte("\x89PNG\r\n\x1a\n")},
 		{"/brand/auth-v1.png", "image/png", []byte("\x89PNG\r\n\x1a\n")},
 		{"/brand/CalorieDiary.svg", "image/svg+xml; charset=utf-8", []byte("<svg")},
 		{"/brand/EPassportForMikey.svg", "image/svg+xml; charset=utf-8", []byte("<svg")},
-		{"/brand/PersonalShortener.svg", "image/svg+xml; charset=utf-8", []byte("<svg")},
+		{"/brand/Shortener.svg", "image/svg+xml; charset=utf-8", []byte("<svg")},
 	}
 	for _, c := range cases {
 		rec := staticDo(t, c.path)

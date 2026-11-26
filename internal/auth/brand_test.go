@@ -12,7 +12,7 @@ func TestBrandForSelection(t *testing.T) {
 		{"CalorieDiary", "热量日记", "【热量日记】", "热量日记 CalorieDiary"},
 		{"ExpenseDiary", "开支日记", "【开支日记】", "开支日记 ExpenseDiary"},
 		{"EPassportForMikey", "奇奇岛护照", "【奇奇岛护照】", "奇奇岛护照 EPassportForMikey"},
-		{"PersonalShortener", "屑涵短链", "【屑涵短链】", "屑涵短链 PersonalShortener"},
+		{"Shortener", "屑涵短链", "【屑涵短链】", "屑涵短链 Shortener"},
 		{"", "Auth", "【Auth】", "Auth auth.horatio.cn"},
 		{"evil-app", "Auth", "【Auth】", "Auth auth.horatio.cn"},
 	}
