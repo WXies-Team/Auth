@@ -176,6 +176,13 @@ var extraColumns = []columnDef{
 	// 登录成功建会话后按它决定是否发提醒信（见 internal/auth 的 loginnotify）。
 	{"users", "login_notify",
 		"ALTER TABLE users ADD COLUMN login_notify TINYINT NOT NULL DEFAULT 1"},
+	// 项目级策略（P1）：强制 MFA、允许邮箱域名、会话绝对天数。0/空 = 不额外限制。
+	{"project_policy", "mfa_required",
+		"ALTER TABLE project_policy ADD COLUMN mfa_required TINYINT NOT NULL DEFAULT 0"},
+	{"project_policy", "allowed_domains",
+		"ALTER TABLE project_policy ADD COLUMN allowed_domains VARCHAR(1024) NOT NULL DEFAULT ''"},
+	{"project_policy", "session_days",
+		"ALTER TABLE project_policy ADD COLUMN session_days INT NOT NULL DEFAULT 0"},
 	// FX5：验证码行记发码时的账号归属。0=匿名发码（register/reset/login/login_2fa/
 	// delete），非0=登录态发码（change/email_change）。验码按 uid 归属校验、
 	// 管理员换邮按 uid 烧在途改邮码（防覆盖竞态）。索引跟列一起建（与

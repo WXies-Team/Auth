@@ -278,6 +278,8 @@ type WebLoginTOTPRequest struct {
 	Code         string `json:"code"`
 	RecoveryCode string `json:"recoveryCode"`
 	EmailCode    string `json:"emailCode"`
+	// TrustDevice = 本设备 30 天免 2FA（仅 web 流程；App 流程不落 cookie）。
+	TrustDevice bool `json:"trustDevice"`
 }
 
 // WebLoginPending 是两步登录第一步的回执（与 {token,email} 互斥）。

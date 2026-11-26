@@ -106,6 +106,9 @@ export type AdminProject = {
   app: string
   name: string
   restricted: boolean
+  mfaRequired: boolean
+  allowedDomains: string[]
+  sessionDays: number
   members: ProjectMember[]
   admins: ProjectMember[]
   clientId: string
@@ -208,4 +211,13 @@ export type OAuthInfo = {
   redirectHost: string
   email: string
   scopes: string[]
+}
+
+export type TrustedDevice = {
+  id: number
+  label: string
+  createdAt: number
+  lastUsedAt: number
+  expiresAt: number
+  current: boolean
 }

@@ -62,7 +62,7 @@ func newTestService(t *testing.T) (*Service, *recordMailer) {
 	// user_id 存行，残留会让下一轮断言读到上一轮的 passkey / 挑战 / 中间态。
 	for _, table := range []string{"users", "otp_codes", "sessions", "passkeys", "totp_factors",
 		"recovery_codes", "webauthn_challenges", "login_states", "audit_logs", "ai_usage", "user_profile",
-		"admin_scopes", "user_bans", "project_policy", "project_access", "oauth_clients", "user_invites", "oauth_consents"} {
+		"admin_scopes", "user_bans", "project_policy", "project_access", "oauth_clients", "user_invites", "oauth_consents", "trusted_devices"} {
 		if _, err := pool.Exec("DELETE FROM " + table); err != nil {
 			t.Fatalf("清空 %s: %v", table, err)
 		}

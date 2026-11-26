@@ -584,6 +584,23 @@ func registerAdminRoutes(mux *http.ServeMux, svc *auth.Service, cfg *config.Stor
 	// B4 OAuth 客户端登记：开通/更新回跳地址（首调自动生成 client_id），
 	// rotateSecret=true 时换新 secret 并一次性回执（旧 secret 即刻失效）。
 	// 权限在业务层（su 全部项目 / app-admin 仅 scopes 内项目）。
+	mux.Handle("POST /admin/projects/{app}/policy", admin("admin-projects-write", func(ac adminCtx, w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			MFARequired    bool     `json:"mfaRequired"`
+			AllowedDomains []string `json:"allowedDomains"`
+			SessionDays    int      `json:"sessionDays"`
+		}
+		if !decodeOr400(w, r, &req) {
+			return
+		}
+		if err := svc.AdminSetProjectPolicy(ac.caller.Caller, adminScope(ac), r.PathValue("app"), auth.AdminProjectPolicy{
+			MFARequired: req.MFARequired, AllowedDomains: req.AllowedDomains, SessionDays: req.SessionDays,
+		}); err != nil {
+			writeResult(w, nil, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	}))
 	mux.Handle("POST /admin/projects/{app}/oauth", admin("admin-projects-write", func(ac adminCtx, w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			RedirectUris []string `json:"redirectUris"`
@@ -735,6 +752,30 @@ func registerAdminRoutes(mux *http.ServeMux, svc *auth.Service, cfg *config.Stor
 		})
 	}))
 
+	mux.Handle("POST /admin/config/test-mail", admin("admin-mail-test", func(ac adminCtx, w http.ResponseWriter, r *http.Request) {
+		if !requireSuper(w, ac) {
+			return
+		}
+		var req struct {
+			Email string `json:"email"`
+		}
+		if !decodeOr400(w, r, &req) {
+			return
+		}
+		if strings.TrimSpace(req.Email) == "" {
+			req.Email = ac.caller.Email
+		}
+		err := svc.SendTestMail(req.Email)
+		svc.Audit(auth.AuditEvent{
+			Action: auth.AuditAdminMailTest, OK: err == nil, ActorUID: &ac.caller.UID,
+			ActorEmail: auth.MaskEmail(ac.caller.Email), Meta: ac.caller.Meta,
+		})
+		if err != nil {
+			writeResult(w, nil, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	}))
 	mux.Handle("GET /admin/config", admin("admin-config", func(ac adminCtx, w http.ResponseWriter, r *http.Request) {
 		if !requireSuper(w, ac) {
 			return

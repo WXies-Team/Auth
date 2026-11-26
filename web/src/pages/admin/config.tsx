@@ -1,7 +1,8 @@
 import * as React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useAuth } from '@/lib/auth'
 import { toast } from 'sonner'
-import { CheckCircle2, KeyRound, Loader2, Pencil, Trash2, XCircle } from 'lucide-react'
+import { CheckCircle2, KeyRound, Loader2, Mail, Pencil, Trash2, XCircle } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { ConfigItem } from '@/lib/types'
 import { PageHeader } from '@/components/ui/page-header'
@@ -55,6 +56,10 @@ const LABELS: Record<string, string> = {
 
 export default function AdminConfigPage() {
   const qc = useQueryClient()
+  const { session } = useAuth()
+  const [testOpen, setTestOpen] = React.useState(false)
+  const [testEmail, setTestEmail] = React.useState(session?.email ?? '')
+  const [testBusy, setTestBusy] = React.useState(false)
   const { data, isLoading } = useQuery({ queryKey: ['admin-config'], queryFn: () => api.get<ConfigItem[]>('/admin/config') })
   const [edit, setEdit] = React.useState<ConfigItem | null>(null)
   const [value, setValue] = React.useState('')
@@ -85,7 +90,15 @@ export default function AdminConfigPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="配置中心" description="白名单键；secret 只回末 4 位，留空表示不修改。" />
+      <PageHeader
+        title="配置中心"
+        description="白名单键；secret 只回末 4 位，留空表示不修改。"
+        actions={
+          <Button variant="outline" size="sm" onClick={() => setTestOpen(true)}>
+            <Mail /> 发送测试邮件
+          </Button>
+        }
+      />
 
       <div className="grid gap-4 lg:grid-cols-2">
         {GROUPS.map((g) => (
@@ -176,6 +189,44 @@ export default function AdminConfigPage() {
                 {busy && <Loader2 className="animate-spin" />} 保存
               </Button>
             </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={testOpen} onOpenChange={setTestOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>发送测试邮件</DialogTitle>
+            <DialogDescription>用当前 SMTP 配置发一封最小邮件，验证发信链路。</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-1.5">
+            <Label htmlFor="test-email">收件邮箱</Label>
+            <Input
+              id="test-email"
+              type="email"
+              value={testEmail}
+              onChange={(e) => setTestEmail(e.target.value)}
+              placeholder="默认发给当前管理员"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTestOpen(false)} disabled={testBusy}>取消</Button>
+            <Button
+              onClick={async () => {
+                setTestBusy(true)
+                try {
+                  await api.post('/admin/config/test-mail', { email: testEmail.trim() })
+                  toast.success('测试邮件已发送，请查收')
+                  setTestOpen(false)
+                } catch (err) {
+                  toast.error(err instanceof Error ? err.message : '发送失败')
+                } finally {
+                  setTestBusy(false)
+                }
+              }}
+              disabled={testBusy || !testEmail.trim()}
+            >
+              {testBusy && <Loader2 className="animate-spin" />} 发送
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

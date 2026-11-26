@@ -282,7 +282,7 @@ func (s *Service) purgeAccount(userID int64, email string) error {
 	// 外加两步登录的中间态——它们是 5 分钟的在途凭证，账号没了还挂着就是一张废票。
 	// user_profile 也在列：档案归身份提供方，账号删了还留着昵称/头像就是隐私残留
 	//（日记侧的对应资料行由注销钩子清，本服务这行只能在这里删）。
-	for _, table := range []string{"passkeys", "totp_factors", "recovery_codes", "webauthn_challenges", "login_states", "user_profile"} {
+	for _, table := range []string{"passkeys", "totp_factors", "recovery_codes", "webauthn_challenges", "login_states", "trusted_devices", "user_profile"} {
 		if _, err := tx.ExecContext(db.QueryCtx(),
 			"DELETE FROM "+table+" WHERE user_id = ?", userID); err != nil {
 			return fmt.Errorf("清空 %s: %w", table, err)

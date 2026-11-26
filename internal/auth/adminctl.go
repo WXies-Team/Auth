@@ -197,6 +197,9 @@ func (s *Service) AdminResetPassword(actor Caller, scope AdminScope, targetUID i
 	if err = revokeUserSessions(ctx, tx, targetUID, 0, nil); err != nil {
 		return "", err
 	}
+	if _, err = tx.ExecContext(ctx, "DELETE FROM trusted_devices WHERE uid = ?", targetUID); err != nil {
+		return "", fmt.Errorf("清可信设备: %w", err)
+	}
 	if err = tx.Commit(); err != nil {
 		return "", fmt.Errorf("提交重置: %w", err)
 	}
@@ -485,6 +488,9 @@ func (s *Service) AdminBan(actor Caller, scope AdminScope, targetUID int64, in A
 	if err = revokeUserSessions(ctx, s.pool, targetUID, 0, apps); err != nil {
 		return err
 	}
+	if in.App == "*" {
+		s.RevokeAllTrustedDevices(targetUID)
+	}
 	return nil
 }
 
@@ -534,13 +540,16 @@ type AdminProjectMember struct {
 // 放行登录的人」，管理员是「能管这个项目的人」，两者语义不同，UI 需要分开列。
 // 恒为数组（无管理员回 []，不回 null），与 Members 同形。
 type AdminProject struct {
-	App          string               `json:"app"`
-	Name         string               `json:"name"`
-	Restricted   bool                 `json:"restricted"`
-	Members      []AdminProjectMember `json:"members"`
-	Admins       []AdminProjectMember `json:"admins"`
-	ClientID     string               `json:"clientId"`
-	RedirectURIs []string             `json:"redirectUris"`
+	App            string               `json:"app"`
+	Name           string               `json:"name"`
+	Restricted     bool                 `json:"restricted"`
+	MFARequired    bool                 `json:"mfaRequired"`
+	AllowedDomains []string             `json:"allowedDomains"`
+	SessionDays    int                  `json:"sessionDays"`
+	Members        []AdminProjectMember `json:"members"`
+	Admins         []AdminProjectMember `json:"admins"`
+	ClientID       string               `json:"clientId"`
+	RedirectURIs   []string             `json:"redirectUris"`
 }
 
 // AdminUserCandidate 是项目成员选择器的一行（只暴露挑选所需的最小字段）。
@@ -629,16 +638,25 @@ func (s *Service) AdminListProjects(scope AdminScope) ([]AdminProject, error) {
 		}
 		p := AdminProject{
 			App: app, Name: appName(app),
-			Members: make([]AdminProjectMember, 0, 4),
-			Admins:  make([]AdminProjectMember, 0, 2),
+			Members:        make([]AdminProjectMember, 0, 4),
+			Admins:         make([]AdminProjectMember, 0, 2),
+			AllowedDomains: make([]string, 0, 2),
 		}
-		var restricted int
+		var (
+			restricted, mfa int
+			domains         string
+			sessionDays     int
+		)
 		err := s.pool.QueryRowContext(ctx,
-			"SELECT restricted FROM project_policy WHERE app = ?", app).Scan(&restricted)
+			"SELECT restricted, mfa_required, allowed_domains, session_days FROM project_policy WHERE app = ?", app).
+			Scan(&restricted, &mfa, &domains, &sessionDays)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("查项目限制: %w", err)
 		}
 		p.Restricted = restricted == 1
+		p.MFARequired = mfa == 1
+		p.SessionDays = sessionDays
+		p.AllowedDomains = splitDomains(domains)
 
 		rows, err := s.pool.QueryContext(ctx,
 			"SELECT pa.uid, u.email FROM project_access pa JOIN users u ON u.id = pa.uid"+

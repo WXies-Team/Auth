@@ -99,13 +99,17 @@ func (s *Service) createSessionOn(ex execer, userID int64, app string, meta Sess
 	now := time.Now().UnixMilli()
 	sid := s.ids.Generate().Int64()
 	ua := meta.uaWithCH() // web 登录带 CH 就并进后缀；App 调用方无 CH，原样落库
+	absExp := now + tokenTTL.Milliseconds()
+	if d := s.sessionDaysForApp(app); d > 0 {
+		absExp = now + int64(d)*24*60*60*1000
+	}
 	if _, err := ex.ExecContext(db.QueryCtx(),
 		`INSERT INTO sessions (id, user_id, app, device, ip, user_agent, created_at, last_seen_at,
 		                       absolute_expires_at, family_id)
 		 VALUES (?,?,?,?,?,?,?,?,?,?)`,
 		sid, userID, app, truncateRunes(shortDevice(ua), 191),
 		meta.IP, truncateRunes(ua, 512), now, now,
-		now+tokenTTL.Milliseconds(), sid); err != nil {
+		absExp, sid); err != nil {
 		return 0, fmt.Errorf("建登录会话: %w", err)
 	}
 	return sid, nil

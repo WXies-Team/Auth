@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Globe, Loader2, Lock, Plus, RotateCw, Search, Trash2, UserPlus, Users } from 'lucide-react'
+import { Globe, Loader2, Lock, Plus, RotateCw, Search, ShieldCheck, SlidersHorizontal, Trash2, UserPlus, Users } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import type { AdminProject, Page, ProjectMember } from '@/lib/types'
@@ -17,6 +17,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { CopyButton } from '@/components/ui/copy-button'
 import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
 import { Separator } from '@/components/ui/separator'
 
 export default function AdminAccessPage() {
@@ -28,6 +29,7 @@ export default function AdminAccessPage() {
   })
   const [memberProject, setMemberProject] = React.useState<AdminProject | null>(null)
   const [oauthProject, setOauthProject] = React.useState<AdminProject | null>(null)
+  const [policyProject, setPolicyProject] = React.useState<AdminProject | null>(null)
   const [adminProject, setAdminProject] = React.useState<AdminProject | null>(null)
   const [revokingAdmin, setRevokingAdmin] = React.useState<{ app: string; member: ProjectMember } | null>(null)
   const [removing, setRemoving] = React.useState<{ app: string; member: ProjectMember } | null>(null)
@@ -190,6 +192,22 @@ export default function AdminAccessPage() {
                 <Separator />
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0">
+                    <p className="flex items-center gap-1.5 text-sm font-medium">
+                      <ShieldCheck className="size-4" /> 访问策略
+                    </p>
+                    <p className="text-muted-foreground text-xs">
+                      {p.mfaRequired ? '要求 MFA' : '不强制 MFA'} · {p.sessionDays ? `会话 ${p.sessionDays} 天` : '会话默认 90 天'}
+                      {p.allowedDomains.length ? ` · 域名 ${p.allowedDomains.join('、')}` : ''}
+                    </p>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => setPolicyProject(p)}>
+                    <SlidersHorizontal /> 配置
+                  </Button>
+                </div>
+
+                <Separator />
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
                     <p className="text-sm font-medium">OAuth 客户端</p>
                     <p className="text-muted-foreground truncate text-xs">
                       {p.clientId ? `client_id: ${p.clientId}` : '未开通'}
@@ -219,6 +237,14 @@ export default function AdminAccessPage() {
           open={!!adminProject}
           onOpenChange={(v) => !v && setAdminProject(null)}
           onDone={() => { setAdminProject(null); void refresh() }}
+        />
+      )}
+      {policyProject && (
+        <PolicyDialog
+          project={policyProject}
+          open={!!policyProject}
+          onOpenChange={(v) => !v && setPolicyProject(null)}
+          onDone={() => { setPolicyProject(null); void refresh() }}
         />
       )}
       {oauthProject && (
@@ -407,6 +433,86 @@ function AdminDialog({
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
             关闭
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function PolicyDialog({
+  project,
+  open,
+  onOpenChange,
+  onDone,
+}: {
+  project: AdminProject
+  open: boolean
+  onOpenChange: (v: boolean) => void
+  onDone: () => void
+}) {
+  const [mfa, setMfa] = React.useState(project.mfaRequired)
+  const [domains, setDomains] = React.useState(project.allowedDomains.join('\n'))
+  const [days, setDays] = React.useState(String(project.sessionDays || 0))
+  const [busy, setBusy] = React.useState(false)
+
+  async function save() {
+    setBusy(true)
+    try {
+      await api.post(`/admin/projects/${project.app}/policy`, {
+        mfaRequired: mfa,
+        allowedDomains: domains.split(/[\n,，]/).map((d) => d.trim()).filter(Boolean),
+        sessionDays: Number(days) || 0,
+      })
+      toast.success('策略已保存')
+      onDone()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '保存失败')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>「{project.name}」访问策略</DialogTitle>
+          <DialogDescription>只影响该项目的登录与会话；0 天表示使用默认 90 天。</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <label className="flex items-center justify-between gap-3 text-sm">
+            <span>
+              要求两步验证
+              <span className="text-muted-foreground block text-xs">未绑定 TOTP/Passkey 的账号不能登录该项目。</span>
+            </span>
+            <Switch checked={mfa} onCheckedChange={setMfa} />
+          </label>
+          <div className="space-y-1.5">
+            <Label>允许的邮箱域名（每行一个，留空 = 不限）</Label>
+            <Textarea
+              value={domains}
+              onChange={(e) => setDomains(e.target.value)}
+              placeholder="example.com, company.cn"
+              className="min-h-20 font-mono text-xs"
+            />
+            <p className="text-muted-foreground text-xs">子域自动放行（a.example.com 命中 example.com）。</p>
+          </div>
+          <div className="space-y-1.5">
+            <Label>会话绝对天数（0 = 默认 90，最多 90）</Label>
+            <Input
+              type="number"
+              min={0}
+              max={90}
+              value={days}
+              onChange={(e) => setDays(e.target.value.replace(/\D/g, ''))}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>取消</Button>
+          <Button onClick={save} disabled={busy}>
+            {busy && <Loader2 className="animate-spin" />} 保存策略
           </Button>
         </DialogFooter>
       </DialogContent>

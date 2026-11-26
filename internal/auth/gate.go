@@ -33,7 +33,10 @@ func (s *Service) denyReason(uid int64, app string) error {
 	if err := s.denyIfBanned(uid, app); err != nil {
 		return err
 	}
-	return s.denyIfProjectRestricted(uid, app)
+	if err := s.denyIfProjectRestricted(uid, app); err != nil {
+		return err
+	}
+	return s.denyIfProjectPolicy(uid, app)
 }
 
 // denyIfBanned 查 user_bans：'*' 行对所有语境生效，具体项目行只对同 app 生效。

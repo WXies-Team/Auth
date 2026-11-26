@@ -162,7 +162,18 @@ func (s *Service) completeLogin(uid int64, email, app string, meta SessionMeta) 
 // WebLoginPassword 密码登录第一步：验密码 → 无 2FA 直接落会话，有 2FA 发中间态。
 // 凭据判定复用 checkPassword（与老端点 /auth/login 同一份实现）。
 // app 空 = web 流程（cookie 会话），非空 = App 流程（JWT），语义见 completeLogin。
-func (s *Service) WebLoginPassword(rawEmail, password string, meta SessionMeta, app string) (res *WebLoginResult, err error) {
+func (s *Service) WebLoginPassword(rawEmail, password string, meta SessionMeta, app string) (*WebLoginResult, error) {
+	return s.webLoginPassword(rawEmail, password, meta, app, "")
+}
+
+// WebLoginPasswordTrusted 是 Web 登录专用变体：密码验过后，若本机持有有效
+// 可信设备令牌（30 天内、同 UA），直接完成登录，不再要求 2FA。令牌只跳过
+// 第二因子，不能替代密码。
+func (s *Service) WebLoginPasswordTrusted(rawEmail, password string, meta SessionMeta, app, trustedToken string) (*WebLoginResult, error) {
+	return s.webLoginPassword(rawEmail, password, meta, app, trustedToken)
+}
+
+func (s *Service) webLoginPassword(rawEmail, password string, meta SessionMeta, app, trustedToken string) (res *WebLoginResult, err error) {
 	// 登录失败必记（method=password）；**两步中间态不算成功也不算失败**——
 	// 密码对了但还没过第二步，真正的结论由 WebLoginTOTP 那条事件给出。
 	// defer 先于 app 校验挂上：app 写错同样是一条 login.fail（与 /auth/login 一致），
@@ -193,7 +204,7 @@ func (s *Service) WebLoginPassword(rawEmail, password string, meta SessionMeta, 
 	if err != nil {
 		return nil, err
 	}
-	if !enabled {
+	if !enabled || (app == "" && s.CheckTrustedDevice(uid, trustedToken, meta.UserAgent)) {
 		return s.completeLogin(uid, email, app, meta)
 	}
 	token, err := s.beginLoginState(uid, app)

@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { PasswordInput } from '@/components/ui/password-input'
 import { OtpInput } from '@/components/ui/otp-input'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -44,6 +45,7 @@ export default function LoginPage() {
   const [confirmPassword, setConfirmPassword] = React.useState('')
   const [pending, setPending] = React.useState<{ loginToken: string; methods: string[] } | null>(null)
   const [factor, setFactor] = React.useState<SecondFactor>('code')
+  const [trustDevice, setTrustDevice] = React.useState(false)
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState('')
   const [notice, setNotice] = React.useState('')
@@ -93,7 +95,7 @@ export default function LoginPage() {
     setError('')
     setBusy(true)
     try {
-      const body: Record<string, string> = { loginToken: pending.loginToken }
+      const body: Record<string, string | boolean> = { loginToken: pending.loginToken, trustDevice }
       if (factor === 'recovery') body.recoveryCode = code.trim()
       else if (factor === 'email') body.emailCode = code.trim()
       else body.code = code.trim()
@@ -279,6 +281,17 @@ export default function LoginPage() {
                   </Button>
                 )}
               </div>
+              <label className="flex items-start gap-2 text-sm">
+                <Checkbox
+                  checked={trustDevice}
+                  onCheckedChange={(v) => setTrustDevice(v === true)}
+                  className="mt-0.5"
+                />
+                <span>
+                  在此设备上信任 30 天
+                  <span className="text-muted-foreground block text-xs">下次登录跳过两步验证；换浏览器或清除 cookie 后失效。</span>
+                </span>
+              </label>
               <Button type="submit" className="w-full" disabled={busy || !code.trim()}>
                 {busy && <Loader2 className="animate-spin" />} 验证并登录
               </Button>

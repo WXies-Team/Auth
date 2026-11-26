@@ -1175,6 +1175,9 @@ func (s *Service) setPasswordAndRevoke(userID int64, newHash string) error {
 	if err := revokeUserSessions(ctx, tx, userID, 0, nil); err != nil {
 		return err
 	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM trusted_devices WHERE uid = ?", userID); err != nil {
+		return fmt.Errorf("清可信设备: %w", err)
+	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("提交改密: %w", err)
 	}

@@ -149,6 +149,9 @@ CREATE TABLE IF NOT EXISTS user_bans (
 -- 直查本表判定（**不进 app_config 的 10s 缓存**——开关必须当场生效）。
 CREATE TABLE IF NOT EXISTS project_policy (
   app VARCHAR(64) NOT NULL PRIMARY KEY, restricted TINYINT NOT NULL DEFAULT 0,
+  mfa_required TINYINT NOT NULL DEFAULT 0,
+  allowed_domains VARCHAR(1024) NOT NULL DEFAULT '',
+  session_days INT NOT NULL DEFAULT 0,
   updated_by BIGINT NOT NULL DEFAULT 0, updated_at BIGINT NOT NULL DEFAULT 0
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci;
 
@@ -305,4 +308,20 @@ CREATE TABLE IF NOT EXISTS oauth_consents (
   last_used_at BIGINT NOT NULL,
   PRIMARY KEY (app, uid),
   KEY idx_oauth_consents_uid (uid, last_used_at)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci;
+
+-- 可信设备（2FA 后的「信任此设备 30 天」）：token 只存 sha256，UA 也存 hash，
+-- 换浏览器/换设备即失效；绝对 30 天，不滑动续期。会话吊销/改密/重置 MFA 时应一并清。
+CREATE TABLE IF NOT EXISTS trusted_devices (
+  id BIGINT NOT NULL,
+  uid BIGINT NOT NULL,
+  token_hash CHAR(64) NOT NULL,
+  ua_hash CHAR(64) NOT NULL,
+  label VARCHAR(128) NOT NULL DEFAULT '',
+  created_at BIGINT NOT NULL,
+  expires_at BIGINT NOT NULL,
+  last_used_at BIGINT NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uq_trusted_token (token_hash),
+  KEY idx_trusted_uid (uid, expires_at)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci;

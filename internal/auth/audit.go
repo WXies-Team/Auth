@@ -63,6 +63,8 @@ const (
 	AuditProjectAccessRevoke = "project.access_revoke"
 	AuditProjectRestrictOn   = "project.restrict_on"
 	AuditProjectRestrictOff  = "project.restrict_off"
+	AuditProjectPolicy       = "project.policy_update"
+	AuditAdminMailTest       = "admin.mail_test"
 	AuditDeleteRequested     = "account.delete_requested"
 	AuditDeleteCancelled     = "account.delete_cancelled"
 	// B4 OAuth：管理端开通/更新客户端登记（detail 只带 app 与 rotateSecret 位，

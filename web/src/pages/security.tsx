@@ -1,9 +1,10 @@
 import * as React from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { CheckCircle2, Download, Loader2, Printer, RefreshCw, ShieldCheck, ShieldOff, TriangleAlert } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useTotp } from '@/lib/queries'
+import type { TrustedDevice } from '@/lib/types'
 import type { TOTPSetup } from '@/lib/types'
 import { dateTime, relativeTime } from '@/lib/format'
 import { PageHeader } from '@/components/ui/page-header'
@@ -14,17 +15,24 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { OtpInput } from '@/components/ui/otp-input'
 import { Progress } from '@/components/ui/progress'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { CopyButton } from '@/components/ui/copy-button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Separator } from '@/components/ui/separator'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
 type CodeAction = 'disable' | 'regenerate' | null
 
 export default function SecurityPage() {
   const qc = useQueryClient()
   const { data, isLoading } = useTotp()
+  const trusted = useQuery({
+    queryKey: ['trusted-devices'],
+    queryFn: () => api.get<TrustedDevice[]>('/api/trusted-devices'),
+  })
+  const [revokeTrusted, setRevokeTrusted] = React.useState<TrustedDevice | null>(null)
   const [setup, setSetup] = React.useState<TOTPSetup | null>(null)
   const [codes, setCodes] = React.useState<string[] | null>(null)
   const [saved, setSaved] = React.useState(false)
@@ -259,6 +267,68 @@ export default function SecurityPage() {
           </CardContent>
         </Card>
       )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>可信设备</CardTitle>
+          <CardDescription>
+            在这些设备上登录时跳过两步验证，30 天后失效。换浏览器或清除 cookie 后也会失效。
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-0">
+          {trusted.isLoading ? (
+            <div className="p-4"><Skeleton className="h-12 w-full" /></div>
+          ) : (trusted.data ?? []).length === 0 ? (
+            <p className="text-muted-foreground p-6 text-sm">还没有信任的设备。下次两步验证时勾选「信任此设备」即可。</p>
+          ) : (
+            <ul className="divide-y">
+              {(trusted.data ?? []).map((d) => (
+                <li key={d.id} className="flex flex-wrap items-center gap-3 p-4">
+                  <div className="bg-muted flex size-9 items-center justify-center rounded-md">
+                    <ShieldCheck className="size-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="flex items-center gap-2 text-sm font-medium">
+                      {d.label || '未知设备'}
+                      {d.current && <Badge variant="secondary">本机</Badge>}
+                    </p>
+                    <p className="text-muted-foreground text-xs">
+                      添加于 {dateTime(d.createdAt)} · 最近使用 {relativeTime(d.lastUsedAt)} · 有效至 {dateTime(d.expiresAt)}
+                    </p>
+                  </div>
+                  <Button variant="ghost" size="sm" className="text-destructive" onClick={() => setRevokeTrusted(d)}>
+                    撤销
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
+
+      <ConfirmDialog
+        open={!!revokeTrusted}
+        onOpenChange={(v) => !v && setRevokeTrusted(null)}
+        title="撤销这台可信设备？"
+        description="撤销后，这台设备下次登录会重新要求两步验证。"
+        confirmLabel="撤销"
+        destructive
+        busy={busy}
+        onConfirm={async () => {
+          if (!revokeTrusted) return
+          setBusy(true)
+          try {
+            await api.del(`/api/trusted-devices/${revokeTrusted.id}`)
+            toast.success('已撤销')
+            setRevokeTrusted(null)
+            await trusted.refetch()
+          } catch (err) {
+            toast.error(err instanceof Error ? err.message : '撤销失败')
+          } finally {
+            setBusy(false)
+          }
+        }}
+      />
 
       <Dialog open={!!action} onOpenChange={(v) => !v && setAction(null)}>
         <DialogContent>

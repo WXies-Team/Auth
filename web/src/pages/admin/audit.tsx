@@ -25,7 +25,7 @@ const ACTIONS = [
   'account.delete_requested', 'account.delete_cancelled', 'admin.user.role_change',
   'admin.role.change', 'admin.role.grant', 'admin.role.revoke', 'admin.user.session_revoke',
   'admin.session.revoke', 'admin.config.set', 'admin.bulk_action', 'admin.oauth_client.write',
-  'project.access_grant', 'project.access_revoke', 'project.restrict_on', 'project.restrict_off',
+  'project.access_grant', 'project.access_revoke', 'project.restrict_on', 'project.restrict_off', 'project.policy_update', 'admin.mail_test',
   'internal.ensure', 'account.delete', 'admin.audit.view', 'logout', 'register',
   'oauth.consent_grant', 'oauth.consent_revoke', 'admin.mfa.reset',
 ]

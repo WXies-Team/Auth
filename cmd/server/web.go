@@ -7,6 +7,7 @@ import (
 	"errors"
 	"html"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -55,7 +56,11 @@ func registerWebRoutes(mux *http.ServeMux, svc *auth.Service) {
 	// ---- 登录（无登录态，只有 Origin 同源校验：此时没有可搭的 cookie 顺风车）----
 	mux.Handle("POST /web/login/password", withLogging(originGuard(limitN("web-login", 15,
 		jsonBody[protocol.WebLoginRequest](func(req *protocol.WebLoginRequest, w http.ResponseWriter, r *http.Request) {
-			res, err := svc.WebLoginPassword(req.Email, req.Password, webSessMeta(r), req.App)
+			trusted := ""
+			if ck, cerr := r.Cookie(auth.TrustedDeviceCookieName); cerr == nil {
+				trusted = ck.Value
+			}
+			res, err := svc.WebLoginPasswordTrusted(req.Email, req.Password, webSessMeta(r), req.App, trusted)
 			if err != nil {
 				writeResult(w, nil, err)
 				return
@@ -77,6 +82,13 @@ func registerWebRoutes(mux *http.ServeMux, svc *auth.Service) {
 			if err != nil {
 				writeResult(w, nil, err)
 				return
+			}
+			if req.TrustDevice && res.Session != nil {
+				if token, exp, terr := svc.TrustDevice(res.UID, webSessMeta(r)); terr == nil {
+					setTrustedCookie(w, token, exp)
+				} else {
+					slog.Warn("签发可信设备失败（登录照常）", "uid", res.UID, "err", terr)
+				}
 			}
 			writeLoginResult(svc, w, res)
 		})))))
@@ -398,6 +410,34 @@ func registerWebRoutes(mux *http.ServeMux, svc *auth.Service) {
 		}))
 
 	// ---- TOTP ----
+	// ---- 可信设备（2FA 后 30 天免验证）----
+	mux.Handle("GET /api/trusted-devices", authed("trusted-devices", 30,
+		func(c auth.WebCaller, w http.ResponseWriter, r *http.Request) {
+			cur := ""
+			if ck, err := r.Cookie(auth.TrustedDeviceCookieName); err == nil {
+				cur = ck.Value
+			}
+			list, err := svc.ListTrustedDevices(c.UID, cur)
+			if err != nil {
+				writeResult(w, nil, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, list)
+		}))
+	mux.Handle("DELETE /api/trusted-devices/{id}", reauthed("trusted-device-revoke", 10,
+		func(c auth.WebCaller, w http.ResponseWriter, r *http.Request) {
+			id, ok := pathInt64(w, r.PathValue("id"))
+			if !ok {
+				return
+			}
+			if err := svc.RevokeTrustedDevice(c.UID, id); err != nil {
+				writeResult(w, nil, err)
+				return
+			}
+			clearTrustedCookie(w)
+			writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+		}))
+
 	mux.Handle("GET /api/totp", authed("totp-status", 30,
 		func(c auth.WebCaller, w http.ResponseWriter, _ *http.Request) {
 			st, err := svc.TOTPStatus(c.UID)
@@ -700,6 +740,24 @@ func credentialJSON(w http.ResponseWriter, raw json.RawMessage) ([]byte, bool) {
 // setWebCookies 签发双 cookie：会话 cookie HttpOnly（脚本读不到），CSRF cookie
 // 非 HttpOnly（JS 要读它塞进 X-CSRF-Token）。__Host- 前缀要求 Secure + Path=/，
 // 与 auth.WebCookieName 的定义配套。
+// setTrustedCookie 是「信任此设备 30 天」的 HttpOnly cookie；它只用于跳过 2FA，
+// 不参与会话校验。过期时间与库里 trusted_devices.expires_at 同源。
+func setTrustedCookie(w http.ResponseWriter, token string, exp time.Time) {
+	http.SetCookie(w, &http.Cookie{
+		Name: auth.TrustedDeviceCookieName, Value: token, Path: "/",
+		HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode,
+		MaxAge: int(time.Until(exp).Seconds()), Expires: exp,
+	})
+}
+
+func clearTrustedCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name: auth.TrustedDeviceCookieName, Value: "", Path: "/",
+		HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode,
+		MaxAge: -1, Expires: time.Unix(1, 0),
+	})
+}
+
 func setWebCookies(w http.ResponseWriter, ws *auth.WebSession) {
 	http.SetCookie(w, &http.Cookie{
 		Name: auth.WebCookieName, Value: ws.Token, Path: "/",

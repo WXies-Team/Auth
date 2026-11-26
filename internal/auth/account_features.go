@@ -237,6 +237,9 @@ func (s *Service) AdminResetMFA(actor Caller, targetUID int64) (err error) {
 	if _, err = tx.ExecContext(ctx, "DELETE FROM webauthn_challenges WHERE user_id = ?", targetUID); err != nil {
 		return fmt.Errorf("清 Passkey 仪式: %w", err)
 	}
+	if _, err = tx.ExecContext(ctx, "DELETE FROM trusted_devices WHERE uid = ?", targetUID); err != nil {
+		return fmt.Errorf("清可信设备: %w", err)
+	}
 	if _, err = tx.ExecContext(ctx,
 		"UPDATE users SET token_version = token_version + 1 WHERE id = ?", targetUID); err != nil {
 		return fmt.Errorf("升 token_version: %w", err)
@@ -297,4 +300,21 @@ func (s *Service) SystemCounts() (SystemCounts, error) {
 		}
 	}
 	return c, nil
+}
+
+// SendTestMail 是配置中心的 SMTP 自检：只发一封最小邮件，不落任何账号状态。
+func (s *Service) SendTestMail(to string) error {
+	if s.mailer == nil {
+		return &HTTPError{Code: 503, Message: "邮件服务未配置，请先在配置中心填写 SMTP 四键"}
+	}
+	email := normalizeEmail(to)
+	if err := validateEmail(email); err != nil {
+		return err
+	}
+	b := brandFor("")
+	subject, htmlBody, text := smtpTestEmail(b)
+	if err := s.mailer.Send(context.Background(), b.name, email, subject, htmlBody, text); err != nil {
+		return &HTTPError{Code: 503, Message: "测试邮件发送失败，请检查 SMTP 配置"}
+	}
+	return nil
 }

@@ -937,6 +937,7 @@ func (s *Service) AdminRevokeUserSessions(actor Caller, targetUID int64) (err er
 	if err = revokeUserSessions(db.QueryCtx(), s.pool, targetUID, 0, nil); err != nil {
 		return err
 	}
+	s.RevokeAllTrustedDevices(targetUID)
 	return nil
 }
 
