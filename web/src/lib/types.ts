@@ -63,6 +63,15 @@ export type Page<T> = { items: T[]; total: number }
 
 export type UserBanInfo = { app: string; untilMs: number; reason?: string }
 
+export type AdminInvite = {
+  id: string
+  email: string
+  app: string
+  createdAt: number
+  expiresAt: number
+  state: 'pending' | 'accepted' | 'revoked' | 'expired'
+}
+
 export type AdminUser = {
   uid: number
   email: string

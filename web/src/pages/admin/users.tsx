@@ -12,7 +12,7 @@ import {
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { APPS } from '@/lib/apps'
-import type { AdminUser, Page } from '@/lib/types'
+import type { AdminInvite, AdminUser, Page } from '@/lib/types'
 import { dateOnly, roleLabel } from '@/lib/format'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent } from '@/components/ui/card'
@@ -30,6 +30,10 @@ import { Label } from '@/components/ui/label'
 
 const PAGE = 20
 
+function inviteState(state: AdminInvite['state']): string {
+  return state === 'pending' ? '待接受' : state === 'accepted' ? '已接受' : state === 'revoked' ? '已撤销' : '已过期'
+}
+
 export default function AdminUsersPage() {
   const qc = useQueryClient()
   const [query, setQuery] = React.useState('')
@@ -42,7 +46,8 @@ export default function AdminUsersPage() {
   const [inviteApp, setInviteApp] = React.useState('')
   const [busy, setBusy] = React.useState(false)
   const [bulkOpen, setBulkOpen] = React.useState(false)
-  const [bulkKind, setBulkKind] = React.useState<'ban' | 'unban'>('ban')
+  const [showInvites, setShowInvites] = React.useState(false)
+  const [bulkKind, setBulkKind] = React.useState<'ban' | 'unban' | 'password_reset'>('ban')
   const [reason, setReason] = React.useState('')
 
   const params = new URLSearchParams({ limit: String(PAGE), offset: String((page - 1) * PAGE) })
@@ -53,6 +58,11 @@ export default function AdminUsersPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['admin-users', query, role, status, page],
     queryFn: () => api.get<Page<AdminUser>>(`/admin/users?${params}`),
+  })
+  const invites = useQuery({
+    queryKey: ['admin-invites', query],
+    queryFn: () => api.get<{ invites: AdminInvite[] }>(`/admin/users/invites?query=${encodeURIComponent(query)}`),
+    enabled: showInvites,
   })
 
   const rows = data?.items ?? []
@@ -190,6 +200,16 @@ export default function AdminUsersPage() {
               >
                 解除封禁
               </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setBulkKind('password_reset')
+                  setBulkOpen(true)
+                }}
+              >
+                重置密码
+              </Button>
               <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
                 清空
               </Button>
@@ -287,6 +307,94 @@ export default function AdminUsersPage() {
         </CardContent>
       </Card>
 
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-medium">邀请记录</p>
+              <p className="text-muted-foreground text-xs">24 小时内有效；重发会让旧链接立即失效。</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => setShowInvites((v) => !v)}>
+              {showInvites ? '收起' : '查看'}
+            </Button>
+          </div>
+          {showInvites && (
+            <div className="mt-3 overflow-x-auto">
+              {invites.isLoading ? (
+                <Skeleton className="h-16 w-full" />
+              ) : (invites.data?.invites ?? []).length === 0 ? (
+                <p className="text-muted-foreground py-4 text-sm">没有邀请记录。</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>邮箱</TableHead>
+                      <TableHead>项目</TableHead>
+                      <TableHead>状态</TableHead>
+                      <TableHead>过期</TableHead>
+                      <TableHead className="text-right">操作</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {invites.data!.invites.map((inv) => (
+                      <TableRow key={inv.id}>
+                        <TableCell className="text-sm">{inv.email}</TableCell>
+                        <TableCell className="text-sm">{inv.app || '账号级'}</TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={
+                              inv.state === 'pending'
+                                ? 'warning'
+                                : inv.state === 'accepted'
+                                  ? 'success'
+                                  : 'outline'
+                            }
+                          >
+                            {inviteState(inv.state)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground text-xs">{dateOnly(inv.expiresAt)}</TableCell>
+                        <TableCell className="text-right">
+                          {inv.state === 'pending' && (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() =>
+                                  void api
+                                    .post(`/admin/users/invite/${inv.id}/resend`, {})
+                                    .then(() => { toast.success('已重发'); return invites.refetch() })
+                                    .catch((e) => toast.error(e.message))
+                                }
+                              >
+                                重发
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-destructive"
+                                onClick={() =>
+                                  void api
+                                    .post(`/admin/users/invite/${inv.id}/revoke`, {})
+                                    .then(() => { toast.success('已撤销'); return invites.refetch() })
+                                    .catch((e) => toast.error(e.message))
+                                }
+                              >
+                                撤销
+                              </Button>
+                            </>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
         <DialogContent>
           <DialogHeader>
@@ -325,14 +433,18 @@ export default function AdminUsersPage() {
       <Dialog open={bulkOpen} onOpenChange={setBulkOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{bulkKind === 'ban' ? '封禁' : '解除封禁'} {selected.size} 个账号？</DialogTitle>
+            <DialogTitle>
+              {bulkKind === 'ban' ? '封禁' : bulkKind === 'unban' ? '解除封禁' : '重置密码'} {selected.size} 个账号？
+            </DialogTitle>
             <DialogDescription>
               {bulkKind === 'ban'
                 ? '封禁后这些账号无法登录任何项目，已有会话会被立即吊销。'
-                : '解除后这些账号可以重新登录。'}
+                : bulkKind === 'unban'
+                  ? '解除后这些账号可以重新登录。'
+                  : '会为每个账号生成临时密码并发送通知邮件；临时密码不进本回执。'}
             </DialogDescription>
           </DialogHeader>
-          {bulkKind === 'ban' && (
+          {bulkKind !== 'unban' && (
             <div className="space-y-1.5">
               <Label htmlFor="bulk-reason">原因（可选）</Label>
               <Input id="bulk-reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="例如：异常登录" />
@@ -344,7 +456,7 @@ export default function AdminUsersPage() {
             </Button>
             <Button variant={bulkKind === 'ban' ? 'destructive' : 'default'} onClick={bulk} disabled={busy}>
               {busy && <Loader2 className="animate-spin" />}
-              {bulkKind === 'ban' ? '封禁' : '解除'}
+              {bulkKind === 'ban' ? '封禁' : bulkKind === 'unban' ? '解除' : '重置密码'}
             </Button>
           </DialogFooter>
         </DialogContent>

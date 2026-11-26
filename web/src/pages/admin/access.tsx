@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Globe, Loader2, Lock, Plus, RotateCw, Search, Trash2, UserPlus, Users } from 'lucide-react'
 import { api } from '@/lib/api'
+import { useAuth } from '@/lib/auth'
 import type { AdminProject, Page, ProjectMember } from '@/lib/types'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -20,12 +21,15 @@ import { Separator } from '@/components/ui/separator'
 
 export default function AdminAccessPage() {
   const qc = useQueryClient()
+  const { session } = useAuth()
   const { data, isLoading } = useQuery({
     queryKey: ['admin-projects'],
     queryFn: () => api.get<{ projects: AdminProject[] }>('/admin/projects'),
   })
   const [memberProject, setMemberProject] = React.useState<AdminProject | null>(null)
   const [oauthProject, setOauthProject] = React.useState<AdminProject | null>(null)
+  const [adminProject, setAdminProject] = React.useState<AdminProject | null>(null)
+  const [revokingAdmin, setRevokingAdmin] = React.useState<{ app: string; member: ProjectMember } | null>(null)
   const [removing, setRemoving] = React.useState<{ app: string; member: ProjectMember } | null>(null)
   const [busy, setBusy] = React.useState(false)
 
@@ -53,6 +57,21 @@ export default function AdminAccessPage() {
       await api.del(`/admin/projects/${removing.app}/access`, { email: removing.member.email })
       toast.success('已移出项目')
       setRemoving(null)
+      await refresh()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '操作失败')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function revokeAdmin() {
+    if (!revokingAdmin) return
+    setBusy(true)
+    try {
+      await api.post(`/admin/roles/${revokingAdmin.member.uid}/scope`, { app: revokingAdmin.app, op: 'revoke' })
+      toast.success('已回收项目管理员')
+      setRevokingAdmin(null)
       await refresh()
     } catch (err) {
       toast.error(err instanceof Error ? err.message : '操作失败')
@@ -136,14 +155,33 @@ export default function AdminAccessPage() {
                 )}
 
                 <Separator />
-                <div className="space-y-1">
-                  <p className="text-sm font-medium">项目管理员</p>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium">项目管理员</p>
+                    {session?.role === 'super' && (
+                      <Button variant="ghost" size="sm" onClick={() => setAdminProject(p)}>
+                        <UserPlus /> 授予
+                      </Button>
+                    )}
+                  </div>
                   {p.admins.length === 0 ? (
-                    <p className="text-muted-foreground text-sm">暂无。平台管理员可在用户详情里授予项目授权。</p>
+                    <p className="text-muted-foreground text-sm">暂无。项目管理员可管理该项目的成员与会话。</p>
                   ) : (
                     <div className="flex flex-wrap gap-1.5">
                       {p.admins.map((a) => (
-                        <Badge key={a.uid} variant="outline">{a.email}</Badge>
+                        <span key={a.uid} className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs">
+                          {a.email}
+                          {session?.role === 'super' && (
+                            <button
+                              type="button"
+                              className="text-muted-foreground hover:text-destructive"
+                              aria-label={`回收 ${a.email} 的项目管理员`}
+                              onClick={() => setRevokingAdmin({ app: p.app, member: a })}
+                            >
+                              ×
+                            </button>
+                          )}
+                        </span>
                       ))}
                     </div>
                   )}
@@ -175,6 +213,14 @@ export default function AdminAccessPage() {
           onDone={() => { setMemberProject(null); void refresh() }}
         />
       )}
+      {adminProject && (
+        <AdminDialog
+          project={adminProject}
+          open={!!adminProject}
+          onOpenChange={(v) => !v && setAdminProject(null)}
+          onDone={() => { setAdminProject(null); void refresh() }}
+        />
+      )}
       {oauthProject && (
         <OAuthDialog
           project={oauthProject}
@@ -184,6 +230,16 @@ export default function AdminAccessPage() {
         />
       )}
 
+      <ConfirmDialog
+        open={!!revokingAdmin}
+        onOpenChange={(v) => !v && setRevokingAdmin(null)}
+        title={`回收 ${revokingAdmin?.member.email ?? ''} 的项目管理员？`}
+        description="会收回该项目管理员授权；对方的项目管理员角色在没有其它项目授权时会降回普通用户。"
+        confirmLabel="回收"
+        destructive
+        busy={busy}
+        onConfirm={revokeAdmin}
+      />
       <ConfirmDialog
         open={!!removing}
         onOpenChange={(v) => !v && setRemoving(null)}
@@ -262,6 +318,86 @@ function MemberDialog({
                   </div>
                   <Button size="sm" variant="outline" disabled={busy} onClick={() => void add(c.email)}>
                     <Plus /> 添加
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
+            关闭
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function AdminDialog({
+  project,
+  open,
+  onOpenChange,
+  onDone,
+}: {
+  project: AdminProject
+  open: boolean
+  onOpenChange: (v: boolean) => void
+  onDone: () => void
+}) {
+  const [query, setQuery] = React.useState('')
+  const [busy, setBusy] = React.useState(false)
+  const candidates = useQuery({
+    queryKey: ['admin-candidates', project.app, query],
+    queryFn: () =>
+      api.get<Page<{ uid: number; email: string; role: string }>>(
+        `/admin/projects/${project.app}/candidates?query=${encodeURIComponent(query)}&limit=20&offset=0`,
+      ),
+    enabled: open,
+  })
+
+  async function grant(uid: number) {
+    setBusy(true)
+    try {
+      await api.post(`/admin/roles/${uid}/scope`, { app: project.app, op: 'grant' })
+      toast.success('已授予项目管理员')
+      onDone()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '授权失败')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const existing = new Set(project.admins.map((a) => a.uid))
+  const rows = (candidates.data?.items ?? []).filter((c) => !existing.has(c.uid))
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>授予「{project.name}」项目管理员</DialogTitle>
+          <DialogDescription>项目管理员只能管理该项目，不能查看全站目录或配置。</DialogDescription>
+        </DialogHeader>
+        <div className="relative">
+          <Search className="text-muted-foreground absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
+          <Input autoFocus className="pl-8" placeholder="搜索邮箱或 uid" value={query} onChange={(e) => setQuery(e.target.value)} />
+        </div>
+        <div className="max-h-64 overflow-y-auto rounded-md border">
+          {candidates.isLoading ? (
+            <Skeleton className="m-3 h-16" />
+          ) : rows.length === 0 ? (
+            <p className="text-muted-foreground p-4 text-sm">没有可授权的用户。</p>
+          ) : (
+            <ul className="divide-y">
+              {rows.map((c) => (
+                <li key={c.uid} className="flex items-center gap-2 px-3 py-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm">{c.email}</p>
+                    <p className="text-muted-foreground text-xs">uid {c.uid} · {c.role}</p>
+                  </div>
+                  <Button size="sm" variant="outline" disabled={busy} onClick={() => void grant(c.uid)}>
+                    <Plus /> 授予
                   </Button>
                 </li>
               ))}
