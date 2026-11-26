@@ -412,20 +412,87 @@ export function AppShell() {
   )
 }
 
+// 首次进入控制台时的骨架：**按真实外壳排版**（侧栏 + 顶栏 + 内容区），
+// 不再用一个居中的小卡片冒充整页——否则加载完成会看到布局整体跳一次。
+function ShellSkeleton() {
+  return (
+    <div className="min-h-dvh" aria-hidden="true">
+      <aside className="bg-sidebar fixed inset-y-0 left-0 z-20 hidden w-60 border-r p-3 min-[900px]:block">
+        <div className="mb-6 flex items-center gap-2 px-2 py-1">
+          <Skeleton className="size-7 rounded-md" />
+          <Skeleton className="h-4 w-12" />
+        </div>
+        <Skeleton className="mb-3 ml-2.5 h-3 w-14" />
+        <div className="space-y-2">
+          {[0, 1, 2, 3, 4, 5, 6].map((i) => (
+            <div key={i} className="flex items-center gap-2.5 px-2.5 py-2">
+              <Skeleton className="size-4 rounded-sm" />
+              <Skeleton className={i % 2 === 0 ? 'h-3.5 w-24' : 'h-3.5 w-16'} />
+            </div>
+          ))}
+        </div>
+      </aside>
+      <div className="min-[900px]:pl-60">
+        <header className="bg-background/80 sticky top-0 z-30 flex h-14 items-center gap-3 border-b px-4">
+          <Skeleton className="h-4 w-20" />
+          <div className="flex-1" />
+          <Skeleton className="size-8 rounded-md" />
+          <Skeleton className="size-8 rounded-md" />
+          <Skeleton className="size-8 rounded-full" />
+        </header>
+        <main className="mx-auto w-full max-w-6xl space-y-6 p-4 sm:p-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="space-y-2">
+              <Skeleton className="h-7 w-36" />
+              <Skeleton className="h-3.5 w-56" />
+            </div>
+            <Skeleton className="h-9 w-24" />
+          </div>
+          <div className="grid gap-4 lg:grid-cols-3">
+            <div className="space-y-4 rounded-xl border p-5 lg:col-span-2">
+              <Skeleton className="h-5 w-24" />
+              <Skeleton className="h-3 w-56" />
+              <Skeleton className="h-2 w-full" />
+              <div className="space-y-3 pt-2">
+                {[0, 1, 2].map((i) => (
+                  <div key={i} className="flex items-center gap-3">
+                    <Skeleton className="size-9 rounded-md" />
+                    <div className="flex-1 space-y-1.5">
+                      <Skeleton className="h-3.5 w-1/3" />
+                      <Skeleton className="h-3 w-1/2" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-3 rounded-xl border p-5">
+              <Skeleton className="h-5 w-24" />
+              <Skeleton className="h-3 w-40" />
+              <Skeleton className="h-4 w-1/2" />
+              <Skeleton className="h-3 w-2/3" />
+              <Skeleton className="h-3 w-2/5" />
+              <Skeleton className="mt-2 h-9 w-full" />
+            </div>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-3">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="space-y-2 rounded-xl border p-5">
+                <Skeleton className="size-5 rounded-sm" />
+                <Skeleton className="h-4 w-2/5" />
+                <Skeleton className="h-3 w-4/5" />
+              </div>
+            ))}
+          </div>
+        </main>
+      </div>
+    </div>
+  )
+}
+
 export function RequireAuth() {
   const { session, loading } = useAuth()
   const location = useLocation()
-  if (loading) {
-    return (
-      <div className="flex min-h-dvh items-center justify-center">
-        <div className="w-full max-w-sm space-y-3">
-          <Skeleton className="h-8 w-40" />
-          <Skeleton className="h-24 w-full" />
-          <Skeleton className="h-24 w-full" />
-        </div>
-      </div>
-    )
-  }
+  if (loading) return <ShellSkeleton />
   if (!session) {
     const next = encodeURIComponent(location.pathname + location.search)
     return <Navigate to={`/web/login?next=${next}`} replace />

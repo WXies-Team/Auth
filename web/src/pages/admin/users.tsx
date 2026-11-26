@@ -22,7 +22,7 @@ import { Select } from '@/components/ui/select'
 import { SavedViews } from '@/components/ui/saved-views'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
-import { Skeleton } from '@/components/ui/skeleton'
+import { TableSkeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Pagination } from '@/components/ui/pagination'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -252,11 +252,7 @@ export default function AdminUsersPage() {
           )}
 
           {isLoading ? (
-            <div className="space-y-2">
-              {[0, 1, 2, 3].map((i) => (
-                <Skeleton key={i} className="h-12 w-full" />
-              ))}
-            </div>
+            <TableSkeleton rows={4} columns={6} />
           ) : rows.length === 0 ? (
             <EmptyState
               icon={Users}
@@ -356,7 +352,7 @@ export default function AdminUsersPage() {
           {showInvites && (
             <div className="mt-3 overflow-x-auto">
               {invites.isLoading ? (
-                <Skeleton className="h-16 w-full" />
+                <TableSkeleton rows={2} columns={5} />
               ) : (invites.data?.invites ?? []).length === 0 ? (
                 <p className="text-muted-foreground py-4 text-sm">没有邀请记录。</p>
               ) : (

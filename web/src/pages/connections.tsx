@@ -8,7 +8,7 @@ import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
+import { ListSkeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import * as React from 'react'
@@ -49,11 +49,7 @@ export default function ConnectionsPage() {
       <Card>
         <CardContent className="p-0">
           {isLoading ? (
-            <div className="space-y-2 p-4">
-              {[0, 1].map((i) => (
-                <Skeleton key={i} className="h-16 w-full" />
-              ))}
-            </div>
+            <ListSkeleton rows={2} action />
           ) : error ? (
             <EmptyState icon={Unplug} title="暂时无法读取授权列表" description="服务端可能尚未启用授权记录，请稍后再试。" />
           ) : rows.length === 0 ? (

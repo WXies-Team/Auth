@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { SavedViews } from '@/components/ui/saved-views'
 import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
+import { TableSkeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Pagination } from '@/components/ui/pagination'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -136,9 +136,7 @@ export default function AdminAuditPage() {
           />
 
           {isLoading ? (
-            <div className="space-y-2">
-              {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}
-            </div>
+            <TableSkeleton rows={4} columns={6} />
           ) : rows.length === 0 ? (
             <EmptyState icon={ScrollText} title="没有匹配的审计记录" description="调整筛选条件或时间范围后重试。" />
           ) : (

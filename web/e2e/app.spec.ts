@@ -90,6 +90,19 @@ test('登录页可渲染且无严重无障碍问题', async ({ page }) => {
   await noSeriousA11y(page)
 })
 
+test('邮箱验证码输入：单输入框分格展示且无严重无障碍问题', async ({ page }) => {
+  await mockApi(page, false)
+  await page.goto('/web/login')
+  await page.getByRole('tab', { name: '邮箱验证码' }).click()
+  const otp = page.getByRole('textbox', { name: '验证码' })
+  // 视觉上是六格，但真实控件只有一个 —— 粘贴/一次性验证码自动填充/读屏都只面对一个 input。
+  await expect(otp).toHaveCount(1)
+  await otp.click()
+  await otp.fill('123456')
+  await expect(otp).toHaveValue('123456')
+  await noSeriousA11y(page)
+})
+
 test('控制台展示安全评分与最近登录', async ({ page }) => {
   await mockApi(page)
   await page.goto('/web/console')

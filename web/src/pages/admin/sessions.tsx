@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { SavedViews } from '@/components/ui/saved-views'
-import { Skeleton } from '@/components/ui/skeleton'
+import { TableSkeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Pagination } from '@/components/ui/pagination'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -130,9 +130,7 @@ export default function AdminSessionsPage() {
           />
 
           {isLoading ? (
-            <div className="space-y-2">
-              {[0, 1, 2].map((i) => <Skeleton key={i} className="h-12 w-full" />)}
-            </div>
+            <TableSkeleton rows={4} columns={5} />
           ) : rows.length === 0 ? (
             <EmptyState icon={Monitor} title="没有匹配的会话" description="调整筛选条件后重试。" />
           ) : (

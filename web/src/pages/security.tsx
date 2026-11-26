@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { OtpInput } from '@/components/ui/otp-input'
 import { Progress } from '@/components/ui/progress'
-import { Skeleton } from '@/components/ui/skeleton'
+import { ListSkeleton } from '@/components/ui/skeleton'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { CopyButton } from '@/components/ui/copy-button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -277,7 +277,7 @@ export default function SecurityPage() {
         </CardHeader>
         <CardContent className="p-0">
           {trusted.isLoading ? (
-            <div className="p-4"><Skeleton className="h-12 w-full" /></div>
+            <ListSkeleton rows={1} action />
           ) : (trusted.data ?? []).length === 0 ? (
             <p className="text-muted-foreground p-6 text-sm">还没有信任的设备。下次两步验证时勾选「信任此设备」即可。</p>
           ) : (

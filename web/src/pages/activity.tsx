@@ -7,7 +7,7 @@ import { dateTime, relativeTime } from '@/lib/format'
 import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
+import { ListSkeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Pagination } from '@/components/ui/pagination'
 import { Button } from '@/components/ui/button'
@@ -92,11 +92,7 @@ export default function ActivityPage() {
       <Card>
         <CardContent className="p-0">
           {isLoading ? (
-            <div className="space-y-2 p-4">
-              {[0, 1, 2, 3].map((i) => (
-                <Skeleton key={i} className="h-14 w-full" />
-              ))}
-            </div>
+            <ListSkeleton rows={4} />
           ) : rows.length === 0 ? (
             <EmptyState icon={Activity} title="还没有安全活动" description="登录、改密或管理凭证后，事件会出现在这里。" />
           ) : (

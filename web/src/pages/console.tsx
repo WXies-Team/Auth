@@ -129,7 +129,14 @@ export default function ConsolePage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {sessions.isLoading ? (
-              <Skeleton className="h-20 w-full" />
+              <div className="space-y-2" aria-hidden="true">
+                <div className="flex items-center gap-2">
+                  <Skeleton className="size-4 rounded-sm" />
+                  <Skeleton className="h-4 w-2/5" />
+                </div>
+                <Skeleton className="h-3 w-3/5" />
+                <Skeleton className="h-3 w-2/5" />
+              </div>
             ) : recent ? (
               <>
                 <div className="flex items-center gap-2">
