@@ -119,7 +119,7 @@ export default function RegisterPage() {
                 <Label htmlFor="reg-code">验证码</Label>
                 <div className="flex gap-2">
                   <OtpInput id="reg-code" value={code} onChange={setCode} className="flex-1" />
-                  <Button type="button" variant="outline" onClick={() => void sendCode()} disabled={enabled === null}>
+                  <Button type="button" variant="outline" className="h-11" onClick={() => void sendCode()} disabled={enabled === null}>
                     获取验证码
                   </Button>
                 </div>

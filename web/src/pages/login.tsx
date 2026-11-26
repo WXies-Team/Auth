@@ -393,7 +393,7 @@ export default function LoginPage() {
                       <Label htmlFor="code">验证码</Label>
                       <div className="flex gap-2">
                         <OtpInput id="code" value={code} onChange={setCode} className="flex-1" />
-                        <Button type="button" variant="outline" onClick={() => void sendCode('login')}>
+                        <Button type="button" variant="outline" className="h-11" onClick={() => void sendCode('login')}>
                           {t('login.getCode')}
                         </Button>
                       </div>
@@ -414,7 +414,7 @@ export default function LoginPage() {
                       <Label htmlFor="reset-code">验证码</Label>
                       <div className="flex gap-2">
                         <OtpInput id="reset-code" value={code} onChange={setCode} className="flex-1" />
-                        <Button type="button" variant="outline" onClick={() => void sendCode('reset')}>
+                        <Button type="button" variant="outline" className="h-11" onClick={() => void sendCode('reset')}>
                           {t('login.getCode')}
                         </Button>
                       </div>
