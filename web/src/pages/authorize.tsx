@@ -36,6 +36,24 @@ export default function AuthorizePage() {
 
   const next = encodeURIComponent(`/oauth/authorize?${search}`)
 
+  if (!search) {
+    return (
+      <AuthLayout>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-xl">授权链接不完整</CardTitle>
+            <CardDescription>请从应用重新发起登录。</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button className="w-full" asChild>
+              <Link to="/web/login">返回登录</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </AuthLayout>
+    )
+  }
+
   return (
     <AuthLayout>
       <Card>

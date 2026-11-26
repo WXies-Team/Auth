@@ -286,6 +286,13 @@ export function RequireAdmin() {
   return <Outlet />
 }
 
+export function RequireSuper() {
+  const { session } = useAuth()
+  if (!session) return null
+  if (session.role !== 'super') return <Navigate to="/web/admin/sessions" replace />
+  return <Outlet />
+}
+
 export function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="auth-bg flex min-h-dvh flex-col items-center justify-center p-4">

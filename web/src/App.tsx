@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react'
 import { Route, Routes } from 'react-router-dom'
-import { AppShell, RequireAdmin, RequireAuth } from '@/components/layout/app-shell'
+import { AppShell, RequireAdmin, RequireAuth, RequireSuper } from '@/components/layout/app-shell'
 import { Skeleton } from '@/components/ui/skeleton'
 
 const LoginPage = lazy(() => import('@/pages/login'))
@@ -54,14 +54,16 @@ export default function App() {
             <Route path="/web/console/activity" element={<ActivityPage />} />
 
             <Route element={<RequireAdmin />}>
-              <Route path="/web/admin" element={<AdminUsersPage />} />
-              <Route path="/web/admin/users/:uid" element={<AdminUserDetailPage />} />
               <Route path="/web/admin/access" element={<AdminAccessPage />} />
               <Route path="/web/admin/sessions" element={<AdminSessionsPage />} />
               <Route path="/web/admin/audit" element={<AdminAuditPage />} />
-              <Route path="/web/admin/config" element={<AdminConfigPage />} />
               <Route path="/web/admin/ai-usage" element={<AdminAIPage />} />
-              <Route path="/web/admin/system" element={<AdminSystemPage />} />
+              <Route element={<RequireSuper />}>
+                <Route path="/web/admin" element={<AdminUsersPage />} />
+                <Route path="/web/admin/users/:uid" element={<AdminUserDetailPage />} />
+                <Route path="/web/admin/config" element={<AdminConfigPage />} />
+                <Route path="/web/admin/system" element={<AdminSystemPage />} />
+              </Route>
             </Route>
           </Route>
         </Route>
