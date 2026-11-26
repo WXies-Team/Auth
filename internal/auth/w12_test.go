@@ -157,3 +157,19 @@ func TestParseOAuthScope(t *testing.T) {
 		}
 	}
 }
+
+// 审计邮箱的展示口径：自己的事件全文，别人的事件掩码（存储层保留全文）。
+func TestMaskActorEmailFor(t *testing.T) {
+	if got := maskActorEmailFor(7, 7, "owner@example.com"); got != "owner@example.com" {
+		t.Errorf("自己的事件应保留全文，得到 %q", got)
+	}
+	if got := maskActorEmailFor(9, 7, "admin@example.com"); got != "a***@example.com" {
+		t.Errorf("他人的事件应掩码，得到 %q", got)
+	}
+	if got := maskActorEmailFor(0, 7, "anon@example.com"); got != "a***@example.com" {
+		t.Errorf("匿名 actor 也应掩码，得到 %q", got)
+	}
+	if got := maskActorEmailFor(9, 7, ""); got != "" {
+		t.Errorf("空邮箱应保持空，得到 %q", got)
+	}
+}

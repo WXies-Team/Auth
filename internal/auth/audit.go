@@ -123,6 +123,18 @@ type AuditEvent struct {
 // Audit 落一条审计。**尽力而为**：写失败只记日志、绝不影响业务回执——
 // 审计是旁路观察者，不能把「改密成功」变成 500。
 func (s *Service) Audit(e AuditEvent) {
+	// 审计是**证据**：落库的 actor_email 要能还原当时是谁。历史调用点多传了
+	// maskEmail 的结果（s***@domain），匿名事件也拿不到 uid；这里在写之前按
+	// actor_uid 回查一次完整邮箱，把掩码升级成原文（查不到/匿名则保留原值）。
+	// 展示层的掩码是另一回事：管理台看全文，用户自己的安全活动遮他人邮箱
+	// （见 UserAuditLog）——存储不丢、读时按受众收窄，是审计日志的通行口径。
+	if e.ActorUID != nil && (e.ActorEmail == "" || strings.Contains(e.ActorEmail, "***")) {
+		var email string
+		if err := s.pool.QueryRowContext(db.QueryCtx(),
+			"SELECT email FROM users WHERE id = ?", *e.ActorUID).Scan(&email); err == nil {
+			e.ActorEmail = email
+		}
+	}
 	action, result := e.Action, "ok"
 	if !e.OK {
 		result = "fail"
@@ -224,7 +236,7 @@ func (s *Service) QueryAudit(q AuditQuery) ([]AuditRow, int, error) {
 	}
 
 	// 条件逐个拼：参数全走占位符，绝不字符串拼值进 SQL
-	const base = " FROM audit_logs WHERE 1=1"
+	const base = " FROM audit_logs a WHERE 1=1"
 	var (
 		args []any
 		cond string
@@ -280,9 +292,17 @@ func (s *Service) QueryAudit(q AuditQuery) ([]AuditRow, int, error) {
 	}
 
 	listArgs := append(append([]any{}, args...), limit, offset)
+	// 历史行的 actor_email 可能是早期写入的掩码（s***@domain）：管理台按 uid
+	// 回查完整邮箱只用于展示，**不 UPDATE**（审计行不可改写）；查不到（账号已删）
+	// 或本来就是全文时原样返回。
 	rows, err := s.pool.QueryContext(db.QueryCtx(),
-		"SELECT id, ts, actor_uid, actor_email, action, result, target_uid, ip, user_agent, detail"+
-			base+cond+" ORDER BY ts DESC, id DESC LIMIT ? OFFSET ?", listArgs...)
+		`SELECT a.id, a.ts, a.actor_uid,
+		        COALESCE((SELECT u.email FROM users u
+		                  WHERE u.id = a.actor_uid
+		                    AND (a.actor_email = '' OR a.actor_email LIKE '%***%')),
+		                 a.actor_email),
+		        a.action, a.result, a.target_uid, a.ip, a.user_agent, a.detail`+
+			base+cond+" ORDER BY a.ts DESC, a.id DESC LIMIT ? OFFSET ?", listArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("查审计: %w", err)
 	}

@@ -67,13 +67,13 @@ Web 端点（**全部新增路径，老端点形状不变**；写操作需 `X-CS
 | `POST /api/totp/setup`、`/enable`、`/disable`、`/regenerate-recovery-codes` | 先验后启的绑定流程与恢复码管理 |
 | `GET /admin/users`、`GET /admin/users/{uid}`、`POST /admin/users/{uid}/revoke-sessions` | 后台用户查询（可选 `role=` / `banned=` 过滤）、整户踢出会话；角色端点只接受 `user` / `super`，`admin`（项目管理员）由项目访问页的 scope 授权派生 |
 | `GET /admin/sessions`、`DELETE /admin/sessions/{id}` | 全站会话总览（含 `apps` / `regions` 汇总）与吊销 |
-| `GET /admin/audit` | 审计查询（action / actor / target / 时间区间，倒序分页） |
+| `GET /admin/audit` | 审计查询（action / actor / target / 时间区间，倒序分页）；actor 邮箱按 uid 回填完整（历史掩码行只在展示时还原，不改审计行），CSV 同口径 |
 | `GET /admin/projects` | 项目列表：`members`（登录放行名单）+ `admins`（该项目管理员，来自 `admin_scopes`） |
 | `GET /admin/projects/{app}/candidates?query=&limit=&offset=` | 项目成员选择器：按项目鉴权分页列出/筛选已注册用户（uid/email/role，`total` + 每页最多 200），不暴露全站目录 |
 | `GET /admin/config`、`PUT /admin/config/{key}` | 配置中心：白名单键，secret 只回末 4 位 |
 | `GET /admin/ai-usage?days=30` | AI 用量与四档限额（空表如实为空） |
 | `GET /api/connected-apps`、`DELETE /api/connected-apps/{app}` | 已授权应用与撤销（撤销同时吊销该应用会话） |
-| `GET /api/security-log?limit=&offset=` | 自己的安全活动（actor 或 target 命中本 uid） |
+| `GET /api/security-log?limit=&offset=` | 自己的安全活动（actor 或 target 命中本 uid）；他人的邮箱在响应里掩码，自己的事件保留全文 |
 | `POST /api/account/export` | 导出账号数据（JSON；需 2 小时内强认证） |
 | `POST /admin/users/{uid}/mfa-reset` | 管理员重置 TOTP + Passkey 并吊销会话（super） |
 | `GET /admin/status` | 系统状态：版本/commit、运行时长、DB 延迟、邮件/WebAuthn 自检、schema 版本、表/索引计数 |

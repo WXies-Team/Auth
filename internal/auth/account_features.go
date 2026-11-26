@@ -101,6 +101,15 @@ func (s *Service) RevokeConnectedApp(uid int64, app string) error {
 	return nil
 }
 
+// maskActorEmailFor 按受众决定是否遮邮箱：自己的事件不遮，他人的一律遮。
+// 抽成纯函数便于单测（不依赖数据库）。
+func maskActorEmailFor(actorUID, viewerUID int64, email string) string {
+	if email == "" || actorUID == viewerUID {
+		return email
+	}
+	return maskEmail(email)
+}
+
 // UserAuditLog 是用户自己的安全活动：actor 或 target 命中该 uid 的事件。
 func (s *Service) UserAuditLog(uid int64, limit, offset int) ([]AuditRow, int, error) {
 	limit, offset = clampPage(limit, offset)
@@ -136,6 +145,9 @@ func (s *Service) UserAuditLog(uid int64, limit, offset int) ([]AuditRow, int, e
 		}
 		r.Action, r.Result, r.UserAgent = action, result, ua
 		r.ActorUID = actor.Int64
+		// 别人的邮箱在自己的活动页里没有知道全称的必要（管理员改角色等事件会带
+		// 操作者邮箱）：统一遮掉；自己的事件保持全文，便于核对。
+		r.ActorEmail = maskActorEmailFor(r.ActorUID, uid, r.ActorEmail)
 		r.TargetUID = target.Int64
 		if detail.Valid && detail.String != "" {
 			r.Detail = map[string]string{}
