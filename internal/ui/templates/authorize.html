@@ -34,7 +34,7 @@
   <div class="card consent" id="authorize-card">
     <!-- ① 请求方身份 -->
     <div class="req-app">
-      {{if appLogo .App}}<img class="req-logo" src="/brand/{{.App}}-v1.png" alt="" width="44" height="44">{{end}}
+      {{if appLogo .App}}<img class="req-logo" src="{{appLogo .App}}" alt="" width="44" height="44">{{end}}
       <div class="req-id">
         <span class="req-app-label">以下应用请求访问你的 Auth 账号</span>
         <strong class="req-name">{{.AppName}}</strong>

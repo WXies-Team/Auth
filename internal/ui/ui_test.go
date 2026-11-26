@@ -306,6 +306,35 @@ func TestAdminConfigRequiresFullEndpoint(t *testing.T) {
 	}
 }
 
+// 登录/授权 Minimal 壳必须在内容区居中（grid 子项只靠 auto margin 在部分路径会贴左）。
+func TestAuthShellCentered(t *testing.T) {
+	rule, ok := cssRule(stripCSSComments(mustCSS(t)), ".auth-shell")
+	if !ok {
+		t.Fatal("style.css 缺 .auth-shell")
+	}
+	for _, want := range []string{"justify-self: center;", "max-width: 440px;"} {
+		if !strings.Contains(rule, want) {
+			t.Errorf(".auth-shell 缺居中约束 %q", want)
+		}
+	}
+}
+
+// 条件式 Passkey 请求与「使用 Passkey 登录」按钮不能并发：点击前必须先 abort
+// 并等待条件式请求结束，否则浏览器报 "A request is already pending"。
+func TestPasskeyModalAbortsConditionalRequest(t *testing.T) {
+	block := jsBlock(t, mustJS(t), "function initLogin() {", "\n/* ---------- WebAuthn：")
+	for _, want := range []string{
+		"mediation: 'conditional'",
+		"let condStopped = false;",
+		"condStopped = true;",
+		"await stopConditional();",
+	} {
+		if !strings.Contains(block, want) {
+			t.Errorf("Passkey 登录缺条件式请求收口 %q", want)
+		}
+	}
+}
+
 // 卡内列表按 Miuix 分组：16dp 卡片内边距 + 行间分隔线，不把每行做成独立小卡片。
 func TestCardGroupedListGeometry(t *testing.T) {
 	css := mustCSS(t)
@@ -965,7 +994,7 @@ func TestBrandMarksShareFaviconAndCenter(t *testing.T) {
 			// 不是外链也不是品牌位——放行，其余仍只许站点 favicon。
 			// 授权页的请求方 logo 是「谁在请求访问」的身份标识，由 appLogoPath
 			// 从 knownApps 白名单生成，不是站点品牌位，单独放行。
-			if m[1] == "/favicon.svg" || m[1] == "{{.AvatarSrc}}" || m[1] == "/brand/{{.App}}-v1.png" {
+			if m[1] == "/favicon.svg" || m[1] == "{{.AvatarSrc}}" || m[1] == "{{appLogo .App}}" {
 				continue
 			}
 			t.Errorf("%s 里有非 favicon 的图片引用 %q——品牌图必须统一成裸蓝矢量，不许带底",
@@ -2360,8 +2389,16 @@ func TestEveryKnownAppHasBrandAssets(t *testing.T) {
 	slugs := make([]string, 0, len(knownApps)+1)
 	for _, a := range knownApps {
 		slugs = append(slugs, a.key)
-		if got := appLogoPath(a.key); got != "/brand/"+a.key+"-v1.png" {
-			t.Errorf("appLogoPath(%q) 应为 /brand/%s-v1.png，得到 %q", a.key, a.key, got)
+		want := "/brand/" + a.key + "-v1.png"
+		if siteLogoApps[a.key] {
+			want = "/brand/" + a.key + "-site.png"
+			site, ctype, ok := BrandStatic(a.key + "-site.png")
+			if !ok || ctype != "image/png" || !bytes.HasPrefix(site, pngMagic) {
+				t.Errorf("%s 的站点 icon 资产缺失或不是 PNG", a.key)
+			}
+		}
+		if got := appLogoPath(a.key); got != want {
+			t.Errorf("appLogoPath(%q) 应为 %q，得到 %q", a.key, want, got)
 		}
 	}
 	slugs = append(slugs, "auth") // 账号级邮件（重置/注销/改绑）的中性品牌

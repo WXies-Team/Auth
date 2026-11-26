@@ -1002,17 +1002,31 @@ function initLogin() {
   $('#passkey-login').classList.toggle('hidden', !supportsPasskey);
   $('#passkey-sep').classList.toggle('hidden', !supportsPasskey);
   // ---- 条件式 UI：passkey 挂进邮箱框的自动填充（服务端已是 discoverable） ----
+  // 条件式 get() 会一直挂起等待自动填充选择；点击「使用 Passkey 登录」时若它还在，
+  // 浏览器会以 "A request is already pending" 拒绝第二次 get()。因此点击路必须
+  // 先 abort 并 await 条件式请求真正结束，再发新的 modal get()。
   let condAbort = null;
-  (async () => {
+  let condPromise = null;
+  let condStopped = false;
+  const stopConditional = async () => {
+    condStopped = true;
+    if (condAbort) { try { condAbort.abort(); } catch (_) {} condAbort = null; }
+    const p = condPromise;
+    condPromise = null;
+    if (p) { try { await p; } catch (_) { /* abort 是预期路径 */ } }
+  };
+  condPromise = (async () => {
     try {
       if (!supportsPasskey || !window.PublicKeyCredential.isConditionalMediationAvailable) return;
       if (!(await PublicKeyCredential.isConditionalMediationAvailable())) return;
       const opts = await api('/webauthn/login/options', { method: 'POST', body: {}, noReauth: true });
+      if (condStopped) return;
       condAbort = new AbortController();
+      const signal = condAbort.signal;
       const cred = await navigator.credentials.get({
         publicKey: decodePKOptions(opts.publicKey),
         mediation: 'conditional',
-        signal: condAbort.signal,
+        signal,
       });
       const done = await api('/webauthn/login/finish', {
         method: 'POST',
@@ -1024,7 +1038,7 @@ function initLogin() {
     }
   })();
   // 用户一旦走密码路，立即取消挂着的条件式请求
-  const abortCond = () => { if (condAbort) { condAbort.abort(); condAbort = null; } };
+  const abortCond = () => { stopConditional(); };
   ['#pane-password', '#pane-code', '#pane-reset'].forEach(sel => {
     const f = $(sel);
     if (f) f.addEventListener('submit', abortCond, true);
@@ -1036,6 +1050,9 @@ function initLogin() {
       const btn = $('#passkey-login');
       setBusy(btn, true);
       try {
+        // 先收掉页面加载时就挂着的条件式请求；否则浏览器报
+        // "A request is already pending"，面板也会等到超时才弹。
+        await stopConditional();
         const opts = await api('/webauthn/login/options', { method: 'POST', body: {} });
         const cred = await navigator.credentials.get({ publicKey: decodePKOptions(opts.publicKey) });
         const done = await api('/webauthn/login/finish', {

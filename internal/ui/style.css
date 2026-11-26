@@ -990,7 +990,13 @@ td .user-cell .truncate { max-width: 24ch; }
 /* —— Minimal 壳（登录/授权/邀请等）：居中单列，卡片上限宽 ——
    宽屏不拆双栏：auth 表单的业界惯例是居中窄卡（448px 上限，login-forms
    max-w-md 惯例），双栏会让「品牌 vs 表单」抢视线、拉长扫视路径。 */
-.auth-shell { max-width: 440px; margin: 6vh auto 0; }
+.auth-shell {
+  width: 100%; max-width: 440px;
+  margin: 6vh auto 0;
+  /* .content 是 grid：只写 auto margin 在部分布局路径下仍会贴到起始边；
+     justify-self 明确把 Minimal 单列卡居中（登录/授权/邀请/设置密码共用）。 */
+  justify-self: center;
+}
 /* 横屏手机（短高度）：6vh 大留白在 ~360px 高度下吃掉首屏，收成固定小值 */
 @media (max-height: 560px) {
   .auth-shell { margin-top: 16px; }
@@ -1014,7 +1020,12 @@ td .user-cell .truncate { max-width: 24ch; }
    app name 是用户可见的安全信息）、Casdoor consent anatomy（app identity /
    scopes / redirect domain / duration / revocation 五要素）。 */
 .req-app { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
-.req-app .req-logo { border-radius: 10px; flex: none; }
+.req-app .req-logo {
+  border-radius: 12px; flex: none;
+  object-fit: cover; background: var(--card);
+  /* 官方 icon 形状不一：圆角裁切 + 细描边让它在同意页的统一卡片里不显突兀。 */
+  box-shadow: 0 0 0 1px var(--line);
+}
 .req-app img { border-radius: 8px; }
 .req-app-label { display: block; font-size: 12px; color: var(--dim); }
 .req-id { min-width: 0; }

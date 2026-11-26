@@ -561,10 +561,22 @@ func Render(w http.ResponseWriter, name string, data Data) error {
 func appLogoPath(app string) string {
 	for _, a := range knownApps {
 		if a.key == app {
+			// 授权页直接展示对方站点的真实 icon（短链/护照），由 -site.png 提供；
+			// 其余 App 与邮件品牌继续使用生成的 -v1.png。圆角由 .req-logo 统一裁切。
+			if siteLogoApps[app] {
+				return "/brand/" + app + "-site.png"
+			}
 			return "/brand/" + app + "-v1.png"
 		}
 	}
 	return ""
+}
+
+// siteLogoApps 是已有官方站点 icon 的 App：授权页是「谁在请求」的身份提示，
+// 用对方自己的图标比通用品牌字形更容易辨认。
+var siteLogoApps = map[string]bool{
+	"EPassportForMikey": true,
+	"PersonalShortener": true,
 }
 
 // iconHTML 把清单里的图标套上统一外壳：同 viewBox、同线宽、currentColor 取色，
