@@ -177,8 +177,17 @@
     skeleton-hold 300ms linear forwards,
     skeleton-pulse 2s ease-in-out 300ms infinite;
 }
+@keyframes skeleton-show {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
+  /* 减少动态效果：不闪烁，但仍保留 300ms 延迟后静态显示。 */
   .skeleton {
-    animation: skeleton-hold 300ms linear forwards;
+    animation: skeleton-show 300ms linear 300ms forwards;
   }
 }
