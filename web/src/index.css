@@ -154,3 +154,31 @@
 @utility text-balance {
   text-wrap: balance;
 }
+
+/* 骨架屏延迟出现（300ms）：少于这个时长的加载直接显示内容，避免「闪一下」。
+   两个动画叠加在 opacity 上：前 300ms 由 delay 动画压住，之后 pulse 接管。 */
+@keyframes skeleton-hold {
+  0%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes skeleton-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.skeleton {
+  animation:
+    skeleton-hold 300ms linear forwards,
+    skeleton-pulse 2s ease-in-out 300ms infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: skeleton-hold 300ms linear forwards;
+  }
+}

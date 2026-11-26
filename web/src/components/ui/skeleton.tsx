@@ -1,7 +1,8 @@
 import { cn } from '@/lib/utils'
 
 export function Skeleton({ className, ...props }: React.ComponentProps<'div'>) {
-  return <div className={cn('bg-muted animate-pulse rounded-md', className)} {...props} />
+  // aria-hidden：骨架是纯视觉占位；读屏靠页面自己的加载态/实时区域，不读一堆空 div。
+  return <div aria-hidden="true" className={cn('bg-muted skeleton rounded-md', className)} {...props} />
 }
 
 // 列表骨架：镜像真实行的结构（图标块 + 两/三行文本 + 可选操作按钮），

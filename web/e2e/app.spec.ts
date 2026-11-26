@@ -213,6 +213,27 @@ test('配置中心用类型化控件，项目级策略在项目访问页', async
   await expect(dialog.getByRole('switch')).toHaveCount(2)
 })
 
+test('骨架屏延迟 300ms 才出现，快速加载不闪', async ({ page }) => {
+  // 不走 mockApi 的共享 /api/sessions 路由，确保这里的延迟一定生效。
+  await page.route('**/web/session', (r) => r.fulfill({ json: session }))
+  await page.route('**/api/profile', (r) => r.fulfill({ json: profile }))
+  await page.route('**/api/totp', (r) => r.fulfill({ json: { enabled: true } }))
+  await page.route('**/api/passkeys', (r) => r.fulfill({ json: [] }))
+  await page.route('**/api/sessions', async (r) => {
+    await new Promise((x) => setTimeout(x, 1500))
+    await r.fulfill({ json: sessions })
+  })
+  await page.goto('/web/console')
+  // 等页面的数据骨架真正挂载（chunk 加载时长不稳定，不能按墙钟时间猜）。
+  const skeleton = page.locator('main .skeleton').first()
+  await expect(skeleton).toBeAttached()
+  const opacityNow = await skeleton.evaluate((el) => getComputedStyle(el).opacity)
+  expect(Number(opacityNow)).toBe(0)
+  await page.waitForTimeout(400)
+  const opacityLater = await skeleton.evaluate((el) => getComputedStyle(el).opacity)
+  expect(Number(opacityLater)).toBeGreaterThan(0.05)
+})
+
 test('深色模式控制台无严重无障碍问题', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'dark' })
   await mockApi(page)
