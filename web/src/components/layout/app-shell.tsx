@@ -531,7 +531,6 @@ export function AuthLayout({ children }: { children: React.ReactNode }) {
         <span className="text-lg font-semibold tracking-tight">Auth</span>
       </div>
       <div className="w-full max-w-sm">{children}</div>
-      <p className="text-muted-foreground mt-8 text-xs">Horatio 统一账号</p>
     </div>
   )
 }
