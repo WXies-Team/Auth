@@ -216,19 +216,46 @@ export default function AdminUserDetailPage() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label>角色</Label>
-                <div className="flex gap-2">
-                  <Select
-                    aria-label="角色"
-                    value={pendingRole ?? data.role}
-                    onChange={(e) => setPendingRole(e.target.value)}
-                    disabled={busy || session?.uid === data.uid || (data.isRoot && !session?.isRoot)}
-                  >
-                    <option value="user">普通用户</option>
-                    <option value="admin">项目管理员</option>
-                    <option value="super">平台管理员</option>
-                  </Select>
-                </div>
-                <p className="text-muted-foreground text-xs">不能修改自己的角色；super 仅根管理员可任命。</p>
+                {data.role === 'admin' ? (
+                  <>
+                    {/* 项目管理员 = role=admin + admin_scopes 行，归属「项目访问」页。
+                        这里只展示，不提供下拉：在用户页直接升降会造成「零项目管理员」。 */}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="secondary">项目管理员</Badge>
+                      {data.scopes.length > 0 ? (
+                        <Button variant="link" size="sm" className="h-auto p-0" asChild>
+                          <Link to="/web/admin/access">在「项目访问」页管理</Link>
+                        </Button>
+                      ) : (
+                        <Button variant="outline" size="sm" onClick={() => setPendingRole('user')} disabled={busy}>
+                          降为普通用户
+                        </Button>
+                      )}
+                    </div>
+                    <p className="text-muted-foreground text-xs">
+                      {data.scopes.length > 0
+                        ? '项目管理员按项目授权；回收全部项目后自动降为普通用户。'
+                        : '该账号没有任何项目授权（历史遗留的无效状态），可直接降为普通用户。'}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex gap-2">
+                      <Select
+                        aria-label="角色"
+                        value={pendingRole ?? data.role}
+                        onChange={(e) => setPendingRole(e.target.value)}
+                        disabled={busy || session?.uid === data.uid || (data.isRoot && !session?.isRoot)}
+                      >
+                        <option value="user">普通用户</option>
+                        <option value="super">平台管理员</option>
+                      </Select>
+                    </div>
+                    <p className="text-muted-foreground text-xs">
+                      不能修改自己的角色；平台管理员仅根管理员可任命。项目管理员请在「项目访问」页按项目授权。
+                    </p>
+                  </>
+                )}
               </div>
               <div className="space-y-1.5">
                 <Label>登录方式</Label>

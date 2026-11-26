@@ -43,6 +43,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 
 type NavItem = { to: string; labelKey: string; icon: React.ComponentType<{ className?: string }> }
 
@@ -500,11 +501,47 @@ export function RequireAuth() {
   return <Outlet />
 }
 
+// 管理员强制 MFA 的落地面：有管理角色但还没绑 TOTP/Passkey 时，后端会拒绝所有
+// /admin/* 数据（mfa_required）。旧前端把 403 吞成空表，管理员只看到「没有数据」。
+// 这里在进页面之前就把原因和下一步说清楚（OWASP 对管理接口的强制 MFA 建议）。
+function AdminMFARequired() {
+  return (
+    <div className="mx-auto w-full max-w-lg py-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>管理后台需要两步验证</CardTitle>
+          <CardDescription>
+            你已拥有管理权限，但管理后台涉及全站用户数据，必须先绑定两步验证或 Passkey 才能访问。
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-muted-foreground text-sm">
+            绑定后回到这里即可查看用户、会话与审计数据。两步验证同时保护你的账号：即使密码泄露，攻击者也无法直接进入后台。
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild>
+              <Link to="/web/console/security">
+                <ShieldCheck /> 去绑定两步验证
+              </Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link to="/web/console">返回控制台</Link>
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
 export function RequireAdmin() {
   const { session } = useAuth()
   if (!session) return null
   if (session.role !== 'admin' && session.role !== 'super') {
     return <Navigate to="/web/console" replace />
+  }
+  if (!session.totpEnabled && session.passkeyCount === 0) {
+    return <AdminMFARequired />
   }
   return <Outlet />
 }

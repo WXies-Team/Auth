@@ -489,11 +489,16 @@ func TestRolesEndpoints(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Errorf("重复授 super 应幂等 200，得到 %d %s", rec.Code, rec.Body.String())
 	}
-	// target 降 admin（库里还有其它 super，允许）
+	// target 降 user（库里还有其它 super，允许）；admin 是项目派生角色，不能在这里设
 	rec = e.do(t, "POST", "/admin/users/"+strconv.FormatInt(target, 10)+"/role",
-		`{"role":"admin"}`, root.withCSRF)
+		`{"role":"user"}`, root.withCSRF)
 	if rec.Code != http.StatusOK {
 		t.Errorf("非最后 super 降级应 200，得到 %d %s", rec.Code, rec.Body.String())
+	}
+	rec = e.do(t, "POST", "/admin/users/"+strconv.FormatInt(target, 10)+"/role",
+		`{"role":"admin"}`, root.withCSRF)
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "项目访问") {
+		t.Errorf("直接设项目管理员应 400 并指向项目访问页，得到 %d %s", rec.Code, rec.Body.String())
 	}
 	// admin.role.change 审计
 	var changes int

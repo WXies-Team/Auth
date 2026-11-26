@@ -1,8 +1,8 @@
 import * as React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Globe, Monitor, RefreshCw, Search, Users } from 'lucide-react'
+import { Globe, Monitor, RefreshCw, Search, ShieldAlert, Users } from 'lucide-react'
 import { api } from '@/lib/api'
 import { APP_OPTIONS } from '@/lib/apps'
 import type { AdminSession, SessionPage } from '@/lib/types'
@@ -46,7 +46,7 @@ export default function AdminSessionsPage() {
   if (ip) apiParams.set('ip', ip)
   if (app) apiParams.set('app', app)
 
-  const { data, isLoading, isFetching, refetch } = useQuery({
+  const { data, isLoading, isFetching, refetch, error } = useQuery({
     queryKey: ['admin-sessions', query, ip, app, page],
     queryFn: () => api.get<SessionPage>(`/admin/sessions?${apiParams}`),
   })
@@ -131,6 +131,18 @@ export default function AdminSessionsPage() {
 
           {isLoading ? (
             <TableSkeleton rows={4} columns={5} />
+          ) : error ? (
+            // 403 不再被吞成空表：零项目授权的 app-admin 会看到明确原因与下一步。
+            <EmptyState
+              icon={ShieldAlert}
+              title="无法读取会话数据"
+              description={error instanceof Error ? error.message : '请稍后重试，或联系平台管理员。'}
+              action={
+                <Button variant="outline" size="sm" asChild>
+                  <Link to="/web/console">返回控制台</Link>
+                </Button>
+              }
+            />
           ) : rows.length === 0 ? (
             <EmptyState icon={Monitor} title="没有匹配的会话" description="调整筛选条件后重试。" />
           ) : (

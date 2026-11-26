@@ -112,6 +112,16 @@ test('控制台展示安全评分与最近登录', async ({ page }) => {
   await noSeriousA11y(page)
 })
 
+test('管理员未绑定 MFA 时展示绑定引导而不是空表', async ({ page }) => {
+  await mockApi(page, true)
+  await page.route('**/web/session', (route) =>
+    route.fulfill({ json: { ...session, totpEnabled: false, passkeyCount: 0 } }),
+  )
+  await page.goto('/web/admin')
+  await expect(page.getByText('管理后台需要两步验证', { exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: /去绑定两步验证/ })).toHaveAttribute('href', '/web/console/security')
+})
+
 test('用户列表可搜索并打开详情入口', async ({ page }) => {
   await mockApi(page)
   await page.goto('/web/admin')

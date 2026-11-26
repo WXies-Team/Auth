@@ -121,16 +121,32 @@ func TestAdminSetRole(t *testing.T) {
 	actor := seedAdminUser(t, svc, mailer, "admin-actor@example.com", adminRoleSuper)
 	target := newPasskeyUser(t, svc, mailer, "admin-target@example.com")
 
-	if err := svc.AdminSetRole(actor, target.UID, adminRoleAdmin); err != nil {
-		t.Fatalf("升目标为 admin: %v", err)
+	// 项目管理员是「项目授权」的派生状态：用户页直接设 admin 必须拒绝。
+	if err := svc.AdminSetRole(actor, target.UID, adminRoleAdmin); err == nil || !strings.Contains(err.Error(), "项目访问") {
+		t.Fatalf("直接设 admin 应拒绝并指向项目访问页，得到 %v", err)
+	}
+	// 正确路径：授予一个项目 → 同事务把 role 提为 admin。
+	if err := svc.AdminSetScope(actor, target.UID, "CalorieDiary", true); err != nil {
+		t.Fatalf("授予项目: %v", err)
 	}
 	var role string
 	if err := svc.pool.QueryRow("SELECT role FROM users WHERE id = ?", target.UID).Scan(&role); err != nil || role != adminRoleAdmin {
-		t.Errorf("role 应为 admin，得到 %q err=%v", role, err)
+		t.Errorf("授予项目后 role 应为 admin，得到 %q err=%v", role, err)
 	}
-	// 降级别人：允许
+	// 反向同样归项目页：用户页不能把项目管理员直接降回 user。
+	if err := svc.AdminSetRole(actor, target.UID, adminRoleUser); err == nil || !strings.Contains(err.Error(), "项目访问") {
+		t.Fatalf("直接降项目管理员应拒绝并指向项目访问页，得到 %v", err)
+	}
+	// 项目页回收最后一个授权 → 自动降回 user。
+	if err := svc.AdminSetScope(actor, target.UID, "CalorieDiary", false); err != nil {
+		t.Fatalf("回收项目: %v", err)
+	}
+	if err := svc.pool.QueryRow("SELECT role FROM users WHERE id = ?", target.UID).Scan(&role); err != nil || role != adminRoleUser {
+		t.Errorf("回收最后一个项目后 role 应为 user，得到 %q err=%v", role, err)
+	}
+	// 已是 user 再设 user：幂等成功（并落一条 ok 审计供下面断言）。
 	if err := svc.AdminSetRole(actor, target.UID, adminRoleUser); err != nil {
-		t.Fatalf("降目标为 user: %v", err)
+		t.Fatalf("重复设为 user 应幂等: %v", err)
 	}
 	// 降级自己：拒绝（否则一次误操作把所有人锁在门外）——任何目标角色都拒
 	if err := svc.AdminSetRole(actor, actor.UID, adminRoleUser); err == nil || !strings.Contains(err.Error(), "自己") {
@@ -141,7 +157,7 @@ func TestAdminSetRole(t *testing.T) {
 		t.Error("未知角色应 400")
 	}
 	// 查无此 uid → 404
-	cerr := svc.AdminSetRole(actor, 999999999999999999, adminRoleAdmin)
+	cerr := svc.AdminSetRole(actor, 999999999999999999, adminRoleUser)
 	if code, _ := httpMsg(cerr); code != 404 {
 		t.Errorf("不存在的用户应 404，得到 %d", code)
 	}
@@ -184,7 +200,7 @@ func TestAdminSetRoleRootSuperOnly(t *testing.T) {
 		t.Errorf("非根 su 授 super 应 403，得到 %d %q", code, msg)
 	}
 	// 非根 su 取消他人的 super → 同样 403
-	if code, msg := httpMsg(svc.AdminSetRole(other, root.UID, adminRoleAdmin)); code != 403 || !strings.Contains(msg, "根管理员") {
+	if code, msg := httpMsg(svc.AdminSetRole(other, root.UID, adminRoleUser)); code != 403 || !strings.Contains(msg, "根管理员") {
 		t.Errorf("非根 su 取消 super 应 403，得到 %d %q", code, msg)
 	}
 	// 根 su 授 super → 200，且审计落 admin.role.change
@@ -200,8 +216,8 @@ func TestAdminSetRoleRootSuperOnly(t *testing.T) {
 		Scan(&changes); err != nil || changes == 0 {
 		t.Errorf("涉 super 的角色调整应落 admin.role.change，得到 %d err=%v", changes, err)
 	}
-	// 根 su 取消（降 admin）→ 200；已无授权行可清（super 本就不带 scope）
-	if err := svc.AdminSetRole(root, target.UID, adminRoleAdmin); err != nil {
+	// 根 su 取消（降 user）→ 200；super 本就不带 scope，清空是幂等兜底
+	if err := svc.AdminSetRole(root, target.UID, adminRoleUser); err != nil {
 		t.Fatalf("根 su 降 super: %v", err)
 	}
 	// 非根 su 的涉 super 尝试也要留痕（fail 行落到 admin.role.change）
@@ -212,9 +228,6 @@ func TestAdminSetRoleRootSuperOnly(t *testing.T) {
 		t.Errorf("被拒的 super 调整应记 fail，得到 %d err=%v", fails, err)
 	}
 	// 降 user 清 scopes（残留行不许在下次提权时复活）
-	if err := svc.AdminSetRole(root, target.UID, adminRoleUser); err != nil {
-		t.Fatalf("降 user: %v", err)
-	}
 	var left int
 	_ = svc.pool.QueryRow("SELECT COUNT(*) FROM admin_scopes WHERE uid = ?", target.UID).Scan(&left)
 	if left != 0 {

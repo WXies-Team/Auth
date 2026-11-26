@@ -65,7 +65,7 @@ Web 端点（**全部新增路径，老端点形状不变**；写操作需 `X-CS
 | `GET /api/passkeys`、`PATCH`/`DELETE /api/passkeys/{id}` | Passkey 列表 / 改名 / 删除 |
 | `GET /api/totp` | 两步验证状态 `{enabled,createdAt}` |
 | `POST /api/totp/setup`、`/enable`、`/disable`、`/regenerate-recovery-codes` | 先验后启的绑定流程与恢复码管理 |
-| `GET /admin/users`、`GET/PATCH /admin/users/{uid}`、`POST /admin/users/{uid}/revoke-sessions` | 后台用户查询（可选 `role=` / `banned=` 过滤）、角色变更、整户踢出会话 |
+| `GET /admin/users`、`GET /admin/users/{uid}`、`POST /admin/users/{uid}/revoke-sessions` | 后台用户查询（可选 `role=` / `banned=` 过滤）、整户踢出会话；角色端点只接受 `user` / `super`，`admin`（项目管理员）由项目访问页的 scope 授权派生 |
 | `GET /admin/sessions`、`DELETE /admin/sessions/{id}` | 全站会话总览（含 `apps` / `regions` 汇总）与吊销 |
 | `GET /admin/audit` | 审计查询（action / actor / target / 时间区间，倒序分页） |
 | `GET /admin/projects` | 项目列表：`members`（登录放行名单）+ `admins`（该项目管理员，来自 `admin_scopes`） |
@@ -129,10 +129,12 @@ ci/build-server.sh    # 测试 + 打包 dist/server.tar（CI 部署用的同一�
 | `app_config` 表 | `risk_new_ip_mfa`（可选） | `0`/`off` 关闭「新 IP 登录即使有可信设备也要求 2FA」；缺省开启（仍会发新地点提醒邮件） |
 | `app_config` 表 | `audit_retention_days`（可选） | 审计保留天数，7–365，缺省 90；非法值按 90 |
 
-**管理员自举与根管理员**：`users.role` 默认 `user`，首个管理员部署时手工执行一次
-`UPDATE users SET role = 'admin' WHERE email = '<你的邮箱>';`（也进审计的正常路径）。
-后台要求该账号先绑两步验证或 Passkey，之后每次管理操作都要 2 小时内强认证过
-（管理操作成功即重置这 2 小时计时器）。
+**管理员自举与根管理员**：`users.role` 默认 `user`。平台管理员部署时手工执行一次
+`UPDATE users SET role = 'super' WHERE email = '<你的邮箱>';`；项目管理员不手改角色，
+在「项目访问」页按项目授权（写 `admin_scopes` 的同事务把 role 提为 `admin`，回收最后一个
+项目时自动降回 `user`）。后台要求管理员先绑两步验证或 Passkey（未绑时前端展示明确
+引导页，而不是空表），之后每次管理操作都要 2 小时内强认证过（管理操作成功即重置这
+2 小时计时器）。
 
 **根平台管理员按 uid 钉死**：`internal/auth.RootUID = 5939716`（当前对应
 `hs@horatio.cn`；邮箱常量 `RootSuperEmail` 只在库里还没有该 uid 行时兜底解析）。

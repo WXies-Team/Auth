@@ -557,12 +557,19 @@ func (s *Service) AdminUserBans(uid int64) ([]BanInfo, error) {
 	return out, nil
 }
 
-// AdminSetRole 是**唯一**的角色调整入口（POST /admin/users/{uid}/role，本批把
-// PATCH /admin/users/{uid} 与 POST /admin/roles/{uid}/role 两个旧端点合并到这里）：
-// role 取 user | admin | super 三值。授权规则 = W2 的「只能授予低于自己」再加根 su 收口：
+// AdminSetRole 是**平台级角色**的调整入口（POST /admin/users/{uid}/role）：
+// 只接受 user | super 两值。role=admin（项目管理员）是**按项目授权的派生状态**
+// （admin_scopes 至少一行 + role=admin），归属「项目访问」页，不在这里设置：
 //
-//	只有根 su（RootSuperEmail，钉死邮箱）能把任何人设为 / 取消 super；
-//	其余 su 只能设 user | admin；
+//	授予项目 → AdminSetScope 在同一事务里把 role 提为 admin；
+//	回收最后一个项目 → 自动降回 user。
+//
+// 这样就不存在「用户在用户页被设成项目管理员、却没有任何项目」的无效状态
+// （零 scope 的 role=admin 既进不了用户目录，也没有任何项目数据）。授权规则 =
+// W2 的「只能授予低于自己」再加根 su 收口：
+//
+//	只有根 su（RootSuperEmail，钉死 uid）能把任何人设为 / 取消 super；
+//	其余 su 不能调整 super；
 //	app-admin（role=admin）无任何角色修改权——路由层 requireSuper 挡在业务之前。
 //
 // 既有守卫全部保留：① 不能改自己的角色（一次误操作就可能把所有人锁在门外）；
@@ -581,8 +588,11 @@ func (s *Service) AdminSetRole(actor Caller, targetUID int64, role string) (err 
 			Detail: withDenyReason(map[string]string{"role": role}, err),
 		})
 	}()
-	if role != adminRoleUser && role != adminRoleAdmin && role != adminRoleSuper {
-		return badRequest("角色只能是 user、admin 或 super，请重新选择后重试")
+	if role == adminRoleAdmin {
+		return badRequest("项目管理员由「项目访问」页按项目授权，不能在这里直接设置")
+	}
+	if role != adminRoleUser && role != adminRoleSuper {
+		return badRequest("角色只能是 user 或 super，请重新选择后重试")
 	}
 	// 业务层二次收口（路由 requireSuper 之外）：角色调整只属于平台管理员。
 	// 角色每请求现查——撤掉 super 后下一次调用当场失效，不留进程内缓存窗口。
@@ -608,6 +618,20 @@ func (s *Service) AdminSetRole(actor Caller, targetUID int64, role string) (err 
 	}
 	if scanErr != nil {
 		return fmt.Errorf("查目标用户: %w", scanErr)
+	}
+	// 项目管理员只能从「项目访问」页回收：在用户页直接降 user 会绕过
+	// admin_scopes 的清理口径（以及那页的「回收后自动降级」语义）。
+	if current == adminRoleAdmin && role == adminRoleUser {
+		// 正常路径归项目页（回收最后一个授权时自动降级）。唯一例外是历史遗留的
+		// 「零项目管理员」——项目页没有可回收的行，必须给一条修复出口。
+		var scopes int
+		if err := s.pool.QueryRowContext(db.QueryCtx(),
+			"SELECT COUNT(*) FROM admin_scopes WHERE uid = ?", targetUID).Scan(&scopes); err != nil {
+			return fmt.Errorf("数项目授权: %w", err)
+		}
+		if scopes > 0 {
+			return badRequest("该用户是项目管理员，请到「项目访问」页回收其全部项目授权，系统会自动降为普通用户")
+		}
 	}
 	// super 的授予与回收收进根 su：涉 super 的调整（无论升降）非根 su 一律 403，
 	// 且审计落到 admin.role.change 这个「平台角色调整」事件上。
@@ -635,11 +659,13 @@ func (s *Service) AdminSetRole(actor Caller, targetUID int64, role string) (err 
 		"UPDATE users SET role = ? WHERE id = ?", role, targetUID); err != nil {
 		return fmt.Errorf("改角色: %w", err)
 	}
-	if role == adminRoleUser {
-		// 降回普通用户即清授权行：残留行会在下次提权时把旧 app 权限意外带回来
+	// 任何非项目管理员的目标都不该留着 admin_scopes：
+	//   - 降回 user：残留行会在下次提权时把旧项目权限意外带回来；
+	//   - 升为 super：平台权限覆盖全部项目，旧行同样是下次降级时的复活隐患。
+	if role != adminRoleAdmin {
 		if _, err := s.pool.ExecContext(db.QueryCtx(),
 			"DELETE FROM admin_scopes WHERE uid = ?", targetUID); err != nil {
-			return fmt.Errorf("清应用授权: %w", err)
+			return fmt.Errorf("清项目授权: %w", err)
 		}
 	}
 	return nil
