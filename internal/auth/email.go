@@ -616,6 +616,26 @@ func passwordChangedNoticeEmail(b brand, at time.Time) (subject, htmlBody, text 
 // 执行时间 + 撤销入口。主题把**已排期**说进主题里（「将于 <日期时刻> 执行」）——
 // scheduled 与「注销已完成」在收件箱里一眼分信别，不会被当成事后通知划走。
 // cancelURL 是完整撤销链接（token 已内嵌，服务端拼好；模板不接用户输入）。
+// mfaResetNoticeEmail 是管理员重置 MFA 后的通知信：账号级、中性品牌，只报
+// 事实与下一步（重新绑定），不带操作者/uid/临时凭据。
+func mfaResetNoticeEmail(b brand, at time.Time) (subject, htmlBody, text string) {
+	subject = b.prefix + "两步验证已被重置"
+	lead := "管理员已于 " + safeTime(at) + " 重置了你的两步验证与 Passkey。"
+	m := mailBody{
+		scene:     "账号安全",
+		title:     "两步验证已被重置",
+		preheader: lead,
+		blocks: []block{
+			para{segs: []seg{plain(lead)}},
+			para{kind: pWarn, segs: []seg{plain("你的账号现在只剩密码一道防线。请尽快重新绑定两步验证或 Passkey。")}},
+			cta{label: "重新绑定", href: siteBase + "/web/console/security"},
+			para{kind: pWarn, segs: []seg{plain("不是你本人操作？请立即联系管理员并修改密码。")}},
+		},
+	}
+	htmlBody, text = m.render(b)
+	return subject, htmlBody, text
+}
+
 func deleteRequestEmail(b brand, cancelURL string, dueAt time.Time) (subject, htmlBody, text string) {
 	due := safeTime(dueAt)
 	subject = b.prefix + "注销申请已提交，将于 " + due + " 执行"

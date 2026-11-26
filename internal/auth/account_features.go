@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -41,6 +42,13 @@ func (s *Service) RecordConsent(uid int64, app string) {
 		Action: AuditConsentGrant, OK: true, ActorUID: uidPtr(uid),
 		TargetUID: uidPtr(uid), Detail: map[string]string{"app": app},
 	})
+}
+
+// TouchConsent 在授权码换 token 成功时刷新「最近使用」，不新增行。
+func (s *Service) TouchConsent(uid int64, app string) {
+	_, _ = s.pool.ExecContext(db.QueryCtx(),
+		"UPDATE oauth_consents SET last_used_at = ? WHERE uid = ? AND app = ?",
+		time.Now().UnixMilli(), uid, app)
 }
 
 func (s *Service) ListConnectedApps(uid int64) ([]ConnectedApp, error) {
@@ -190,6 +198,14 @@ func (s *Service) AdminResetMFA(actor Caller, targetUID int64) (err error) {
 	if s.isRootAccount(targetUID) && !s.isRootSuper(actor) {
 		return &HTTPError{Code: 403, Message: "根管理员的 MFA 只能由根管理员本人重置", Reason: ReasonPermission}
 	}
+	var targetEmail string
+	if qerr := s.pool.QueryRowContext(db.QueryCtx(),
+		"SELECT email FROM users WHERE id = ?", targetUID).Scan(&targetEmail); qerr != nil {
+		if errors.Is(qerr, sql.ErrNoRows) {
+			return &HTTPError{Code: 404, Message: "该用户不存在，请刷新后重试"}
+		}
+		return fmt.Errorf("查目标邮箱: %w", qerr)
+	}
 	defer func() {
 		s.Audit(AuditEvent{
 			Action: AuditAdminMFAReset, OK: err == nil, ActorUID: uidPtr(actor.UID),
@@ -220,7 +236,22 @@ func (s *Service) AdminResetMFA(actor Caller, targetUID int64) (err error) {
 		time.Now().UnixMilli(), targetUID); err != nil {
 		return fmt.Errorf("吊销会话: %w", err)
 	}
-	return tx.Commit()
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+	s.notifyMFAReset(targetEmail)
+	return nil
+}
+
+func (s *Service) notifyMFAReset(email string) {
+	if s.mailer == nil {
+		return
+	}
+	b := brandFor("")
+	subject, htmlBody, text := mfaResetNoticeEmail(b, time.Now())
+	if err := s.mailer.Send(context.Background(), b.name, email, subject, htmlBody, text); err != nil {
+		mailLog(err, "mfa_reset_notice", email)
+	}
 }
 
 // SystemCounts 是 /admin/status 的只读汇总。

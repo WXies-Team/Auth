@@ -25,35 +25,17 @@ function submitDecision(tx: string, decision: 'allow' | 'deny') {
   form.submit()
 }
 
-export default function AuthorizePage() {
-  const search = window.location.search.replace(/^\?/, '')
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['oauth-info', search],
-    queryFn: () => api.get<OAuthInfo>(`/oauth/authorize?format=json&${search}`, { reauth: false }),
-    retry: false,
-    enabled: !!search,
-  })
-
-  const next = encodeURIComponent(`/oauth/authorize?${search}`)
-
-  if (!search) {
-    return (
-      <AuthLayout>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-xl">授权链接不完整</CardTitle>
-            <CardDescription>请从应用重新发起登录。</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button className="w-full" asChild>
-              <Link to="/web/login">返回登录</Link>
-            </Button>
-          </CardContent>
-        </Card>
-      </AuthLayout>
-    )
-  }
-
+export function ConsentCard({
+  data,
+  isLoading,
+  error,
+  next,
+}: {
+  data?: OAuthInfo
+  isLoading: boolean
+  error: Error | null
+  next: string
+}) {
   return (
     <AuthLayout>
       <Card>
@@ -83,7 +65,7 @@ export default function AuthorizePage() {
               </Alert>
               {error instanceof ApiError && error.status === 401 ? (
                 <Button asChild className="w-full">
-                  <Link to={`/web/login?next=${next}`}>先登录再继续</Link>
+                  <Link to={`/web/login?next=${encodeURIComponent(next)}`}>先登录再继续</Link>
                 </Button>
               ) : (
                 <Button variant="outline" className="w-full" asChild>
@@ -126,5 +108,42 @@ export default function AuthorizePage() {
         </CardContent>
       </Card>
     </AuthLayout>
+  )
+}
+
+export default function AuthorizePage() {
+  const search = window.location.search.replace(/^\?/, '')
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['oauth-info', search],
+    queryFn: () => api.get<OAuthInfo>(`/oauth/authorize?format=json&${search}`, { reauth: false }),
+    retry: false,
+    enabled: !!search,
+  })
+
+  if (!search) {
+    return (
+      <AuthLayout>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-xl">授权链接不完整</CardTitle>
+            <CardDescription>请从应用重新发起登录。</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button className="w-full" asChild>
+              <Link to="/web/login">返回登录</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </AuthLayout>
+    )
+  }
+
+  return (
+    <ConsentCard
+      data={data}
+      isLoading={isLoading}
+      error={error as Error | null}
+      next={`/oauth/authorize?${search}`}
+    />
   )
 }

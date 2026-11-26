@@ -29,7 +29,8 @@ function safeNext(raw: string | null): string {
 export default function LoginPage() {
   const { session, loading, refresh } = useAuth()
   const [params] = useSearchParams()
-  const next = safeNext(params.get('next'))
+  const tx = params.get('tx')
+  const next = tx ? `/oauth/resume?tx=${encodeURIComponent(tx)}` : safeNext(params.get('next'))
 
   const [tab, setTab] = React.useState<Tab>('password')
   const [step, setStep] = React.useState<Step>('credentials')

@@ -8,6 +8,7 @@ const InvitePage = lazy(() => import('@/pages/invite'))
 const SetupPasswordPage = lazy(() => import('@/pages/setup-password'))
 const DeleteCancelPage = lazy(() => import('@/pages/delete-cancel'))
 const AuthorizePage = lazy(() => import('@/pages/authorize'))
+const OAuthResumePage = lazy(() => import('@/pages/oauth-resume'))
 const ConsolePage = lazy(() => import('@/pages/console'))
 const SessionsPage = lazy(() => import('@/pages/sessions'))
 const PasskeysPage = lazy(() => import('@/pages/passkeys'))
@@ -44,6 +45,7 @@ export default function App() {
         <Route path="/web/setup-password" element={<SetupPasswordPage />} />
         <Route path="/web/delete-cancel" element={<DeleteCancelPage />} />
         <Route path="/oauth/authorize" element={<AuthorizePage />} />
+        <Route path="/oauth/resume" element={<OAuthResumePage />} />
 
         <Route element={<RequireAuth />}>
           <Route element={<AppShell />}>

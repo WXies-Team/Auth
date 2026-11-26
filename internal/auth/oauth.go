@@ -279,6 +279,7 @@ func (s *Service) OAuthExchangeToken(req OAuthTokenRequest) (*OAuthTokenResult, 
 		return nil, err
 	}
 	_ = s.MarkReauth(sid)
+	s.TouchConsent(code.UID, code.App)
 	// 新设备登录提醒（W1）：OAuth 兑换同样建会话，接同一收口（best-effort）
 	s.notifyNewLoginDevice(code.UID, sid, email, code.App, SessionMeta{IP: code.IP, UserAgent: code.UA})
 	s.Audit(AuditEvent{
