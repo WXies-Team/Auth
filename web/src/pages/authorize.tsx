@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useLoadingSkeleton } from '@/lib/use-loading'
 import { Separator } from '@/components/ui/separator'
 
 function submitDecision(tx: string, decision: 'allow' | 'deny') {
@@ -36,6 +37,7 @@ export function ConsentCard({
   error: Error | null
   next: string
 }) {
+  const showSkeleton = useLoadingSkeleton(isLoading)
   return (
     <AuthLayout>
       <Card>
@@ -52,7 +54,7 @@ export function ConsentCard({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {isLoading ? (
+          {showSkeleton ? (
             <div className="space-y-2">
               <Skeleton className="h-9 w-full" />
               <Skeleton className="h-9 w-full" />

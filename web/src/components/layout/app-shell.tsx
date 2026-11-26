@@ -26,6 +26,7 @@ import { cn } from '@/lib/utils'
 import { useAuth } from '@/lib/auth'
 import { useI18n, type Lang } from '@/lib/i18n'
 import { api } from '@/lib/api'
+import { useLoadingSkeleton } from '@/lib/use-loading'
 import { useTheme, type Theme } from '@/lib/theme'
 import { AVATAR_PALETTE, avatarDataUrl, roleLabel, initials } from '@/lib/format'
 import { useProfile } from '@/lib/queries'
@@ -412,7 +413,7 @@ export function AppShell() {
         <Topbar />
         <AdminMfaNotice />
         <main ref={mainRef} tabIndex={-1} className="relative mx-auto w-full max-w-6xl p-4 outline-none sm:p-6">
-          <React.Suspense fallback={<PendingBar />}>
+          <React.Suspense fallback={<RouteChunkPending />}>
             <Outlet />
           </React.Suspense>
         </main>
@@ -424,17 +425,10 @@ export function AppShell() {
 
 // 首次进入控制台时的骨架：**按真实外壳排版**（侧栏 + 顶栏 + 内容区），
 // 不再用一个居中的小卡片冒充整页——否则加载完成会看到布局整体跳一次。
-// 懒加载页面 chunk 的兜底：只画一条 2px 顶部进度条（延迟 300ms），不再画第二套
-// 骨架。页面自己的列表/表格骨架才是唯一的内容骨架——否则导航时会先闪通用骨架、
-// 再闪页面骨架，形成「两个骨架屏」。
-function PendingBar() {
-  const [show, setShow] = React.useState(false)
-  React.useEffect(() => {
-    const timer = window.setTimeout(() => setShow(true), 300)
-    return () => window.clearTimeout(timer)
-  }, [])
-  if (!show) return null
-  return <div aria-hidden="true" className="bg-primary absolute inset-x-0 top-0 h-0.5 animate-pulse" />
+// 懒加载页面 chunk 的兜底：什么都不画（页面自己的骨架才是唯一占位）。
+// 顶部细条/通用内容骨架都会在 chunk 快速就绪时闪一下，反而成为新的“闪两个”来源。
+function RouteChunkPending() {
+  return null
 }
 
 function ShellSkeleton() {
@@ -515,7 +509,10 @@ function ShellSkeleton() {
 export function RequireAuth() {
   const { session, loading } = useAuth()
   const location = useLocation()
-  if (loading) return <ShellSkeleton />
+  // 会话探测同样吃「最少展示」：快于 300ms 时不画整页骨架（否则又是一个闪一下的框），
+  // 慢于 300ms 则至少展示 300ms，读作刻意的加载态而不是闪烁。
+  const showShell = useLoadingSkeleton(loading)
+  if (loading) return showShell ? <ShellSkeleton /> : null
   if (!session) {
     const next = encodeURIComponent(location.pathname + location.search)
     return <Navigate to={`/web/login?next=${next}`} replace />

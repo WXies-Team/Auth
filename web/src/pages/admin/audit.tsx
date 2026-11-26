@@ -13,6 +13,7 @@ import { Select } from '@/components/ui/select'
 import { SavedViews } from '@/components/ui/saved-views'
 import { Badge } from '@/components/ui/badge'
 import { TableSkeleton } from '@/components/ui/skeleton'
+import { useLoadingSkeleton } from '@/lib/use-loading'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Pagination } from '@/components/ui/pagination'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -73,6 +74,7 @@ export default function AdminAuditPage() {
   })
 
   const rows = data?.items ?? []
+  const showSkeleton = useLoadingSkeleton(isLoading)
 
   return (
     <div className="space-y-4">
@@ -135,8 +137,8 @@ export default function AdminAuditPage() {
             }}
           />
 
-          {isLoading ? (
-            <TableSkeleton rows={4} columns={6} />
+          {showSkeleton ? (
+            <TableSkeleton rows={4} columns={6} dense />
           ) : rows.length === 0 ? (
             <EmptyState icon={ScrollText} title="没有匹配的审计记录" description="调整筛选条件或时间范围后重试。" />
           ) : (

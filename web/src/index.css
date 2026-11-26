@@ -155,14 +155,8 @@
   text-wrap: balance;
 }
 
-/* 骨架屏延迟出现（300ms）：少于这个时长的加载直接显示内容，避免「闪一下」。
-   两个动画叠加在 opacity 上：前 300ms 由 delay 动画压住，之后 pulse 接管。 */
-@keyframes skeleton-hold {
-  0%,
-  100% {
-    opacity: 0;
-  }
-}
+/* 骨架屏：立即可见（无闪烁延迟），最少展示由页面侧的 useLoadingSkeleton 控制；
+   动画只在 opacity 上做呼吸，不碰尺寸/布局。 */
 @keyframes skeleton-pulse {
   0%,
   100% {
@@ -173,11 +167,16 @@
   }
 }
 .skeleton {
-  animation:
-    skeleton-hold 300ms linear forwards,
-    skeleton-pulse 2s ease-in-out 300ms infinite;
+  animation: skeleton-pulse 1.6s ease-in-out infinite;
 }
-@keyframes skeleton-show {
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+}
+
+/* 路由内容淡入：页面切换时不整块突兀地砸出来（不位移，只淡入）。 */
+@keyframes content-in {
   from {
     opacity: 0;
   }
@@ -185,9 +184,28 @@
     opacity: 1;
   }
 }
+main > * {
+  animation: content-in 150ms ease-out;
+}
 @media (prefers-reduced-motion: reduce) {
-  /* 减少动态效果：不闪烁，但仍保留 300ms 延迟后静态显示。 */
-  .skeleton {
-    animation: skeleton-show 300ms linear 300ms forwards;
+  main > * {
+    animation: none;
   }
+}
+
+@utility auth-bg {
+  background-image:
+    radial-gradient(60rem 40rem at 50% -20%, color-mix(in oklch, var(--primary) 12%, transparent), transparent 70%),
+    linear-gradient(to bottom, transparent, color-mix(in oklch, var(--background) 92%, var(--foreground) 2%));
+}
+
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@utility text-balance {
+  text-wrap: balance;
 }

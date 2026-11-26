@@ -16,6 +16,7 @@ import { Label } from '@/components/ui/label'
 import { OtpInput } from '@/components/ui/otp-input'
 import { Progress } from '@/components/ui/progress'
 import { ListSkeleton } from '@/components/ui/skeleton'
+import { useLoadingSkeleton } from '@/lib/use-loading'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { CopyButton } from '@/components/ui/copy-button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -28,10 +29,12 @@ type CodeAction = 'disable' | 'regenerate' | null
 export default function SecurityPage() {
   const qc = useQueryClient()
   const { data, isLoading } = useTotp()
+  const showSkeleton = useLoadingSkeleton(isLoading)
   const trusted = useQuery({
     queryKey: ['trusted-devices'],
     queryFn: () => api.get<TrustedDevice[]>('/api/trusted-devices'),
   })
+  const trustedSkeleton = useLoadingSkeleton(trusted.isLoading)
   const [revokeTrusted, setRevokeTrusted] = React.useState<TrustedDevice | null>(null)
   const [setup, setSetup] = React.useState<TOTPSetup | null>(null)
   const [codes, setCodes] = React.useState<string[] | null>(null)
@@ -128,8 +131,8 @@ export default function SecurityPage() {
     URL.revokeObjectURL(url)
   }
 
-  if (isLoading) {
-    return <div className="h-40 animate-pulse rounded-xl bg-muted" />
+  if (showSkeleton) {
+    return <div className="h-40 animate-pulse rounded-xl bg-muted" aria-hidden="true" />
   }
 
   return (
@@ -276,7 +279,7 @@ export default function SecurityPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
-          {trusted.isLoading ? (
+          {trustedSkeleton ? (
             <ListSkeleton rows={1} action />
           ) : (trusted.data ?? []).length === 0 ? (
             <p className="text-muted-foreground p-6 text-sm">还没有信任的设备。下次两步验证时勾选「信任此设备」即可。</p>

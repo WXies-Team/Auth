@@ -12,6 +12,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ListSkeleton } from '@/components/ui/skeleton'
+import { useLoadingSkeleton } from '@/lib/use-loading'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -22,6 +23,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 export default function PasskeysPage() {
   const qc = useQueryClient()
   const { data, isLoading } = usePasskeys()
+  const showSkeleton = useLoadingSkeleton(isLoading)
   const [adding, setAdding] = React.useState(false)
   const [renaming, setRenaming] = React.useState<Passkey | null>(null)
   const [name, setName] = React.useState('')
@@ -100,7 +102,7 @@ export default function PasskeysPage() {
 
       <Card>
         <CardContent className="p-0">
-          {isLoading ? (
+          {showSkeleton ? (
             <ListSkeleton rows={2} action />
           ) : rows.length === 0 ? (
             <EmptyState

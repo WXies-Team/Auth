@@ -12,6 +12,7 @@ import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useLoadingSkeleton } from '@/lib/use-loading'
 import { StatCard } from '@/components/ui/stat-card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -27,6 +28,7 @@ export default function AdminAIPage() {
     queryFn: () => api.get<AIUsage>(`/admin/ai-usage?days=${days}`),
   })
 
+  const showSkeleton = useLoadingSkeleton(isLoading)
   const delta = data ? data.today - data.yesterday : 0
   const chart = (data?.days ?? []).map((d) => ({ ...d, label: d.date.slice(5) }))
 
@@ -49,7 +51,7 @@ export default function AdminAIPage() {
         }
       />
 
-      {isLoading ? (
+      {showSkeleton ? (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-24" />)}
         </div>

@@ -18,6 +18,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useLoadingSkeleton } from '@/lib/use-loading'
 import { Separator } from '@/components/ui/separator'
 
 export default function ConsolePage() {
@@ -25,6 +26,7 @@ export default function ConsolePage() {
   const totp = useTotp()
   const passkeys = usePasskeys()
   const sessions = useSessions()
+  const sessionsSkeleton = useLoadingSkeleton(sessions.isLoading)
 
   if (!session) return null
 
@@ -132,7 +134,7 @@ export default function ConsolePage() {
             <CardDescription>发现陌生设备时立即退出。</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {sessions.isLoading ? (
+            {sessionsSkeleton ? (
               <div className="space-y-2" aria-hidden="true">
                 <div className="flex items-center gap-2">
                   <Skeleton className="size-4 rounded-sm" />

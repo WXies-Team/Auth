@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useLoadingSkeleton } from '@/lib/use-loading'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
@@ -302,6 +303,7 @@ function MemberDialog({
       ),
     enabled: open,
   })
+  const candidatesSkeleton = useLoadingSkeleton(candidates.isLoading)
 
   async function add(email: string) {
     setBusy(true)
@@ -331,7 +333,7 @@ function MemberDialog({
           <Input autoFocus aria-label="搜索邮箱或 uid" className="pl-8" placeholder="搜索邮箱或 uid" value={query} onChange={(e) => setQuery(e.target.value)} />
         </div>
         <div className="max-h-64 overflow-y-auto rounded-md border">
-          {candidates.isLoading ? (
+          {candidatesSkeleton ? (
             <Skeleton className="m-3 h-16" />
           ) : rows.length === 0 ? (
             <p className="text-muted-foreground p-4 text-sm">没有可添加的用户。</p>
@@ -382,6 +384,7 @@ function AdminDialog({
       ),
     enabled: open,
   })
+  const candidatesSkeleton = useLoadingSkeleton(candidates.isLoading)
 
   async function grant(uid: number) {
     setBusy(true)
@@ -411,7 +414,7 @@ function AdminDialog({
           <Input autoFocus aria-label="搜索邮箱或 uid" className="pl-8" placeholder="搜索邮箱或 uid" value={query} onChange={(e) => setQuery(e.target.value)} />
         </div>
         <div className="max-h-64 overflow-y-auto rounded-md border">
-          {candidates.isLoading ? (
+          {candidatesSkeleton ? (
             <Skeleton className="m-3 h-16" />
           ) : rows.length === 0 ? (
             <p className="text-muted-foreground p-4 text-sm">没有可授权的用户。</p>

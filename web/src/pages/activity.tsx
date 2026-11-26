@@ -8,6 +8,7 @@ import { PageHeader } from '@/components/ui/page-header'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ListSkeleton } from '@/components/ui/skeleton'
+import { useLoadingSkeleton } from '@/lib/use-loading'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Pagination } from '@/components/ui/pagination'
 import { Button } from '@/components/ui/button'
@@ -76,6 +77,7 @@ export default function ActivityPage() {
   })
 
   const rows = data?.items ?? []
+  const showSkeleton = useLoadingSkeleton(isLoading)
 
   return (
     <div className="space-y-4">
@@ -91,7 +93,7 @@ export default function ActivityPage() {
 
       <Card>
         <CardContent className="p-0">
-          {isLoading ? (
+          {showSkeleton ? (
             <ListSkeleton rows={4} />
           ) : rows.length === 0 ? (
             <EmptyState icon={Activity} title="还没有安全活动" description="登录、改密或管理凭证后，事件会出现在这里。" />

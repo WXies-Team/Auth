@@ -213,25 +213,28 @@ test('配置中心用类型化控件，项目级策略在项目访问页', async
   await expect(dialog.getByRole('switch')).toHaveCount(2)
 })
 
-test('骨架屏延迟 300ms 才出现，快速加载不闪', async ({ page }) => {
+test('骨架屏立即可见且最少展示 300ms，加载完成不闪', async ({ page }) => {
   // 不走 mockApi 的共享 /api/sessions 路由，确保这里的延迟一定生效。
   await page.route('**/web/session', (r) => r.fulfill({ json: session }))
   await page.route('**/api/profile', (r) => r.fulfill({ json: profile }))
   await page.route('**/api/totp', (r) => r.fulfill({ json: { enabled: true } }))
   await page.route('**/api/passkeys', (r) => r.fulfill({ json: [] }))
   await page.route('**/api/sessions', async (r) => {
-    await new Promise((x) => setTimeout(x, 1500))
+    await new Promise((x) => setTimeout(x, 200))
     await r.fulfill({ json: sessions })
   })
   await page.goto('/web/console')
-  // 等页面的数据骨架真正挂载（chunk 加载时长不稳定，不能按墙钟时间猜）。
+  // 立即可见：点进页面就有占位反馈，而不是先白屏。
   const skeleton = page.locator('main .skeleton').first()
   await expect(skeleton).toBeAttached()
-  const opacityNow = await skeleton.evaluate((el) => getComputedStyle(el).opacity)
-  expect(Number(opacityNow)).toBe(0)
+  await expect(skeleton.evaluate((el) => getComputedStyle(el).opacity)).resolves.not.toBe('0')
+  // 数据 200ms 就到了，但骨架最少展示 300ms：期间不消失，避免“闪一下就没了”。
+  await page.waitForTimeout(120)
+  await expect(skeleton).toBeAttached()
   await page.waitForTimeout(400)
-  const opacityLater = await skeleton.evaluate((el) => getComputedStyle(el).opacity)
-  expect(Number(opacityLater)).toBeGreaterThan(0.05)
+  // 最少展示期结束后内容接管，骨架消失。
+  await expect(skeleton).toHaveCount(0)
+  await expect(page.getByText('MacBook Pro · Chrome')).toBeVisible()
 })
 
 test('深色模式控制台无严重无障碍问题', async ({ page }) => {

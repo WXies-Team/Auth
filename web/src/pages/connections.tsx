@@ -9,6 +9,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ListSkeleton } from '@/components/ui/skeleton'
+import { useLoadingSkeleton } from '@/lib/use-loading'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import * as React from 'react'
@@ -38,6 +39,7 @@ export default function ConnectionsPage() {
   }
 
   const rows = data ?? []
+  const showSkeleton = useLoadingSkeleton(isLoading)
 
   return (
     <div className="space-y-4">
@@ -48,7 +50,7 @@ export default function ConnectionsPage() {
 
       <Card>
         <CardContent className="p-0">
-          {isLoading ? (
+          {showSkeleton ? (
             <ListSkeleton rows={2} action />
           ) : error ? (
             <EmptyState icon={Unplug} title="暂时无法读取授权列表" description="服务端可能尚未启用授权记录，请稍后再试。" />

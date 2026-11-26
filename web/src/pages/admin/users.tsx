@@ -23,6 +23,7 @@ import { SavedViews } from '@/components/ui/saved-views'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { TableSkeleton } from '@/components/ui/skeleton'
+import { useLoadingSkeleton } from '@/lib/use-loading'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Pagination } from '@/components/ui/pagination'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -77,6 +78,8 @@ export default function AdminUsersPage() {
   })
 
   const rows = data?.items ?? []
+  const showSkeleton = useLoadingSkeleton(isLoading)
+  const invitesSkeleton = useLoadingSkeleton(invites.isLoading)
   const allChecked = rows.length > 0 && rows.every((r) => selected.has(r.uid))
 
   function toggle(uid: number, on: boolean) {
@@ -251,7 +254,7 @@ export default function AdminUsersPage() {
             </div>
           )}
 
-          {isLoading ? (
+          {showSkeleton ? (
             <TableSkeleton rows={4} columns={6} />
           ) : rows.length === 0 ? (
             <EmptyState
@@ -351,7 +354,7 @@ export default function AdminUsersPage() {
           </div>
           {showInvites && (
             <div className="mt-3 overflow-x-auto">
-              {invites.isLoading ? (
+              {invitesSkeleton ? (
                 <TableSkeleton rows={2} columns={5} />
               ) : (invites.data?.invites ?? []).length === 0 ? (
                 <p className="text-muted-foreground py-4 text-sm">没有邀请记录。</p>

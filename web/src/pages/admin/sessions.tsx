@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { SavedViews } from '@/components/ui/saved-views'
 import { TableSkeleton } from '@/components/ui/skeleton'
+import { useLoadingSkeleton } from '@/lib/use-loading'
 import { EmptyState } from '@/components/ui/empty-state'
 import { Pagination } from '@/components/ui/pagination'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -67,6 +68,7 @@ export default function AdminSessionsPage() {
   }
 
   const rows = data?.items ?? []
+  const showSkeleton = useLoadingSkeleton(isLoading)
 
   return (
     <div className="space-y-4">
@@ -129,7 +131,7 @@ export default function AdminSessionsPage() {
             }}
           />
 
-          {isLoading ? (
+          {showSkeleton ? (
             <TableSkeleton rows={4} columns={5} />
           ) : error ? (
             // 403 不再被吞成空表：零项目授权的 app-admin 会看到明确原因与下一步。

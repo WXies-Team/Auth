@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useLoadingSkeleton } from '@/lib/use-loading'
 
 export default function DeleteCancelPage() {
   const [params] = useSearchParams()
@@ -22,6 +23,7 @@ export default function DeleteCancelPage() {
     retry: false,
     enabled: !!token,
   })
+  const infoSkeleton = useLoadingSkeleton(info.isLoading)
 
   async function cancel() {
     setBusy(true)
@@ -64,7 +66,7 @@ export default function DeleteCancelPage() {
                 <Link to="/web/login">去登录</Link>
               </Button>
             </div>
-          ) : info.isLoading ? (
+          ) : infoSkeleton ? (
             <Skeleton className="h-16 w-full" />
           ) : info.error ? (
             <div className="space-y-3">

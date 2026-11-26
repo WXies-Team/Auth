@@ -11,12 +11,14 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ListSkeleton } from '@/components/ui/skeleton'
+import { useLoadingSkeleton } from '@/lib/use-loading'
 import { EmptyState } from '@/components/ui/empty-state'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
 export default function SessionsPage() {
   const qc = useQueryClient()
   const { data, isLoading, isFetching, refetch } = useSessions()
+  const showSkeleton = useLoadingSkeleton(isLoading)
   const [target, setTarget] = React.useState<SessionInfo | null>(null)
   const [revokeOthers, setRevokeOthers] = React.useState(false)
   const [busy, setBusy] = React.useState(false)
@@ -74,7 +76,7 @@ export default function SessionsPage() {
 
       <Card>
         <CardContent className="p-0">
-          {isLoading ? (
+          {showSkeleton ? (
             <ListSkeleton rows={3} action />
           ) : rows.length === 0 ? (
             <EmptyState

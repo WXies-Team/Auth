@@ -14,6 +14,7 @@ import { Label } from '@/components/ui/label'
 import { PasswordInput } from '@/components/ui/password-input'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
+import { useLoadingSkeleton } from '@/lib/use-loading'
 
 export default function InvitePage() {
   const [params] = useSearchParams()
@@ -32,6 +33,7 @@ export default function InvitePage() {
     retry: false,
     enabled: !!token,
   })
+  const infoSkeleton = useLoadingSkeleton(info.isLoading)
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -72,7 +74,7 @@ export default function InvitePage() {
             <Alert variant="destructive">
               <AlertDescription>邀请链接缺少凭证，请从邮件重新打开。</AlertDescription>
             </Alert>
-          ) : info.isLoading ? (
+          ) : infoSkeleton ? (
             <div className="space-y-2">
               <Skeleton className="h-9 w-full" />
               <Skeleton className="h-9 w-full" />
