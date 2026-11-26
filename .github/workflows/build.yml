@@ -46,3 +46,30 @@ jobs:
         run: |
           go build ./...
           go test ./...
+
+  web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Web build, unit & e2e
+        working-directory: web
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          npm test
+          npx playwright install --with-deps chromium
+          npm run e2e
+
+      # dist 是随二进制提交的产物：源码改了没重建，这里直接红，避免线上跑旧 UI。
+      - name: Dist must be committed
+        run: git diff --exit-code -- internal/ui/dist

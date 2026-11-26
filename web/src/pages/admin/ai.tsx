@@ -37,7 +37,7 @@ export default function AdminAIPage() {
         description="按用户聚合的调用次数与限额；空表如实为空。"
         actions={
           <>
-            <Select className="w-32" value={days} onChange={(e) => setDays(e.target.value)}>
+            <Select aria-label="时间范围" className="w-32" value={days} onChange={(e) => setDays(e.target.value)}>
               <option value="7">近 7 天</option>
               <option value="30">近 30 天</option>
               <option value="90">近 90 天</option>
@@ -127,7 +127,7 @@ export default function AdminAIPage() {
                         <TableCell className="tabular-nums">{u.range}</TableCell>
                         <TableCell>
                           <div className="space-y-1">
-                            <Progress value={u.limitToday ? Math.min(100, (u.today / u.limitToday) * 100) : 0} />
+                            <Progress value={u.limitToday ? Math.min(100, (u.today / u.limitToday) * 100) : 0} aria-label={`${u.email} 今日限额`} />
                             <p className="text-muted-foreground text-xs">{u.today} / {u.limitToday}</p>
                           </div>
                         </TableCell>

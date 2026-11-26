@@ -103,6 +103,7 @@ cd web && npm ci && npm run build   # 构建前端到 internal/ui/dist
 go build ./...                      # 编译（需要先有 internal/ui/dist/index.html）
 go test ./...                       # 测试（DB 相关用例需要 TEST_MYSQL_DSN，缺省自动 Skip）
 cd web && npm test                  # 前端单测
+cd web && npm run e2e               # Playwright + axe（mock API）
 go vet ./...          # 静态检查
 ci/build-server.sh    # 测试 + 打包 dist/server.tar（CI 部署用的同一入口）
 ```

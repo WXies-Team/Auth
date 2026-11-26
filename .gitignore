@@ -3,6 +3,8 @@
 web/node_modules/
 web/dist/
 *.tsbuildinfo
+web/test-results/
+web/playwright-report/
 
 # 本地环境与密钥（.env.example 只放占位符，真实值绝不入库）
 .env

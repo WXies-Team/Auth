@@ -139,6 +139,7 @@ export default function AdminUsersPage() {
             <div className="relative min-w-48 flex-1">
               <Search className="text-muted-foreground absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
               <Input
+                aria-label="按邮箱片段或 uid 搜索"
                 className="pl-8"
                 placeholder="按邮箱片段或 uid 搜索"
                 value={query}
@@ -149,6 +150,7 @@ export default function AdminUsersPage() {
               />
             </div>
             <Select
+              aria-label="角色筛选"
               className="w-36"
               value={role}
               onChange={(e) => {
@@ -162,6 +164,7 @@ export default function AdminUsersPage() {
               <option value="super">平台管理员</option>
             </Select>
             <Select
+              aria-label="状态筛选"
               className="w-32"
               value={status}
               onChange={(e) => {

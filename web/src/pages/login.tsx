@@ -213,8 +213,8 @@ export default function LoginPage() {
     <AuthLayout>
       <Card>
         <CardHeader>
-          <CardTitle className="text-xl">
-            {step === 'totp' ? '两步验证' : step === 'force-pw' ? '设置新密码' : '登录 Auth'}
+          <CardTitle asChild className="text-xl">
+            <h1>{step === 'totp' ? '两步验证' : step === 'force-pw' ? '设置新密码' : '登录 Auth'}</h1>
           </CardTitle>
           <CardDescription>
             {step === 'totp'

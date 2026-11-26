@@ -82,7 +82,7 @@ export default function ConsolePage() {
                 <span className="font-medium">安全评分</span>
                 <span className="text-muted-foreground tabular-nums">{score}%</span>
               </div>
-              <Progress value={score} />
+              <Progress value={score} aria-label="安全评分" />
               <p className="text-muted-foreground text-xs">
                 {methods === 3
                   ? '三种方式都已启用，账号恢复能力完整。'

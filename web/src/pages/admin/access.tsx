@@ -301,7 +301,7 @@ function MemberDialog({
         </DialogHeader>
         <div className="relative">
           <Search className="text-muted-foreground absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
-          <Input autoFocus className="pl-8" placeholder="搜索邮箱或 uid" value={query} onChange={(e) => setQuery(e.target.value)} />
+          <Input autoFocus aria-label="搜索邮箱或 uid" className="pl-8" placeholder="搜索邮箱或 uid" value={query} onChange={(e) => setQuery(e.target.value)} />
         </div>
         <div className="max-h-64 overflow-y-auto rounded-md border">
           {candidates.isLoading ? (
@@ -381,7 +381,7 @@ function AdminDialog({
         </DialogHeader>
         <div className="relative">
           <Search className="text-muted-foreground absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
-          <Input autoFocus className="pl-8" placeholder="搜索邮箱或 uid" value={query} onChange={(e) => setQuery(e.target.value)} />
+          <Input autoFocus aria-label="搜索邮箱或 uid" className="pl-8" placeholder="搜索邮箱或 uid" value={query} onChange={(e) => setQuery(e.target.value)} />
         </div>
         <div className="max-h-64 overflow-y-auto rounded-md border">
           {candidates.isLoading ? (
@@ -461,13 +461,14 @@ function OAuthDialog({
           <div className="space-y-1.5">
             <Label>client_id</Label>
             <div className="flex gap-1">
-              <Input value={clientId} readOnly />
+              <Input aria-label="client_id" value={clientId} readOnly />
               {clientId && <CopyButton value={clientId} />}
             </div>
           </div>
           <div className="space-y-1.5">
             <Label>回跳地址（每行一个）</Label>
             <textarea
+              aria-label="回跳地址"
               className="border-input bg-background min-h-24 w-full rounded-md border px-3 py-2 font-mono text-xs shadow-xs outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
               value={uris}
               onChange={(e) => setUris(e.target.value)}

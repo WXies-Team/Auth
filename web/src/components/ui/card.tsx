@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { Slot } from '@radix-ui/react-slot'
 import { cn } from '@/lib/utils'
 
 export function Card({ className, ...props }: React.ComponentProps<'div'>) {
@@ -9,8 +10,9 @@ export function CardHeader({ className, ...props }: React.ComponentProps<'div'>)
   return <div className={cn('flex flex-col gap-1.5 p-6', className)} {...props} />
 }
 
-export function CardTitle({ className, ...props }: React.ComponentProps<'div'>) {
-  return <div className={cn('text-base font-semibold leading-none', className)} {...props} />
+export function CardTitle({ className, asChild, ...props }: React.ComponentProps<'div'> & { asChild?: boolean }) {
+  const Comp = asChild ? Slot : 'div'
+  return <Comp className={cn('text-base font-semibold leading-none', className)} {...props} />
 }
 
 export function CardDescription({ className, ...props }: React.ComponentProps<'div'>) {

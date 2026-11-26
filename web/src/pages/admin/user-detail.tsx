@@ -208,6 +208,7 @@ export default function AdminUserDetailPage() {
                 <Label>角色</Label>
                 <div className="flex gap-2">
                   <Select
+                    aria-label="角色"
                     value={pendingRole ?? data.role}
                     onChange={(e) => setPendingRole(e.target.value)}
                     disabled={busy || session?.uid === data.uid || (data.isRoot && !session?.isRoot)}
@@ -473,7 +474,7 @@ function ResetPasswordDialog({
         <div className="space-y-3">
           <div className="space-y-1.5">
             <Label>方式</Label>
-            <Select value={mode} onChange={(e) => setMode(e.target.value as 'random' | 'custom')}>
+            <Select aria-label="重置方式" value={mode} onChange={(e) => setMode(e.target.value as 'random' | 'custom')}>
               <option value="random">随机生成</option>
               <option value="custom">指定新密码</option>
             </Select>
@@ -481,7 +482,7 @@ function ResetPasswordDialog({
           {mode === 'custom' && (
             <div className="space-y-1.5">
               <Label>新密码</Label>
-              <Input value={password} onChange={(e) => setPassword(e.target.value)} />
+              <Input aria-label="新密码" value={password} onChange={(e) => setPassword(e.target.value)} />
             </div>
           )}
           <label className="flex items-center gap-2 text-sm">
@@ -492,7 +493,7 @@ function ResetPasswordDialog({
           </label>
           <div className="space-y-1.5">
             <Label>原因（可选）</Label>
-            <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="写进审计与通知邮件" />
+            <Input aria-label="重置原因" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="写进审计与通知邮件" />
           </div>
         </div>
         <DialogFooter>
@@ -606,7 +607,7 @@ function BanDialog({
         <div className="space-y-3">
           <div className="space-y-1.5">
             <Label>范围</Label>
-            <Select value={app} onChange={(e) => setApp(e.target.value)}>
+            <Select aria-label="封禁范围" value={app} onChange={(e) => setApp(e.target.value)}>
               <option value="*">全站</option>
               {APPS.map((a) => (
                 <option key={a.key} value={a.key}>{a.label}</option>

@@ -85,6 +85,7 @@ export default function AdminSessionsPage() {
             <div className="relative min-w-48 flex-1">
               <Search className="text-muted-foreground absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
               <Input
+                aria-label="按邮箱片段或 uid 搜索"
                 className="pl-8"
                 placeholder="按邮箱片段或 uid 搜索"
                 value={query}
@@ -92,12 +93,13 @@ export default function AdminSessionsPage() {
               />
             </div>
             <Input
+              aria-label="按 IP 前缀过滤"
               className="w-48"
               placeholder="按 IP 前缀过滤"
               value={ip}
               onChange={(e) => { setIp(e.target.value); setPage(1) }}
             />
-            <Select className="w-40" value={app} onChange={(e) => { setApp(e.target.value); setPage(1) }}>
+            <Select aria-label="项目筛选" className="w-40" value={app} onChange={(e) => { setApp(e.target.value); setPage(1) }}>
               {APP_OPTIONS.map((a) => (
                 <option key={a.key} value={a.key}>{a.label}</option>
               ))}

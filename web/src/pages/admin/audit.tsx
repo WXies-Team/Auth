@@ -81,18 +81,18 @@ export default function AdminAuditPage() {
       <Card>
         <CardContent className="space-y-3 p-4">
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            <Select value={action} onChange={(e) => { setAction(e.target.value); setPage(1) }}>
+            <Select aria-label="动作筛选" value={action} onChange={(e) => { setAction(e.target.value); setPage(1) }}>
               <option value="">全部动作</option>
               {ACTIONS.map((a) => <option key={a} value={a}>{a}</option>)}
             </Select>
-            <Select value={result} onChange={(e) => { setResult(e.target.value); setPage(1) }}>
+            <Select aria-label="结果筛选" value={result} onChange={(e) => { setResult(e.target.value); setPage(1) }}>
               <option value="">全部结果</option>
               <option value="ok">成功</option>
               <option value="fail">失败</option>
             </Select>
-            <Input placeholder="操作者 uid" value={actor} onChange={(e) => { setActor(e.target.value); setPage(1) }} />
-            <Input placeholder="目标 uid" value={target} onChange={(e) => { setTarget(e.target.value); setPage(1) }} />
-            <Input placeholder="IP 前缀" value={ip} onChange={(e) => { setIp(e.target.value); setPage(1) }} />
+            <Input aria-label="操作者 uid" placeholder="操作者 uid" value={actor} onChange={(e) => { setActor(e.target.value); setPage(1) }} />
+            <Input aria-label="目标 uid" placeholder="目标 uid" value={target} onChange={(e) => { setTarget(e.target.value); setPage(1) }} />
+            <Input aria-label="IP 前缀" placeholder="IP 前缀" value={ip} onChange={(e) => { setIp(e.target.value); setPage(1) }} />
             <Input type="datetime-local" value={from} onChange={(e) => { setFrom(e.target.value); setPage(1) }} aria-label="起始时间" />
             <Input type="datetime-local" value={to} onChange={(e) => { setTo(e.target.value); setPage(1) }} aria-label="结束时间" />
             <Button
