@@ -235,15 +235,24 @@ func (s *Service) SetConfig(f ConfigFunc) { s.cfg = f }
 // 安全性强于验证器丢失场景；若某天要收紧，入口就在这里——给 checkLoginCode
 // 路加同款 enforce 判定即可，不要另起开关。
 func (s *Service) enforceTOTPFor(app string, uid int64) bool {
-	if s.enforceCfg == nil || app == "" {
+	if app == "" {
 		return false
 	}
-	raw, err := s.enforceCfg("totp_enforce_apps")
-	if err != nil {
-		slog.Warn("读 totp_enforce_apps 失败，按未配置处理", "err", err)
-		return false
+	// 项目策略列是新的唯一入口；历史 totp_enforce_apps 键继续作为兼容回退读取
+	// （项目页保存策略时会摘掉该 app，避免「关了还生效」）。
+	legacy := false
+	if _, _, _, colLegacy, err := s.projectPolicy(app); err == nil {
+		legacy = colLegacy
 	}
-	if !containsCSV(raw, app) {
+	if !legacy && s.enforceCfg != nil {
+		raw, err := s.enforceCfg("totp_enforce_apps")
+		if err != nil {
+			slog.Warn("读 totp_enforce_apps 失败，按未配置处理", "err", err)
+		} else {
+			legacy = containsCSV(raw, app)
+		}
+	}
+	if !legacy {
 		return false
 	}
 	enabled, err := s.TOTPEnabled(uid)

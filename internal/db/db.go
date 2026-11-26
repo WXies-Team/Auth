@@ -188,6 +188,10 @@ var extraColumns = []columnDef{
 		"ALTER TABLE project_policy ADD COLUMN allowed_domains VARCHAR(1024) NOT NULL DEFAULT ''"},
 	{"project_policy", "session_days",
 		"ALTER TABLE project_policy ADD COLUMN session_days INT NOT NULL DEFAULT 0"},
+	// 旧版客户端强制升级从 app_config 的 totp_enforce_apps 名单迁到项目策略列：
+	// 按项目归属，项目访问页维护；旧键仍作为兼容回退读取，保存该项目的策略时清理。
+	{"project_policy", "enforce_legacy_upgrade",
+		"ALTER TABLE project_policy ADD COLUMN enforce_legacy_upgrade TINYINT NOT NULL DEFAULT 0"},
 	// FX5：验证码行记发码时的账号归属。0=匿名发码（register/reset/login/login_2fa/
 	// delete），非0=登录态发码（change/email_change）。验码按 uid 归属校验、
 	// 管理员换邮按 uid 烧在途改邮码（防覆盖竞态）。索引跟列一起建（与

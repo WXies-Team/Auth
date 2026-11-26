@@ -155,6 +155,9 @@ CREATE TABLE IF NOT EXISTS project_policy (
   mfa_required TINYINT NOT NULL DEFAULT 0,
   allowed_domains VARCHAR(1024) NOT NULL DEFAULT '',
   session_days INT NOT NULL DEFAULT 0,
+  -- 旧版客户端强制升级：开启且账号有 MFA 时，老端点密码登录返回「请升级」。
+  -- 归项目策略所有（项目访问页维护），不再放全局配置中心。
+  enforce_legacy_upgrade TINYINT NOT NULL DEFAULT 0,
   updated_by BIGINT NOT NULL DEFAULT 0, updated_at BIGINT NOT NULL DEFAULT 0
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci;
 
@@ -167,7 +170,8 @@ CREATE TABLE IF NOT EXISTS project_access (
 -- 审计日志（ASVS V16.2/V16.3）：认证成败、授权失败、配置改动都落这里。
 -- 只增不改不删（应用层不可篡改；物理篡改风险见规格 D8）；保留 90 天，过期行在
 -- 发码路径上顺手清（与 otp_codes 同款「挂高频路径」的清理模式）。
--- actor_email 存掩码、detail 只放非密钥结构化信息——这张表本身不能成为泄密面。
+-- actor_email 存完整邮箱（审计证据；管理台展示时按 uid 还原历史掩码行），
+-- 用户侧安全活动接口对他人邮箱掩码；detail 只放非密钥结构化信息。
 CREATE TABLE IF NOT EXISTS audit_logs (
     id          BIGINT       NOT NULL,
     ts          BIGINT       NOT NULL,

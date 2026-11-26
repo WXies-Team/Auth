@@ -156,6 +156,63 @@ test('用户列表可搜索并打开详情入口', async ({ page }) => {
   await noSeriousA11y(page)
 })
 
+test('配置中心用类型化控件，项目级策略在项目访问页', async ({ page }) => {
+  await mockApi(page, true)
+  await page.route((url) => url.pathname === '/admin/config', (route) =>
+    route.fulfill({
+      json: [
+        { key: 'allow_self_register', secret: false, configured: false, value: '', hint: '' },
+        { key: 'audit_retention_days', secret: false, configured: true, value: '90' },
+      ],
+    }),
+  )
+  await page.route((url) => url.pathname === '/admin/projects', (route) =>
+    route.fulfill({
+      json: { projects: [
+        {
+          app: 'CalorieDiary',
+          name: '热量日记',
+          restricted: false,
+          mfaRequired: true,
+          allowedDomains: [],
+          sessionDays: 30,
+          legacyUpgrade: false,
+          members: [],
+          admins: [],
+          clientId: '',
+          redirectUris: null,
+        },
+      ] },
+    }),
+  )
+
+  await page.goto('/web/admin/config')
+  // 未配置的开关显示实际默认值，避免「未配置 = 关闭」的误解。
+  await expect(page.getByText('未配置 · 默认关闭', { exact: true })).toBeVisible()
+  // 项目级开关已从全局配置中心移除，避免与项目访问页重复。
+  await expect(page.getByText('强制 2FA 项目')).toHaveCount(0)
+
+  await page.getByRole('button', { name: '编辑 审计保留天数' }).click()
+  const num = page.getByRole('dialog').locator('#cfg-value')
+  await expect(num).toHaveAttribute('type', 'number')
+  await expect(num).toHaveAttribute('min', '7')
+  await expect(num).toHaveAttribute('max', '365')
+  await page.keyboard.press('Escape')
+
+  await page.getByRole('button', { name: '编辑 开放自助注册' }).click()
+  await expect(page.getByRole('dialog').getByRole('switch')).toBeVisible()
+  await page.keyboard.press('Escape')
+
+  // 项目策略（要求 MFA / 旧客户端升级）归项目访问页，一个项目一组开关。
+  await page.goto('/web/admin/access')
+  await expect(page.getByText('要求 MFA')).toBeVisible()
+  await page.getByRole('button', { name: '配置' }).first().click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByRole('switch', { name: /要求两步验证/ })).toBeChecked()
+  await expect(dialog.getByRole('switch', { name: /旧版客户端强制升级/ })).not.toBeChecked()
+  await expect(dialog.getByRole('switch')).toHaveCount(2)
+})
+
 test('深色模式控制台无严重无障碍问题', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'dark' })
   await mockApi(page)

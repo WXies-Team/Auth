@@ -995,7 +995,6 @@ var adminConfigExactKeys = map[string]bool{
 	"risk_new_ip_mfa":         true,
 	"audit_retention_days":    true,
 	"webauthn_opaque_origins": true,
-	"totp_enforce_apps":       true,
 }
 
 func allowedConfigKey(key string) bool {
@@ -1090,10 +1089,11 @@ func (s *Service) AdminSetConfig(actor Caller, key, value string) (err error) {
 	if len(value) > adminMaxConfigValue {
 		return badRequest(fmt.Sprintf("配置值过长（最多 %d 字节），请精简后重试", adminMaxConfigValue))
 	}
-	if strings.HasPrefix(key, "ai_") && strings.TrimSpace(value) != "" {
-		if _, err := parseIntConfig(value); err != nil {
-			return badRequest("AI 限额配置值必须是正整数，请修改后重试")
-		}
+	// 类型化配置：开关/项目名单/数字/Android origin 在写入前归一化并校验，
+	// 避免「手填 1/0/on/yes」「项目名拼错」这类脏值只在运行时静默失效。
+	value, err = normalizeConfigValue(key, value)
+	if err != nil {
+		return err
 	}
 	// 先读旧态（给审计用），失败不挡写入
 	var old string
@@ -1117,6 +1117,70 @@ func (s *Service) AdminSetConfig(actor Caller, key, value string) (err error) {
 		return fmt.Errorf("写配置: %w", err)
 	}
 	return nil
+}
+
+// 类型化配置键（与前端配置中心的控件一一对应）。服务端仍做最终校验：
+// 前端控件只是便利，不能把非法值写进 app_config。
+var (
+	configBoolKeys = map[string]bool{
+		"allow_self_register":   true,
+		"password_breach_check": true,
+		"risk_new_ip_mfa":       true,
+	}
+	configNumberRanges = map[string][2]int{
+		"mail_smtp_port":       {1, 65535},
+		"ai_rate_per_minute":   {1, 1000000},
+		"ai_concurrency":       {1, 1000},
+		"ai_daily_per_user":    {1, 100000000},
+		"ai_daily_global":      {1, 100000000},
+		"audit_retention_days": {7, 365},
+	}
+)
+
+// normalizeConfigValue 把表单/手填值归一到该键的规范形态：
+//
+//	开关：1/0/on/off/true/false/yes/no → "1"/"0"
+//	项目名单：逗号或空白分隔 → 白名单校验 → 去重后逗号串
+//	数字：整数 + 区间校验 → 十进制串
+//	Android origin：逗号/换行分隔 → 前缀校验 → 最多 8 条
+//
+// 空值保持空（调用方按「删除该键」处理）；未知键原样返回（text/secret）。
+func normalizeConfigValue(key, raw string) (string, error) {
+	v := strings.TrimSpace(raw)
+	if v == "" {
+		return "", nil
+	}
+	if configBoolKeys[key] {
+		switch strings.ToLower(v) {
+		case "1", "on", "true", "yes":
+			return "1", nil
+		case "0", "off", "false", "no":
+			return "0", nil
+		}
+		return "", badRequest("这是开关配置，只能填 1（开启）或 0（关闭）")
+	}
+	if key == "webauthn_opaque_origins" {
+		parts := strings.FieldsFunc(v, func(r rune) bool {
+			return r == ',' || r == '\n' || r == '\t' || r == '\r'
+		})
+		if len(parts) > 8 {
+			return "", badRequest("Android origin 最多 8 条，请精简后重试")
+		}
+		for i, p := range parts {
+			if !strings.HasPrefix(p, "android:apk-key-hash:") || len(p) <= len("android:apk-key-hash:") {
+				return "", badRequest("Android origin 格式应为 android:apk-key-hash:<签名指纹>，请检查第 " + strconv.Itoa(i+1) + " 条")
+			}
+		}
+		return strings.Join(parts, ","), nil
+	}
+	if rng, ok := configNumberRanges[key]; ok {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < rng[0] || n > rng[1] {
+			return "", badRequest(fmt.Sprintf("该配置必须是 %d~%d 之间的整数，请修改后重试", rng[0], rng[1]))
+		}
+		return strconv.Itoa(n), nil
+	}
+	return v, nil
 }
 
 // ---- AI 用量看板 ----

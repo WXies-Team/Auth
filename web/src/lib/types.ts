@@ -112,6 +112,7 @@ export type AdminProject = {
   mfaRequired: boolean
   allowedDomains: string[]
   sessionDays: number
+  legacyUpgrade: boolean
   members: ProjectMember[]
   admins: ProjectMember[]
   clientId: string

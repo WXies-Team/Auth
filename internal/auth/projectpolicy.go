@@ -16,6 +16,9 @@ type AdminProjectPolicy struct {
 	MFARequired    bool     `json:"mfaRequired"`
 	AllowedDomains []string `json:"allowedDomains"`
 	SessionDays    int      `json:"sessionDays"`
+	// LegacyUpgrade 开启后：已绑 MFA 的账号用旧版客户端密码登录会被要求升级
+	// （原 totp_enforce_apps 名单的项目级版本）。
+	LegacyUpgrade bool `json:"legacyUpgrade"`
 }
 
 var domainRe = regexp.MustCompile(`^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?\.[a-z]{2,63}$`)
@@ -56,18 +59,18 @@ func normalizeDomains(in []string) (string, error) {
 }
 
 // projectPolicy 读项目策略；无行 = 全默认（不限制）。
-func (s *Service) projectPolicy(app string) (mfa bool, domains string, days int, err error) {
-	var m int
+func (s *Service) projectPolicy(app string) (mfa bool, domains string, days int, legacy bool, err error) {
+	var m, l int
 	err = s.pool.QueryRowContext(db.QueryCtx(),
-		"SELECT mfa_required, allowed_domains, session_days FROM project_policy WHERE app = ?", app).
-		Scan(&m, &domains, &days)
+		"SELECT mfa_required, allowed_domains, session_days, enforce_legacy_upgrade FROM project_policy WHERE app = ?", app).
+		Scan(&m, &domains, &days, &l)
 	if errors.Is(err, sql.ErrNoRows) {
-		return false, "", 0, nil
+		return false, "", 0, false, nil
 	}
 	if err != nil {
-		return false, "", 0, fmt.Errorf("查项目策略: %w", err)
+		return false, "", 0, false, fmt.Errorf("查项目策略: %w", err)
 	}
-	return m == 1, domains, days, nil
+	return m == 1, domains, days, l == 1, nil
 }
 
 // domainAllowed 允许精确域名及其子域（example.com 命中 a.example.com），
@@ -92,7 +95,7 @@ func (s *Service) denyIfProjectPolicy(uid int64, app string) error {
 	if app == "" {
 		return nil
 	}
-	mfa, domains, _, err := s.projectPolicy(app)
+	mfa, domains, _, _, err := s.projectPolicy(app)
 	if err != nil {
 		return &HTTPError{Code: 503, Message: "服务暂时不可用，请稍后重试"}
 	}
@@ -124,7 +127,7 @@ func (s *Service) sessionDaysForApp(app string) int {
 	if app == "" || app == "web" {
 		return 0
 	}
-	_, _, days, err := s.projectPolicy(app)
+	_, _, days, _, err := s.projectPolicy(app)
 	if err != nil || days <= 0 {
 		return 0
 	}
@@ -143,7 +146,8 @@ func (s *Service) AdminSetProjectPolicy(actor Caller, scope AdminScope, app stri
 			ActorEmail: maskEmail(actor.Email), Meta: actor.Meta,
 			Detail: withDenyReason(map[string]string{
 				"app": app, "mfa": boolWord(in.MFARequired),
-				"sessionDays": fmt.Sprint(in.SessionDays),
+				"sessionDays":   fmt.Sprint(in.SessionDays),
+				"legacyUpgrade": boolWord(in.LegacyUpgrade),
 			}, err),
 		})
 	}()
@@ -160,19 +164,60 @@ func (s *Service) AdminSetProjectPolicy(actor Caller, scope AdminScope, app stri
 	if err != nil {
 		return err
 	}
-	mfa := 0
+	mfa, legacy := 0, 0
 	if in.MFARequired {
 		mfa = 1
 	}
+	if in.LegacyUpgrade {
+		legacy = 1
+	}
 	if _, err = s.pool.ExecContext(db.QueryCtx(),
-		`INSERT INTO project_policy (app, mfa_required, allowed_domains, session_days, updated_by, updated_at)
-		 VALUES (?,?,?,?,?,?)
+		`INSERT INTO project_policy (app, mfa_required, allowed_domains, session_days, enforce_legacy_upgrade, updated_by, updated_at)
+		 VALUES (?,?,?,?,?,?,?)
 		 ON DUPLICATE KEY UPDATE mfa_required = VALUES(mfa_required),
 		                         allowed_domains = VALUES(allowed_domains),
 		                         session_days = VALUES(session_days),
+		                         enforce_legacy_upgrade = VALUES(enforce_legacy_upgrade),
 		                         updated_by = VALUES(updated_by), updated_at = VALUES(updated_at)`,
-		app, mfa, domains, in.SessionDays, actor.UID, time.Now().UnixMilli()); err != nil {
+		app, mfa, domains, in.SessionDays, legacy, actor.UID, time.Now().UnixMilli()); err != nil {
 		return fmt.Errorf("写项目策略: %w", err)
 	}
+	// 项目策略是该开关的唯一写入口：顺手把该 app 从历史全局名单里摘掉，
+	// 否则「项目页关掉、全局键仍开着」会让关闭看起来无效（旧键仅作兼容回退）。
+	s.removeLegacyEnforceApp(app)
 	return nil
+}
+
+// removeLegacyEnforceApp 从历史 app_config.totp_enforce_apps 名单里摘掉一个项目。
+// 读改写非事务（管理动作低频），失败只告警：策略列已经写入，这个键只是兼容残留。
+func (s *Service) removeLegacyEnforceApp(app string) {
+	var raw string
+	if err := s.pool.QueryRowContext(db.QueryCtx(),
+		"SELECT `value` FROM app_config WHERE `key` = 'totp_enforce_apps'").Scan(&raw); err != nil {
+		return
+	}
+	parts := strings.Split(raw, ",")
+	kept := make([]string, 0, len(parts))
+	changed := false
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p == "" {
+			continue
+		}
+		if p == app {
+			changed = true
+			continue
+		}
+		kept = append(kept, p)
+	}
+	if !changed {
+		return
+	}
+	ctx := db.QueryCtx()
+	if len(kept) == 0 {
+		_, _ = s.pool.ExecContext(ctx, "DELETE FROM app_config WHERE `key` = 'totp_enforce_apps'")
+		return
+	}
+	_, _ = s.pool.ExecContext(ctx,
+		"INSERT INTO app_config (`key`, `value`) VALUES ('totp_enforce_apps', ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)",
+		strings.Join(kept, ","))
 }

@@ -173,3 +173,36 @@ func TestMaskActorEmailFor(t *testing.T) {
 		t.Errorf("空邮箱应保持空，得到 %q", got)
 	}
 }
+
+// 配置中心的类型化校验：开关归一、项目名单白名单、数字区间、Android origin。
+func TestNormalizeConfigValue(t *testing.T) {
+	for _, tc := range []struct {
+		key, in, want string
+		ok            bool
+	}{
+		{"allow_self_register", "on", "1", true},
+		{"allow_self_register", "FALSE", "0", true},
+		{"allow_self_register", "maybe", "", false},
+		{"audit_retention_days", "365", "365", true},
+		{"audit_retention_days", "6", "", false},
+		{"ai_rate_per_minute", "0", "", false},
+		{"webauthn_opaque_origins", "android:apk-key-hash:abc\nandroid:apk-key-hash:def", "android:apk-key-hash:abc,android:apk-key-hash:def", true},
+		{"webauthn_opaque_origins", "nonsense", "", false},
+	} {
+		got, err := normalizeConfigValue(tc.key, tc.in)
+		if tc.ok {
+			if err != nil {
+				t.Fatalf("%s=%q 不应报错: %v", tc.key, tc.in, err)
+			}
+			if got != tc.want {
+				t.Errorf("%s=%q 应为 %q，得到 %q", tc.key, tc.in, tc.want, got)
+			}
+		} else if err == nil {
+			t.Errorf("%s=%q 应报错", tc.key, tc.in)
+		}
+	}
+	// 空值统一表示「删除该键」，不报错
+	if got, err := normalizeConfigValue("allow_self_register", "  "); err != nil || got != "" {
+		t.Errorf("空值应归一为空串，得到 %q err=%v", got, err)
+	}
+}

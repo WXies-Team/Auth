@@ -613,12 +613,14 @@ func registerAdminRoutes(mux *http.ServeMux, svc *auth.Service, cfg *config.Stor
 			MFARequired    bool     `json:"mfaRequired"`
 			AllowedDomains []string `json:"allowedDomains"`
 			SessionDays    int      `json:"sessionDays"`
+			LegacyUpgrade  bool     `json:"legacyUpgrade"`
 		}
 		if !decodeOr400(w, r, &req) {
 			return
 		}
 		if err := svc.AdminSetProjectPolicy(ac.caller.Caller, adminScope(ac), r.PathValue("app"), auth.AdminProjectPolicy{
 			MFARequired: req.MFARequired, AllowedDomains: req.AllowedDomains, SessionDays: req.SessionDays,
+			LegacyUpgrade: req.LegacyUpgrade,
 		}); err != nil {
 			writeResult(w, nil, err)
 			return

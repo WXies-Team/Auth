@@ -546,6 +546,7 @@ type AdminProject struct {
 	MFARequired    bool                 `json:"mfaRequired"`
 	AllowedDomains []string             `json:"allowedDomains"`
 	SessionDays    int                  `json:"sessionDays"`
+	LegacyUpgrade  bool                 `json:"legacyUpgrade"`
 	Members        []AdminProjectMember `json:"members"`
 	Admins         []AdminProjectMember `json:"admins"`
 	ClientID       string               `json:"clientId"`
@@ -643,18 +644,19 @@ func (s *Service) AdminListProjects(scope AdminScope) ([]AdminProject, error) {
 			AllowedDomains: make([]string, 0, 2),
 		}
 		var (
-			restricted, mfa int
-			domains         string
-			sessionDays     int
+			restricted, mfa, legacy int
+			domains                 string
+			sessionDays             int
 		)
 		err := s.pool.QueryRowContext(ctx,
-			"SELECT restricted, mfa_required, allowed_domains, session_days FROM project_policy WHERE app = ?", app).
-			Scan(&restricted, &mfa, &domains, &sessionDays)
+			"SELECT restricted, mfa_required, allowed_domains, session_days, enforce_legacy_upgrade FROM project_policy WHERE app = ?", app).
+			Scan(&restricted, &mfa, &domains, &sessionDays, &legacy)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return nil, fmt.Errorf("查项目限制: %w", err)
 		}
 		p.Restricted = restricted == 1
 		p.MFARequired = mfa == 1
+		p.LegacyUpgrade = legacy == 1
 		p.SessionDays = sessionDays
 		p.AllowedDomains = splitDomains(domains)
 

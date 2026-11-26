@@ -197,6 +197,7 @@ export default function AdminAccessPage() {
                     </p>
                     <p className="text-muted-foreground text-xs">
                       {p.mfaRequired ? '要求 MFA' : '不强制 MFA'} · {p.sessionDays ? `会话 ${p.sessionDays} 天` : '会话默认 90 天'}
+                      {p.legacyUpgrade ? ' · 旧客户端强制升级' : ''}
                       {p.allowedDomains.length ? ` · 域名 ${p.allowedDomains.join('、')}` : ''}
                     </p>
                   </div>
@@ -452,6 +453,7 @@ function PolicyDialog({
   onDone: () => void
 }) {
   const [mfa, setMfa] = React.useState(project.mfaRequired)
+  const [legacyUpgrade, setLegacyUpgrade] = React.useState(project.legacyUpgrade)
   const [domains, setDomains] = React.useState(project.allowedDomains.join('\n'))
   const [days, setDays] = React.useState(String(project.sessionDays || 0))
   const [busy, setBusy] = React.useState(false)
@@ -461,6 +463,7 @@ function PolicyDialog({
     try {
       await api.post(`/admin/projects/${project.app}/policy`, {
         mfaRequired: mfa,
+        legacyUpgrade,
         allowedDomains: domains.split(/[\n,，]/).map((d) => d.trim()).filter(Boolean),
         sessionDays: Number(days) || 0,
       })
@@ -478,7 +481,9 @@ function PolicyDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>「{project.name}」访问策略</DialogTitle>
-          <DialogDescription>只影响该项目的登录与会话；0 天表示使用默认 90 天。</DialogDescription>
+          <DialogDescription>
+            只影响该项目的登录与会话；0 天表示使用默认 90 天。项目级策略都在这里，配置中心只保留全局/跨项目项。
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <label className="flex items-center justify-between gap-3 text-sm">
@@ -487,6 +492,15 @@ function PolicyDialog({
               <span className="text-muted-foreground block text-xs">未绑定 TOTP/Passkey 的账号不能登录该项目。</span>
             </span>
             <Switch checked={mfa} onCheckedChange={setMfa} />
+          </label>
+          <label className="flex items-center justify-between gap-3 text-sm">
+            <span>
+              旧版客户端强制升级
+              <span className="text-muted-foreground block text-xs">
+                账号已绑定两步验证时，旧版 App 的密码登录会被拒绝并提示升级；不影响新版登录。
+              </span>
+            </span>
+            <Switch checked={legacyUpgrade} onCheckedChange={setLegacyUpgrade} />
           </label>
           <div className="space-y-1.5">
             <Label>允许的邮箱域名（每行一个，留空 = 不限）</Label>
