@@ -209,3 +209,25 @@ main > * {
 @utility text-balance {
   text-wrap: balance;
 }
+
+@keyframes boot-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}
+
+/* 启动屏延迟 100ms 再淡入：会话/首帧很快时它根本不会出现，避免 Logo 闪一下。 */
+@keyframes boot-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.boot-splash {
+  animation: boot-in 150ms ease-out 100ms both;
+}
