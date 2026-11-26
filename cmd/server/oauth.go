@@ -53,7 +53,8 @@ func oauthWebCaller(svc *auth.Service, r *http.Request) (auth.WebCaller, bool) {
 // 精确匹配 / PKCE S256 / state）在业务层；过了验：
 //
 //	无 web 会话 → 302 /web/login?tx=…（授权事务已在内存，登录成功后按 tx 续跑；
-//	               tx 只含已验参数，站内固定路径，无开放重定向面）；
+//	               tx 只含已验参数，站内固定路径，无开放重定向面；不再渲染
+//	               「先登录再继续」中间页，直接进登录表单）；
 //	有会话     → 渲染轻确认页（always 显示，不静默）。
 func oauthAuthorize(svc *auth.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -79,9 +80,10 @@ func oauthAuthorize(svc *auth.Service) http.HandlerFunc {
 			writeError(w, http.StatusUnauthorized, "请先登录后再继续授权")
 			return
 		}
-		// 直开授权链：回 SPA 入口，由前端带着原 query 取 JSON；未登录时前端
-		// 给「先登录再继续」，登录后 next 会回到本页。
-		serveSPA(w)
+		// 未登录直接 302 到托管登录页（标准 OIDC 行为：授权端点自己把用户送去
+		// 登录，登录成功后按 tx 回到确认页）。不再先渲染一个「请先登录」的中间页——
+		// 那次点击是多余的，而且会让用户以为登录入口不在当前页面。
+		http.Redirect(w, r, "/web/login?tx="+url.QueryEscape(tx), http.StatusFound)
 	}
 }
 
