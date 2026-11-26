@@ -1,4 +1,5 @@
 import { cn } from '@/lib/utils'
+import { useDocumentTitle } from '@/lib/use-title'
 
 export function PageHeader({
   title,
@@ -11,6 +12,7 @@ export function PageHeader({
   actions?: React.ReactNode
   className?: string
 }) {
+  useDocumentTitle(title)
   return (
     <div className={cn('flex flex-wrap items-start justify-between gap-3', className)}>
       <div className="space-y-1">

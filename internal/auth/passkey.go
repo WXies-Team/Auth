@@ -2,6 +2,7 @@ package auth
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/base64"
@@ -68,6 +69,10 @@ type PasskeyInfo struct {
 	CreatedAt  int64  `json:"createdAt"`
 	LastUsedAt int64  `json:"lastUsedAt"`
 	Current    bool   `json:"current"`
+	// WebAuthn 的同步能力标记：backupEligible = 这把凭证允许云同步；
+	// backupState = 当前确实已备份。只做展示，不参与安全判定。
+	BackupEligible bool `json:"backupEligible"`
+	BackupState    bool `json:"backupState"`
 }
 
 // maxOpaqueOrigins 是 Android 原生 origin 的上限：两个日记 App × debug/release
@@ -412,6 +417,7 @@ func (s *Service) FinishPasskeyRegistration(c Caller, ceremonyID int64, body []b
 		ActorEmail: maskEmail(c.Email), Meta: meta,
 		Detail: map[string]string{"name": name, "credentialId": base64.RawURLEncoding.EncodeToString(cred.ID)},
 	})
+	s.notifyPasskeyChanged(c.Email, name, true)
 	return &PasskeyInfo{ID: id, Name: name, CreatedAt: time.Now().UnixMilli(), LastUsedAt: 0}, nil
 }
 
@@ -568,8 +574,8 @@ func (s *Service) ListPasskeys(uid, currentSID int64) ([]PasskeyInfo, error) {
 	// credential_id 一并取出：current 标记在内存里比，不再每行点查一次
 	//（旧实现是 N+1，一页 10 把 passkey = 11 次往返）。
 	rows, err := s.pool.QueryContext(db.QueryCtx(),
-		`SELECT id, name, created_at, last_used_at, credential_id FROM passkeys
-		 WHERE user_id = ? AND rp_id = ? ORDER BY created_at DESC, id DESC`, uid, passkeyRPID)
+		`SELECT id, name, created_at, last_used_at, credential_id, backup_eligible, backup_state
+		 FROM passkeys WHERE user_id = ? AND rp_id = ? ORDER BY created_at DESC, id DESC`, uid, passkeyRPID)
 	if err != nil {
 		return nil, fmt.Errorf("查 passkey 列表: %w", err)
 	}
@@ -580,13 +586,16 @@ func (s *Service) ListPasskeys(uid, currentSID int64) ([]PasskeyInfo, error) {
 		var it PasskeyInfo
 		var lastUsed sql.NullInt64
 		var credID string
-		if err := rows.Scan(&it.ID, &it.Name, &it.CreatedAt, &lastUsed, &credID); err != nil {
+		var eligible, backedUp int
+		if err := rows.Scan(&it.ID, &it.Name, &it.CreatedAt, &lastUsed, &credID, &eligible, &backedUp); err != nil {
 			return nil, fmt.Errorf("读 passkey 行: %w", err)
 		}
 		if lastUsed.Valid {
 			it.LastUsedAt = lastUsed.Int64
 		}
 		it.Current = current != "" && credID == current
+		it.BackupEligible = eligible == 1
+		it.BackupState = backedUp == 1
 		out = append(out, it)
 	}
 	if err := rows.Err(); err != nil {
@@ -629,10 +638,12 @@ func (s *Service) RenamePasskey(c Caller, id int64, name string) (err error) {
 // 看到的总数已是 1 → 守卫拦下。旧实现「先查后删」两步分离，并发下两把能同时
 // 通过「总数=2」的检查再各自删掉，账号当场失去最后一种登录方式。
 func (s *Service) DeletePasskey(c Caller, id int64) (err error) {
+	var name string
 	defer func() {
 		s.Audit(AuditEvent{
 			Action: AuditPasskeyDelete, OK: err == nil, ActorUID: uidPtr(c.UID),
 			ActorEmail: maskEmail(c.Email), Meta: c.Meta,
+			Detail: map[string]string{"name": name},
 		})
 	}()
 	uid := c.UID
@@ -645,7 +656,7 @@ func (s *Service) DeletePasskey(c Caller, id int64) (err error) {
 
 	var rp string
 	err = tx.QueryRowContext(ctx,
-		"SELECT rp_id FROM passkeys WHERE id = ? AND user_id = ?", id, uid).Scan(&rp)
+		"SELECT name, rp_id FROM passkeys WHERE id = ? AND user_id = ?", id, uid).Scan(&name, &rp)
 	if errors.Is(err, sql.ErrNoRows) {
 		return &HTTPError{Code: 404, Message: "该 Passkey 不存在"}
 	}
@@ -681,7 +692,21 @@ func (s *Service) DeletePasskey(c Caller, id int64) (err error) {
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("提交删除: %w", err)
 	}
+	s.notifyPasskeyChanged(c.Email, name, false)
 	return nil
+}
+
+// notifyPasskeyChanged 是 Passkey 增删的安全通知（best-effort：凭证已落库/删除，
+// 邮件失败只记日志，不回滚业务）。
+func (s *Service) notifyPasskeyChanged(email, name string, added bool) {
+	if s.mailer == nil || strings.TrimSpace(email) == "" {
+		return
+	}
+	b := brandFor("")
+	subject, htmlBody, text := passkeyChangedNoticeEmail(b, added, name, time.Now())
+	if err := s.mailer.Send(context.Background(), b.name, email, subject, htmlBody, text); err != nil {
+		mailLog(err, "passkey_changed_notice", email)
+	}
 }
 
 // ---- 凭证存取 ----

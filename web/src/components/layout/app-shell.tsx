@@ -250,6 +250,14 @@ function Topbar() {
 }
 
 export function AppShell() {
+  const { pathname } = useLocation()
+  const mainRef = React.useRef<HTMLElement>(null)
+  React.useEffect(() => {
+    window.scrollTo(0, 0)
+    // 路由切换后把焦点交给主内容，读屏不会还停在旧页的链接上。
+    mainRef.current?.focus({ preventScroll: true })
+  }, [pathname])
+
   return (
     <div className="min-h-dvh">
       <aside className="bg-sidebar fixed inset-y-0 left-0 z-20 hidden w-60 border-r min-[900px]:block">
@@ -257,7 +265,7 @@ export function AppShell() {
       </aside>
       <div className="min-[900px]:pl-60">
         <Topbar />
-        <main className="mx-auto w-full max-w-6xl p-4 sm:p-6">
+        <main ref={mainRef} tabIndex={-1} className="mx-auto w-full max-w-6xl p-4 outline-none sm:p-6">
           <Outlet />
         </main>
       </div>

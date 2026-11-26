@@ -115,3 +115,13 @@ test('深色模式控制台无严重无障碍问题', async ({ page }) => {
   await expect(page.getByRole('heading', { name: '概览' })).toBeVisible()
   await noSeriousA11y(page)
 })
+
+test('移动端 390px 无横向溢出', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await mockApi(page)
+  await page.goto('/web/console')
+  await expect(page.getByRole('heading', { name: '概览' })).toBeVisible()
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)
+  expect(overflow).toBeTruthy()
+  await noSeriousA11y(page)
+})

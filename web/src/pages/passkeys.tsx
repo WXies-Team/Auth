@@ -128,6 +128,11 @@ export default function PasskeysPage() {
                     <p className="flex items-center gap-2 text-sm font-medium">
                       {row.name}
                       {row.current && <Badge variant="secondary">本机</Badge>}
+                      {row.backupState ? (
+                        <Badge variant="success">已同步</Badge>
+                      ) : row.backupEligible ? (
+                        <Badge variant="outline">可同步</Badge>
+                      ) : null}
                     </p>
                     <p className="text-muted-foreground text-xs">
                       添加于 {dateTime(row.createdAt)} · 最近使用 {relativeTime(row.lastUsedAt)}

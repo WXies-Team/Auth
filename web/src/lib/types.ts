@@ -40,6 +40,8 @@ export type Passkey = {
   createdAt: number
   lastUsedAt: number
   current: boolean
+  backupEligible: boolean
+  backupState: boolean
 }
 
 export type TOTPStatus = {

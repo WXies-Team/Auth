@@ -616,6 +616,48 @@ func passwordChangedNoticeEmail(b brand, at time.Time) (subject, htmlBody, text 
 // 执行时间 + 撤销入口。主题把**已排期**说进主题里（「将于 <日期时刻> 执行」）——
 // scheduled 与「注销已完成」在收件箱里一眼分信别，不会被当成事后通知划走。
 // cancelURL 是完整撤销链接（token 已内嵌，服务端拼好；模板不接用户输入）。
+// mfaDisabledNoticeEmail 是用户自助关闭两步验证后的确认信：关闭是削弱保护的
+// 动作，必须留痕到可信渠道。
+func mfaDisabledNoticeEmail(b brand, at time.Time) (subject, htmlBody, text string) {
+	subject = b.prefix + "两步验证已关闭"
+	lead := "你的账号于 " + safeTime(at) + " 关闭了两步验证。"
+	m := mailBody{
+		scene:     "账号安全",
+		title:     "两步验证已关闭",
+		preheader: lead,
+		blocks: []block{
+			para{segs: []seg{plain(lead)}},
+			para{kind: pWarn, segs: []seg{plain("账号现在只剩密码一道防线。若不是你本人操作，请立即修改密码并重新开启两步验证。")}},
+			cta{label: "安全设置", href: siteBase + "/web/console/security"},
+		},
+	}
+	htmlBody, text = m.render(b)
+	return subject, htmlBody, text
+}
+
+// passkeyChangedNoticeEmail 是 Passkey 增删后的安全通知：OWASP 要求凭证变更
+// 走已有可信渠道告知用户；只报名称与时间，不带凭证 ID。
+func passkeyChangedNoticeEmail(b brand, added bool, name string, at time.Time) (subject, htmlBody, text string) {
+	action := "添加"
+	if !added {
+		action = "删除"
+	}
+	subject = b.prefix + "Passkey 已" + action
+	lead := "你的账号于 " + safeTime(at) + " " + action + "了一把 Passkey（" + name + "）。"
+	m := mailBody{
+		scene:     "账号安全",
+		title:     "Passkey 已" + action,
+		preheader: lead,
+		blocks: []block{
+			para{segs: []seg{plain(lead)}},
+			para{kind: pWarn, segs: []seg{plain("不是你本人操作？请立即修改密码并联系管理员。")}},
+			cta{label: "管理 Passkey", href: siteBase + "/web/console/passkeys"},
+		},
+	}
+	htmlBody, text = m.render(b)
+	return subject, htmlBody, text
+}
+
 // mfaResetNoticeEmail 是管理员重置 MFA 后的通知信：账号级、中性品牌，只报
 // 事实与下一步（重新绑定），不带操作者/uid/临时凭据。
 func mfaResetNoticeEmail(b brand, at time.Time) (subject, htmlBody, text string) {
