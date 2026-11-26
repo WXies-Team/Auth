@@ -64,7 +64,7 @@ Web 端点（**全部新增路径，老端点形状不变**；写操作需 `X-CS
 | `GET /admin/sessions`、`DELETE /admin/sessions/{id}` | 全站会话总览（含 `apps` / `regions` 汇总）与吊销 |
 | `GET /admin/audit` | 审计查询（action / actor / target / 时间区间，倒序分页） |
 | `GET /admin/projects` | 项目列表：`members`（登录放行名单）+ `admins`（该项目管理员，来自 `admin_scopes`） |
-| `GET /admin/projects/{app}/candidates?query=` | 项目成员选择器：按项目鉴权搜索已注册用户（uid/email/role，最多 20 条），不暴露全站目录 |
+| `GET /admin/projects/{app}/candidates?query=&limit=&offset=` | 项目成员选择器：按项目鉴权分页列出/筛选已注册用户（uid/email/role，`total` + 每页最多 200），不暴露全站目录 |
 | `GET /admin/config`、`PUT /admin/config/{key}` | 配置中心：白名单键，secret 只回末 4 位 |
 | `GET /admin/ai-usage?days=30` | AI 用量与四档限额（空表如实为空） |
 
