@@ -200,7 +200,7 @@ func renderOAuthConfirm(svc *auth.Service, w http.ResponseWriter, tx string, uid
 	// 确认页的 form-action 也要预先放行回跳源：Chrome 会按提交页的 CSP 检查
 	// 表单 POST 之后的 redirect 链，光在 POST 响应上补不够。
 	w.Header().Set("Content-Security-Policy",
-		contentSecurityPolicyWithFormAction("", "https://"+view.RedirectHost))
+		contentSecurityPolicyWithFormAction("", "https://"+view.RedirectHost, "http://"+view.RedirectHost))
 	if err := ui.Render(w, "authorize", ui.Data{
 		Title: "授权登录", Minimal: true,
 		OAuth: &ui.OAuthView{
