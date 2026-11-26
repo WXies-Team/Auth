@@ -129,6 +129,24 @@ test('管理员未绑定 MFA 时展示绑定引导而不是空表', async ({ pag
   await expect(page.getByRole('link', { name: /去绑定两步验证/ })).toHaveAttribute('href', '/web/console/security')
 })
 
+test('切换控制台页面时外壳不消失，不再出现整页三大块骨架', async ({ page }) => {
+  await mockApi(page, true)
+  await page.goto('/web/console')
+  await expect(page.getByRole('link', { name: '概览' })).toBeVisible()
+  // 故意拖慢目标页面的 chunk：挂起时最近的 Suspense 边界应是 AppShell 内部的
+  // 内容区，侧栏/顶栏仍在，壳外不会跳出另一套整页骨架。
+  await page.route('**/assets/sessions-*.js', async (route) => {
+    await new Promise((r) => setTimeout(r, 900))
+    await route.continue()
+  })
+  await page.getByRole('link', { name: '登录会话' }).click()
+  await page.waitForTimeout(250)
+  await expect(page.getByRole('link', { name: '概览' })).toBeVisible()
+  await expect(page.getByRole('main')).toBeVisible()
+  await page.waitForTimeout(1200)
+  await expect(page.getByRole('heading', { name: '登录会话' })).toBeVisible()
+})
+
 test('用户列表可搜索并打开详情入口', async ({ page }) => {
   await mockApi(page)
   await page.goto('/web/admin')

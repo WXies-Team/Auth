@@ -412,7 +412,9 @@ export function AppShell() {
         <Topbar />
         <AdminMfaNotice />
         <main ref={mainRef} tabIndex={-1} className="mx-auto w-full max-w-6xl p-4 outline-none sm:p-6">
-          <Outlet />
+          <React.Suspense fallback={<ContentSkeleton />}>
+            <Outlet />
+          </React.Suspense>
         </main>
       </div>
       <CommandPalette open={palette} onOpenChange={setPalette} />
@@ -422,6 +424,42 @@ export function AppShell() {
 
 // 首次进入控制台时的骨架：**按真实外壳排版**（侧栏 + 顶栏 + 内容区），
 // 不再用一个居中的小卡片冒充整页——否则加载完成会看到布局整体跳一次。
+// 控制台内部页面（懒加载 chunk）的兜底：外壳已经渲染，只替换内容区。
+// 关键点：这个 Suspense 在 AppShell 里面，lazy 页面挂起时最近的边界是它，
+// 侧栏/顶栏不会消失，也不会再出现另一套整页骨架（之前 App 根部只有一个
+// Suspense，任何页面 chunk 加载都会把外壳一起换掉）。
+export function ContentSkeleton() {
+  return (
+    <div className="space-y-6" aria-hidden="true">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="space-y-2">
+          <Skeleton className="h-7 w-36" />
+          <Skeleton className="h-3.5 w-56" />
+        </div>
+        <Skeleton className="h-9 w-24" />
+      </div>
+      <div className="rounded-xl border">
+        <div className="space-y-2 p-4">
+          <Skeleton className="h-4 w-40" />
+          <Skeleton className="h-3 w-64" />
+        </div>
+        <div className="divide-y border-t">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="flex items-start gap-3 p-4">
+              <Skeleton className="size-9 shrink-0 rounded-md" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <Skeleton className={i % 2 === 0 ? 'h-4 w-2/5' : 'h-4 w-1/3'} />
+                <Skeleton className="h-3 w-3/5" />
+              </div>
+              <Skeleton className="h-8 w-16 shrink-0" />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function ShellSkeleton() {
   return (
     <div className="min-h-dvh" aria-hidden="true">

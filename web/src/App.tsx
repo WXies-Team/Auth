@@ -27,19 +27,36 @@ const AdminAIPage = lazy(() => import('@/pages/admin/ai'))
 const AdminSystemPage = lazy(() => import('@/pages/admin/system'))
 const NotFoundPage = lazy(() => import('@/pages/not-found'))
 
-function Loading() {
+// 公开页（登录/注册/邀请…）的懒加载兜底：按 AuthLayout 的形状画（品牌 + 一张
+// 表单卡），不再用「一条标题 + 两个大灰块」这种和登录页无关的形状。
+// 控制台内部页的懒加载由 AppShell 里的局部 Suspense 接住，外壳不会消失。
+function AuthPageSkeleton() {
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-3 p-6">
-      <Skeleton className="h-8 w-40" />
-      <Skeleton className="h-28 w-full" />
-      <Skeleton className="h-28 w-full" />
+    <div className="auth-bg flex min-h-dvh flex-col items-center justify-center p-4" aria-hidden="true">
+      <div className="mb-6 flex items-center gap-2">
+        <img src="/favicon.svg" alt="" className="size-8" />
+        <span className="text-lg font-semibold tracking-tight">Auth</span>
+      </div>
+      <div className="bg-card w-full max-w-sm space-y-4 rounded-xl border p-6">
+        <Skeleton className="h-6 w-32" />
+        <Skeleton className="h-3.5 w-48" />
+        <div className="space-y-2 pt-2">
+          <Skeleton className="h-3.5 w-10" />
+          <Skeleton className="h-9 w-full" />
+        </div>
+        <div className="space-y-2">
+          <Skeleton className="h-3.5 w-10" />
+          <Skeleton className="h-9 w-full" />
+        </div>
+        <Skeleton className="h-9 w-full" />
+      </div>
     </div>
   )
 }
 
 export default function App() {
   return (
-    <Suspense fallback={<Loading />}>
+    <Suspense fallback={<AuthPageSkeleton />}>
       <Routes>
         <Route path="/web/login" element={<LoginPage />} />
         <Route path="/web/register" element={<RegisterPage />} />
