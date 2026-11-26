@@ -254,12 +254,14 @@ export default function AdminConfigPage() {
             {editMeta?.kind === 'bool' ? (
               <div className="flex items-center justify-between gap-4 rounded-md border px-3 py-2.5">
                 <div className="space-y-0.5">
-                  <p className="text-sm font-medium">{value === '1' ? '已开启' : '已关闭'}</p>
+                  <p className="text-sm font-medium">
+                    {value === '' ? (editMeta.defaultOn ? '默认开启' : '默认关闭') : value === '1' ? '已开启' : '已关闭'}
+                  </p>
                   <p className="text-muted-foreground text-xs">{editMeta.help}</p>
                 </div>
                 <Switch
                   aria-label={`${edit ? LABELS[edit.key] ?? edit.key : ''}开关`}
-                  checked={value === '1'}
+                  checked={value === '' ? !!editMeta.defaultOn : value === '1'}
                   onCheckedChange={(v) => setValue(v ? '1' : '0')}
                 />
               </div>
