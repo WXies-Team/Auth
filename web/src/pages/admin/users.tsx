@@ -47,7 +47,7 @@ export default function AdminUsersPage() {
   const [busy, setBusy] = React.useState(false)
   const [bulkOpen, setBulkOpen] = React.useState(false)
   const [showInvites, setShowInvites] = React.useState(false)
-  const [bulkKind, setBulkKind] = React.useState<'ban' | 'unban' | 'password_reset'>('ban')
+  const [bulkKind, setBulkKind] = React.useState<'ban' | 'unban' | 'password_reset' | 'session_revoke'>('ban')
   const [reason, setReason] = React.useState('')
 
   const params = new URLSearchParams({ limit: String(PAGE), offset: String((page - 1) * PAGE) })
@@ -212,6 +212,16 @@ export default function AdminUsersPage() {
                 }}
               >
                 重置密码
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setBulkKind('session_revoke')
+                  setBulkOpen(true)
+                }}
+              >
+                退出所有会话
               </Button>
               <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
                 清空
@@ -437,14 +447,23 @@ export default function AdminUsersPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {bulkKind === 'ban' ? '封禁' : bulkKind === 'unban' ? '解除封禁' : '重置密码'} {selected.size} 个账号？
+              {bulkKind === 'ban'
+                ? '封禁'
+                : bulkKind === 'unban'
+                  ? '解除封禁'
+                  : bulkKind === 'session_revoke'
+                    ? '退出所有会话'
+                    : '重置密码'}{' '}
+              {selected.size} 个账号？
             </DialogTitle>
             <DialogDescription>
               {bulkKind === 'ban'
                 ? '封禁后这些账号无法登录任何项目，已有会话会被立即吊销。'
                 : bulkKind === 'unban'
                   ? '解除后这些账号可以重新登录。'
-                  : '会为每个账号生成临时密码并发送通知邮件；临时密码不进本回执。'}
+                  : bulkKind === 'session_revoke'
+                    ? '会吊销这些账号的全部登录会话；对方需要用密码重新登录。'
+                    : '会为每个账号生成临时密码并发送通知邮件；临时密码不进本回执。'}
             </DialogDescription>
           </DialogHeader>
           {bulkKind !== 'unban' && (
@@ -459,7 +478,13 @@ export default function AdminUsersPage() {
             </Button>
             <Button variant={bulkKind === 'ban' ? 'destructive' : 'default'} onClick={bulk} disabled={busy}>
               {busy && <Loader2 className="animate-spin" />}
-              {bulkKind === 'ban' ? '封禁' : bulkKind === 'unban' ? '解除' : '重置密码'}
+              {bulkKind === 'ban'
+                ? '封禁'
+                : bulkKind === 'unban'
+                  ? '解除'
+                  : bulkKind === 'session_revoke'
+                    ? '退出会话'
+                    : '重置密码'}
             </Button>
           </DialogFooter>
         </DialogContent>

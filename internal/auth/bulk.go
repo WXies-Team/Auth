@@ -32,6 +32,7 @@ const (
 	bulkKindPasswordReset = "password_reset"
 	bulkKindBan           = "ban"
 	bulkKindUnban         = "unban"
+	bulkKindSessionRevoke = "session_revoke"
 )
 
 // BulkItem 是结果面板的一行：逐项成功/失败 + 失败原因。**没有密码位**——凭证只进
@@ -115,7 +116,7 @@ func bulkErrText(err error) string {
 	return "操作失败，请稍后重试"
 }
 
-// AdminBulk 批量执行（kind ∈ password_reset | ban | unban），同步逐个调用对应
+// AdminBulk 批量执行（kind ∈ password_reset | ban | unban | session_revoke），同步逐个调用对应
 // 单发方法；任一用户失败不打断其余（失败项进结果面板，可勾选重试只重跑子集）。
 //
 // 权限不在这里整体判：每个单发方法各自跑同一套矩阵（su / 根收口 / app-admin 需
@@ -123,9 +124,9 @@ func bulkErrText(err error) string {
 // 其中 2 个不归你管」的正确答案是动那 8 个、把 2 个报出来。
 func (s *Service) AdminBulk(actor Caller, scope AdminScope, kind string, uids []int64, in AdminBanInput) (*BulkResult, error) {
 	switch kind {
-	case bulkKindPasswordReset, bulkKindBan, bulkKindUnban:
+	case bulkKindPasswordReset, bulkKindBan, bulkKindUnban, bulkKindSessionRevoke:
 	default:
-		return nil, badRequest("kind 只能是 password_reset、ban 或 unban，请重新选择后重试")
+		return nil, badRequest("kind 只能是 password_reset、ban、unban 或 session_revoke，请重新选择后重试")
 	}
 	uids, err := prepareBulkUIDs(uids)
 	if err != nil {
