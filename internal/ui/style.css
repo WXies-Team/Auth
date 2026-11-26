@@ -469,6 +469,8 @@ p.hint { margin: 6px 0; }
 .grid2 {
   display: grid; gap: var(--sp-3);
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  /* 两张卡不强行等高：内容少的一张不拉出大片空白（Miuix 卡片按内容高度）。 */
+  align-items: start;
 }
 
 /* 提示容器（浅蓝底 + 主色字） */
@@ -1118,7 +1120,7 @@ td .user-cell .truncate { max-width: 24ch; }
   border-top: 1px dashed var(--line); margin-top: var(--sp-3); padding-top: var(--sp-3);
   border-radius: var(--radius-lg); background: var(--card);
 }
-.kpi-row { display: grid; gap: var(--gap); grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.kpi-row { display: grid; gap: var(--gap); grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
 .card.kpi { display: grid; gap: 2px; align-content: start; padding: 16px 18px; }
 .card.kpi strong { font-size: var(--font-title2); font-weight: 500; line-height: var(--lh-title2); }
 .card.kpi .hint { font-size: var(--font-footnote); }
