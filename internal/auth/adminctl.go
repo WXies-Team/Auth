@@ -632,6 +632,11 @@ func numericOrZero(s string) int64 {
 // restricted 直查 project_policy（不进 app_config 缓存）。
 func (s *Service) AdminListProjects(scope AdminScope) ([]AdminProject, error) {
 	ctx := db.QueryCtx()
+	// 兼容回退：老的全局 totp_enforce_apps 名单仍在生效时，项目页要如实显示
+	// 「已开启」，否则管理员会以为关着，点保存才把历史键清掉。
+	var legacyList string
+	_ = s.pool.QueryRowContext(ctx,
+		"SELECT `value` FROM app_config WHERE `key` = 'totp_enforce_apps'").Scan(&legacyList)
 	out := make([]AdminProject, 0, len(knownAppOrder))
 	for _, app := range knownAppOrder {
 		if !scope.Super && !containsStr(scope.Apps, app) {
@@ -656,7 +661,7 @@ func (s *Service) AdminListProjects(scope AdminScope) ([]AdminProject, error) {
 		}
 		p.Restricted = restricted == 1
 		p.MFARequired = mfa == 1
-		p.LegacyUpgrade = legacy == 1
+		p.LegacyUpgrade = legacy == 1 || containsCSV(legacyList, app)
 		p.SessionDays = sessionDays
 		p.AllowedDomains = splitDomains(domains)
 
