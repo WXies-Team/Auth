@@ -3170,25 +3170,27 @@ function initAdminAccess() {
           <span class="grow"><span class="title mono">${esc(person.email)}</span><br>
             <span class="meta">uid ${esc(person.uid)} · ${isAdmin ? '项目管理员，可管理成员' : '登录名单成员'}</span></span>
           <span class="badge ${isAdmin ? 'on' : 'plain'}">${isAdmin ? '项目管理员' : '登录名单'}</span>
-          ${isAdmin && !IS_SUPER ? '' : `<button type="button" class="btn small ${isAdmin ? 'danger' : ''}" data-remove>${isAdmin ? '移除管理员' : '移除'}</button>`}
+          ${isAdmin && !IS_SUPER ? '' : `<button type="button" class="btn small ${isAdmin ? 'danger' : ''}" data-remove>移出项目</button>`}
         </div>`);
       const remove = row.querySelector('[data-remove]');
       if (remove) remove.addEventListener('click', () => {
-        if (isAdmin) {
-          confirmAccess('移除项目管理员',
-            `将移除 ${person.email} 对「${name}」的管理权；若该账号还在登录名单里，仍可登录本项目。`,
-            true, `已移除 ${person.email} 的「${name}」项目管理员`,
-            async () => {
-              await api(`/admin/roles/${person.uid}/scope`, { method: 'POST', body: { app: p.app, op: 'revoke' } });
-              fadeOutRow(row, () => load());
-            });
-          return;
-        }
-        confirmAccess('移出登录名单',
-          `将把「${person.email}」移出「${name}」的登录名单；开启限制后，该账号将无法登录本项目。`,
-          true, `已将 ${person.email} 移出「${name}」登录名单`,
+        // 「移出项目」是单一动作：管理员同时回收 scope 并从登录名单删除，普通成员
+        // 删除名单行。两个端点都幂等；只回收 scope 会留下名单行，用户会误以为
+        // 「移除后还在」。
+        confirmAccess('移出项目',
+          `将 ${person.email} 移出「${name}」：移除项目管理员授权（如有）并移出登录名单；开启限制后立即无法登录该项目。`,
+          true, `已将 ${person.email} 移出「${name}」`,
           async () => {
-            await api(`/admin/projects/${encodeURIComponent(p.app)}/access`, { method: 'DELETE', body: { email: person.email } });
+            const errs = [];
+            if (isAdmin) {
+              try {
+                await api(`/admin/roles/${person.uid}/scope`, { method: 'POST', body: { app: p.app, op: 'revoke' } });
+              } catch (e) { errs.push(e.message); }
+            }
+            try {
+              await api(`/admin/projects/${encodeURIComponent(p.app)}/access`, { method: 'DELETE', body: { email: person.email } });
+            } catch (e) { errs.push(e.message); }
+            if (errs.length) throw new Error(errs.join('；'));
             fadeOutRow(row, () => load());
           });
       });
