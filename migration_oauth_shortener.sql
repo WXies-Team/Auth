@@ -13,6 +13,8 @@
 --   * sessions 里旧 aud 的会话已失效，直接删除，让用户重新登录一次。
 --   * 回滚：把下面 UPDATE 的左右值对调，并回滚两个仓库的部署。
 
+USE `auth`;
+
 START TRANSACTION;
 
 UPDATE `oauth_clients`
