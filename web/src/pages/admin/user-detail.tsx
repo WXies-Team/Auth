@@ -437,7 +437,7 @@ function ResetPasswordDialog({
   uid: string
   onDone: (pw: string) => void
 }) {
-  const [mode, setMode] = React.useState<'random' | 'custom'>('random')
+  const [mode, setMode] = React.useState<'generate' | 'manual'>('generate')
   const [password, setPassword] = React.useState('')
   const [force, setForce] = React.useState(true)
   const [notify, setNotify] = React.useState(true)
@@ -474,12 +474,12 @@ function ResetPasswordDialog({
         <div className="space-y-3">
           <div className="space-y-1.5">
             <Label>方式</Label>
-            <Select aria-label="重置方式" value={mode} onChange={(e) => setMode(e.target.value as 'random' | 'custom')}>
-              <option value="random">随机生成</option>
-              <option value="custom">指定新密码</option>
+            <Select aria-label="重置方式" value={mode} onChange={(e) => setMode(e.target.value as 'generate' | 'manual')}>
+              <option value="generate">随机生成</option>
+              <option value="manual">指定新密码</option>
             </Select>
           </div>
-          {mode === 'custom' && (
+          {mode === 'manual' && (
             <div className="space-y-1.5">
               <Label>新密码</Label>
               <Input aria-label="新密码" value={password} onChange={(e) => setPassword(e.target.value)} />
@@ -498,7 +498,7 @@ function ResetPasswordDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>取消</Button>
-          <Button onClick={run} disabled={busy || (mode === 'custom' && password.length < 8)}>
+          <Button onClick={run} disabled={busy || (mode === 'manual' && password.length < 8)}>
             {busy && <Loader2 className="animate-spin" />} 重置
           </Button>
         </DialogFooter>
