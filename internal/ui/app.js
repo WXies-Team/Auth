@@ -3254,8 +3254,11 @@ function initAdminAccess() {
       peopleEl.innerHTML = '';
       peopleOf(p).forEach(person => {
         const row = personRow(person);
+        // 动态插入的成员行不再播放入场动画：列表的 rise-in 带 backwards delay，
+        // 页面在后台/动画时间线暂停时会停在 opacity:0，用户只看到空白行、看不到
+        // 「移出项目」按钮。成员管理的核心操作必须始终可见。
+        row.classList.add('no-enter');
         peopleEl.appendChild(row);
-        popIn(row);
       });
       emptyEl.hidden = peopleEl.children.length > 0;
     }
@@ -3364,6 +3367,7 @@ function initAdminAccess() {
           else picker.selected.delete(String(u.uid));
           updateAddBtn();
         });
+        row.classList.add('no-enter');
         box.appendChild(row);
       });
       pager.hidden = pages <= 1;

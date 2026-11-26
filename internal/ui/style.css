@@ -869,6 +869,8 @@ td.wrap-cell { white-space: normal; overflow-wrap: anywhere; word-break: normal;
   transition: opacity var(--dur-2) var(--ease), background-color var(--dur-1) var(--ease);
 }
 .leaving { opacity: 0; transform: translateY(-4px); }
+/* 动态插入的行不参与首屏错峰动画：避免动画时间线暂停时停在 opacity:0 */
+.no-enter { animation: none !important; opacity: 1 !important; transform: none !important; }
 @media (hover: hover) {
   .item:hover { background: var(--canvas); }
   .group .item:hover { background: var(--sub-bg); }
