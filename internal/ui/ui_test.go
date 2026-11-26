@@ -308,7 +308,8 @@ func TestAdminConfigRequiresFullEndpoint(t *testing.T) {
 
 // 登录/授权 Minimal 壳必须在内容区居中（grid 子项只靠 auto margin 在部分路径会贴左）。
 func TestAuthShellCentered(t *testing.T) {
-	rule, ok := cssRule(stripCSSComments(mustCSS(t)), ".auth-shell")
+	css := stripCSSComments(mustCSS(t))
+	rule, ok := cssRule(css, ".auth-shell")
 	if !ok {
 		t.Fatal("style.css 缺 .auth-shell")
 	}
@@ -316,6 +317,16 @@ func TestAuthShellCentered(t *testing.T) {
 		if !strings.Contains(rule, want) {
 			t.Errorf(".auth-shell 缺居中约束 %q", want)
 		}
+	}
+	if !strings.Contains(css, ".app.minimal { display: block; }") {
+		t.Error("Minimal 壳必须退出两列 grid，否则登录卡落进 248px 的 rail 列")
+	}
+	layoutBytes, err := files.ReadFile("templates/layout.html")
+	if err != nil {
+		t.Fatalf("读 layout: %v", err)
+	}
+	if !strings.Contains(string(layoutBytes), `class="app{{if .Minimal}} minimal{{end}}"`) {
+		t.Error("layout 的 .app 缺 Minimal 标记")
 	}
 }
 

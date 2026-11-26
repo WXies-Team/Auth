@@ -295,6 +295,9 @@ a, button, input, select, textarea {
     grid-template-columns: 248px minmax(0, 1fr);
     align-items: start;
   }
+  /* Minimal（登录/授权/邀请/设置密码）没有 rail：不能落进 248px 的第一列，
+     否则登录卡会被挤到屏幕左侧并压窄到 200px。 */
+  .app.minimal { display: block; }
   .topbar { display: none; }
   .dock { display: none !important; }
   .rail {

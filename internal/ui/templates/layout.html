@@ -45,7 +45,7 @@
 </header>
 {{end}}
 
-<div class="app">
+<div class="app{{if .Minimal}} minimal{{end}}">
   {{if not .Minimal}}
   <!-- 宽屏左侧 rail（≥900px 显示）：分区标签 + 导航；账号胶囊只在顶栏一处（避免重复 id） -->
   <nav class="rail" aria-label="主导航">
