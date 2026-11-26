@@ -65,8 +65,14 @@ func registerStaticRoutes(mux *http.ServeMux) {
 		serveAsset(w, r, "assets/"+r.PathValue("rest"), "public, max-age=31536000, immutable")
 	}))
 	for _, name := range []string{"theme.js", "favicon.svg", "favicon.ico", "apple-touch-icon.png", "manifest.webmanifest", "sw.js", "offline.html", "icon-192.png", "icon-512.png"} {
+		// Service Worker 必须每次导航都回源检查更新（浏览器更新检查默认绕过 HTTP 缓存，
+		// 但中间代理不该缓存它）；其余静态文件按周缓存。
+		cache := "public, max-age=604800"
+		if name == "sw.js" {
+			cache = "no-cache"
+		}
 		mux.Handle("GET /"+name, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			serveAsset(w, r, name, "public, max-age=604800")
+			serveAsset(w, r, name, cache)
 		}))
 	}
 	mux.Handle("GET /brand/{name}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

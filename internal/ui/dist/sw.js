@@ -1,6 +1,8 @@
 // 只缓存带内容哈希的静态资产；HTML 与 API 永远走网络，避免登录态/配置陈旧。
 const CACHE = 'auth-static-v1'
 self.addEventListener('install', (e) => {
+  // 离线兜底页先入缓存：导航失败时才有东西可回。
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['/offline.html'])).catch(() => {}))
   self.skipWaiting()
 })
 self.addEventListener('activate', (e) => {
