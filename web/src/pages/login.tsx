@@ -5,6 +5,7 @@ import { Fingerprint, Loader2, Mail } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { loginWithPasskey } from '@/lib/webauthn'
+import { browserSupportsWebAuthnAutofill, startAuthentication } from '@simplewebauthn/browser'
 import type { LoginResponse } from '@/lib/types'
 import { AuthLayout } from '@/components/layout/app-shell'
 import { Button } from '@/components/ui/button'
@@ -46,9 +47,38 @@ export default function LoginPage() {
   const [pending, setPending] = React.useState<{ loginToken: string; methods: string[] } | null>(null)
   const [factor, setFactor] = React.useState<SecondFactor>('code')
   const [trustDevice, setTrustDevice] = React.useState(false)
+  const stepRef = React.useRef(step)
+  const tabRef = React.useRef(tab)
+  stepRef.current = step
+  tabRef.current = tab
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState('')
   const [notice, setNotice] = React.useState('')
+
+  // 条件式 Passkey：浏览器把本机 passkey 填进邮箱框的自动填充建议，
+  // 用户零点击选中即登录；不支持/没有 passkey 时静默跳过。
+  React.useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      if (!(await browserSupportsWebAuthnAutofill())) return
+      try {
+        const opts = await api.post<{ publicKey: unknown; ceremonyId: number }>('/webauthn/login/options', {}, { reauth: false })
+        const response = await startAuthentication({ optionsJSON: opts.publicKey as never, useBrowserAutofill: true })
+        if (cancelled || stepRef.current !== 'credentials' || tabRef.current !== 'password') return
+        const res = await api.post<LoginResponse>('/webauthn/login/finish', {
+          ceremonyId: opts.ceremonyId,
+          response,
+        })
+        if (res.mustChangePassword) setStep('force-pw')
+        else finish(res)
+      } catch {
+        // 用户取消/浏览器不支持条件式 UI：按钮仍可用
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   if (!loading && session) return <Navigate to={next} replace />
 
