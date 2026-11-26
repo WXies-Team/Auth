@@ -117,6 +117,13 @@ test('管理员未绑定 MFA 时展示绑定引导而不是空表', async ({ pag
   await page.route('**/web/session', (route) =>
     route.fulfill({ json: { ...session, totpEnabled: false, passkeyCount: 0 } }),
   )
+  // 登录后先在控制台看到常驻提醒（Google Workspace 式「登录即提醒」），
+  // 而不是点进后台才发现被拦。
+  await page.goto('/web/console')
+  await expect(page.getByText(/管理后台暂不可用/)).toBeVisible()
+  await expect(page.getByRole('link', { name: '去绑定' })).toHaveAttribute('href', '/web/console/security')
+  await expect(page.getByText('待绑定 MFA')).toBeVisible()
+
   await page.goto('/web/admin')
   await expect(page.getByText('管理后台需要两步验证', { exact: true })).toBeVisible()
   await expect(page.getByRole('link', { name: /去绑定两步验证/ })).toHaveAttribute('href', '/web/console/security')

@@ -16,6 +16,7 @@ import {
   ScrollText,
   Search,
   Settings,
+  ShieldAlert,
   ShieldCheck,
   SlidersHorizontal,
   Sun,
@@ -150,6 +151,11 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
               className="text-muted-foreground hover:bg-sidebar-accent hover:text-foreground flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium"
             >
               <ShieldCheck className="size-4" /> {t('nav.adminConsole')}
+              {!session?.totpEnabled && (session?.passkeyCount ?? 0) === 0 && (
+                <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
+                  待绑定 MFA
+                </span>
+              )}
             </Link>
           )
         )}
@@ -404,6 +410,7 @@ export function AppShell() {
       </aside>
       <div className="min-[900px]:pl-60">
         <Topbar />
+        <AdminMfaNotice />
         <main ref={mainRef} tabIndex={-1} className="mx-auto w-full max-w-6xl p-4 outline-none sm:p-6">
           <Outlet />
         </main>
@@ -499,6 +506,28 @@ export function RequireAuth() {
     return <Navigate to={`/web/login?next=${next}`} replace />
   }
   return <Outlet />
+}
+
+// 管理员未绑 MFA 的常驻提醒：参考 Google Workspace 的做法——在管理员登录后的
+// 控制台顶部持续提醒，而不是等他点进后台才发现被拦。绑定后立即消失。
+function AdminMfaNotice() {
+  const { session } = useAuth()
+  if (!session || (session.role !== 'admin' && session.role !== 'super')) return null
+  if (session.totpEnabled || session.passkeyCount > 0) return null
+  return (
+    <div className="border-b border-amber-500/30 bg-amber-500/10">
+      <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2 text-sm sm:px-6">
+        <ShieldAlert className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+        <p className="min-w-0 flex-1">
+          你是{session.role === 'super' ? '平台管理员' : '项目管理员'}，但尚未绑定两步验证：
+          <span className="font-medium">管理后台暂不可用</span>，绑定后立即恢复。
+        </p>
+        <Button size="sm" asChild>
+          <Link to="/web/console/security">去绑定</Link>
+        </Button>
+      </div>
+    </div>
+  )
 }
 
 // 管理员强制 MFA 的落地面：有管理角色但还没绑 TOTP/Passkey 时，后端会拒绝所有

@@ -44,7 +44,11 @@ export default function ConsolePage() {
     },
     {
       title: '两步验证',
-      desc: totpOn ? `已开启${totp.data?.recoveryLeft != null ? ` · 恢复码剩 ${totp.data.recoveryLeft} 枚` : ''}` : '未开启，建议绑定验证器',
+      desc: totpOn
+        ? `已开启${totp.data?.recoveryLeft != null ? ` · 恢复码剩 ${totp.data.recoveryLeft} 枚` : ''}`
+        : session.role === 'admin' || session.role === 'super'
+          ? '未开启，管理后台因此不可用'
+          : '未开启，建议绑定验证器',
       on: totpOn,
       href: '/web/console/security',
       icon: ShieldCheck,
