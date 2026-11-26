@@ -22,7 +22,10 @@ type Step = 'credentials' | 'totp' | 'force-pw'
 type SecondFactor = 'code' | 'recovery' | 'email'
 
 function safeNext(raw: string | null): string {
-  if (!raw || !raw.startsWith('/') || raw.startsWith('//')) return '/web/console'
+  // 只允许站内控制台/授权两类路径：挡住 //evil、/\evil 与任意站内跳转。
+  if (!raw || !/^\/(web|oauth)\//.test(raw) || raw.startsWith('//') || raw.startsWith('/\\')) {
+    return '/web/console'
+  }
   return raw
 }
 
@@ -246,6 +249,7 @@ export default function LoginPage() {
                   value={code}
                   onChange={setCode}
                   length={factor === 'recovery' ? 32 : 6}
+                  numeric={factor !== 'recovery'}
                   className={factor === 'recovery' ? 'tracking-normal text-base' : undefined}
                 />
               </div>

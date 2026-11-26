@@ -1,1 +1,0 @@
-const e=[{key:"CalorieDiary",label:"热量日记"},{key:"ExpenseDiary",label:"开支日记"},{key:"EPassportForMikey",label:"奇奇岛护照"},{key:"PersonalShortener",label:"屑涵短链"}],a=[{key:"",label:"全部项目"},...e];export{e as A,a};

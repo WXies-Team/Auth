@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { CheckCircle2, KeyRound, Loader2, Pencil, XCircle } from 'lucide-react'
+import { CheckCircle2, KeyRound, Loader2, Pencil, Trash2, XCircle } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { ConfigItem } from '@/lib/types'
 import { PageHeader } from '@/components/ui/page-header'
@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
 const GROUPS: { title: string; desc: string; keys: string[] }[] = [
   {
@@ -58,6 +59,7 @@ export default function AdminConfigPage() {
   const [edit, setEdit] = React.useState<ConfigItem | null>(null)
   const [value, setValue] = React.useState('')
   const [busy, setBusy] = React.useState(false)
+  const [clearItem, setClearItem] = React.useState<ConfigItem | null>(null)
 
   const byKey = new Map((data ?? []).map((i) => [i.key, i]))
 
@@ -154,14 +156,53 @@ export default function AdminConfigPage() {
             />
             <p className="text-muted-foreground font-mono text-xs">{edit?.key}</p>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEdit(null)} disabled={busy}>取消</Button>
-            <Button onClick={save} disabled={busy || (edit?.secret === true && !value)}>
-              {busy && <Loader2 className="animate-spin" />} 保存
-            </Button>
+          <DialogFooter className="sm:justify-between">
+            {edit?.configured ? (
+              <Button
+                type="button"
+                variant="ghost"
+                className="text-destructive"
+                onClick={() => setClearItem(edit)}
+                disabled={busy}
+              >
+                <Trash2 /> 清空配置
+              </Button>
+            ) : (
+              <span />
+            )}
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setEdit(null)} disabled={busy}>取消</Button>
+              <Button onClick={save} disabled={busy || (edit?.secret === true && !value)}>
+                {busy && <Loader2 className="animate-spin" />} 保存
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <ConfirmDialog
+        open={!!clearItem}
+        onOpenChange={(v) => !v && setClearItem(null)}
+        title={`清空「${clearItem ? LABELS[clearItem.key] ?? clearItem.key : ''}」？`}
+        description="会从 app_config 删除该键；依赖它的功能会立即回到未配置状态。"
+        confirmLabel="清空"
+        destructive
+        busy={busy}
+        onConfirm={async () => {
+          if (!clearItem) return
+          setBusy(true)
+          try {
+            await api.put(`/admin/config/${clearItem.key}`, { value: '' })
+            toast.success('已清空')
+            setClearItem(null)
+            setEdit(null)
+            await qc.invalidateQueries({ queryKey: ['admin-config'] })
+          } catch (err) {
+            toast.error(err instanceof Error ? err.message : '清空失败')
+          } finally {
+            setBusy(false)
+          }
+        }}
+      />
     </div>
   )
 }

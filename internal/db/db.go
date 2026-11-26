@@ -232,7 +232,10 @@ var extraIndexes = []indexDef{
 	// 绝对到期扫描走这个索引；补列只加列不加索引，老库会缺它。
 	{"sessions", "idx_sessions_abs",
 		"ALTER TABLE sessions ADD INDEX idx_sessions_abs (absolute_expires_at), ALGORITHM=INPLACE, LOCK=NONE"},
-	// 回滚：ALTER TABLE sessions DROP INDEX idx_sessions_abs;
+	// 已授权应用按 uid 列（SPA 的 connections 页）；新表在 schema.sql 已带，
+	// 老库这条幂等补齐。回滚：ALTER TABLE oauth_consents DROP INDEX idx_oauth_consents_uid;
+	{"oauth_consents", "idx_oauth_consents_uid",
+		"ALTER TABLE oauth_consents ADD INDEX idx_oauth_consents_uid (uid, last_used_at), ALGORITHM=INPLACE, LOCK=NONE"},
 }
 
 // ensureIndex 幂等地补一个索引：先查 information_schema.statistics，没有才执行 DDL。

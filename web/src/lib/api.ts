@@ -67,18 +67,21 @@ async function request<T>(path: string, opts: Options = {}, retried = false): Pr
       // 非 JSON 错误体，保留兜底文案
     }
     if (res.status === 401) {
-      const reauthRequired = message.includes('重新验证')
-      if (reauthRequired && reauth && reauthHandler && !retried) {
-        if (await reauthHandler()) return request<T>(path, opts, true)
-      }
-      const authPath =
-        path.startsWith('/web/login') ||
-        path.startsWith('/web/session') ||
-        path.startsWith('/auth/') ||
-        path.startsWith('/webauthn/login')
-      if (!authPath && !reauthRequired) {
-        const next = encodeURIComponent(location.pathname + location.search)
-        location.assign(`/web/login?next=${next}`)
+      const reauthRequired = reason === 'reauth_required' || message.includes('重新验证')
+      if (reauthRequired) {
+        if (reauth && reauthHandler && !retried) {
+          if (await reauthHandler()) return request<T>(path, opts, true)
+        }
+      } else {
+        const authPath =
+          path.startsWith('/web/login') ||
+          path.startsWith('/web/session') ||
+          path.startsWith('/auth/') ||
+          path.startsWith('/webauthn/login')
+        if (reason === 'session_expired' && !authPath) {
+          const next = encodeURIComponent(location.pathname + location.search)
+          location.assign(`/web/login?next=${next}`)
+        }
       }
     }
     throw new ApiError(message, res.status, reason)

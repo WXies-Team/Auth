@@ -103,10 +103,23 @@ const (
 	// interaction_required / RFC 9470 insufficient_user_authentication / Okta
 	// E0000058）；单列一个值，避免和 policy 的「找管理员改策略」混淆。
 	ReasonMFARequired = "mfa_required"
+	// 401 的两个可执行分支：会话没了要去登录，强认证窗过期要原地重验。
+	// 前端按 reason 分流，不再靠中文文案匹配。
+	ReasonSessionExpired = "session_expired"
+	ReasonReauthRequired = "reauth_required"
 )
 
-func badRequest(msg string) error   { return &HTTPError{Code: 400, Message: msg} }
-func unauthorized(msg string) error { return &HTTPError{Code: 401, Message: msg} }
+func badRequest(msg string) error { return &HTTPError{Code: 400, Message: msg} }
+
+// unauthorized 是 401 的统一构造：会话类文案带 session_expired，凭据错误
+// （邮箱或密码错误）保持无 reason——两者的下一步不同，前端不能都跳登录。
+func unauthorized(msg string) error {
+	reason := ""
+	if strings.Contains(msg, "登录已过期") || strings.Contains(msg, "请先登录") {
+		reason = ReasonSessionExpired
+	}
+	return &HTTPError{Code: 401, Message: msg, Reason: reason}
+}
 
 // policyDenied / permissionDenied 是两类 403 的唯一构造入口：调用方不再手写
 // &HTTPError{Code: 403, Message: msg}，从而保证「每个 403 都带 reason」不被新代码漏掉。

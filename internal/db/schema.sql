@@ -303,5 +303,6 @@ CREATE TABLE IF NOT EXISTS oauth_consents (
   scopes VARCHAR(255) NOT NULL DEFAULT '',
   created_at BIGINT NOT NULL,
   last_used_at BIGINT NOT NULL,
-  PRIMARY KEY (app, uid)
+  PRIMARY KEY (app, uid),
+  KEY idx_oauth_consents_uid (uid, last_used_at)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci;

@@ -163,8 +163,10 @@ export default function ConsolePage() {
           <Card className="hover:border-primary/40 h-full transition-colors">
             <CardHeader>
               <KeyRound className="text-muted-foreground size-5" />
-              <CardTitle>添加 Passkey</CardTitle>
-              <CardDescription>用指纹、面容或安全密钥免密登录。</CardDescription>
+              <CardTitle>{passkeyCount > 0 ? '管理 Passkey' : '添加 Passkey'}</CardTitle>
+              <CardDescription>
+                {passkeyCount > 0 ? `已添加 ${passkeyCount} 把，可查看或再添加。` : '用指纹、面容或安全密钥免密登录。'}
+              </CardDescription>
             </CardHeader>
           </Card>
         </Link>
@@ -172,8 +174,10 @@ export default function ConsolePage() {
           <Card className="hover:border-primary/40 h-full transition-colors">
             <CardHeader>
               <ShieldCheck className="text-muted-foreground size-5" />
-              <CardTitle>开启两步验证</CardTitle>
-              <CardDescription>验证器 App + 一次性恢复码。</CardDescription>
+              <CardTitle>{totpOn ? '管理两步验证' : '开启两步验证'}</CardTitle>
+              <CardDescription>
+                {totpOn ? `恢复码剩 ${totp.data?.recoveryLeft ?? 0} 枚，可重新生成或关闭。` : '验证器 App + 一次性恢复码。'}
+              </CardDescription>
             </CardHeader>
           </Card>
         </Link>

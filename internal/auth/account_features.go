@@ -96,14 +96,17 @@ func (s *Service) RevokeConnectedApp(uid int64, app string) error {
 // UserAuditLog 是用户自己的安全活动：actor 或 target 命中该 uid 的事件。
 func (s *Service) UserAuditLog(uid int64, limit, offset int) ([]AuditRow, int, error) {
 	limit, offset = clampPage(limit, offset)
+	// admin.audit.view 是管理员翻看审计的读事件：把它塞进用户的「我的安全活动」
+	// 只会淹没真正的登录/凭证事件，所以自助视图排除它（管理台审计页仍完整可见）。
 	var total int
 	if err := s.pool.QueryRowContext(db.QueryCtx(),
-		"SELECT COUNT(*) FROM audit_logs WHERE actor_uid = ? OR target_uid = ?", uid, uid).Scan(&total); err != nil {
+		"SELECT COUNT(*) FROM audit_logs WHERE (actor_uid = ? OR target_uid = ?) AND action <> 'admin.audit.view'",
+		uid, uid).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("数安全活动: %w", err)
 	}
 	rows, err := s.pool.QueryContext(db.QueryCtx(),
 		`SELECT id, ts, actor_uid, actor_email, action, result, target_uid, ip, user_agent, detail
-		 FROM audit_logs WHERE actor_uid = ? OR target_uid = ?
+		 FROM audit_logs WHERE (actor_uid = ? OR target_uid = ?) AND action <> 'admin.audit.view'
 		 ORDER BY ts DESC, id DESC LIMIT ? OFFSET ?`, uid, uid, limit, offset)
 	if err != nil {
 		return nil, 0, fmt.Errorf("查安全活动: %w", err)
@@ -212,7 +215,7 @@ func (s *Service) AdminResetMFA(actor Caller, targetUID int64) (err error) {
 			ActorEmail: maskEmail(actor.Email), TargetUID: uidPtr(targetUID), Meta: actor.Meta,
 		})
 	}()
-	ctx := db.QueryCtx()
+	ctx := db.SlowCtx()
 	tx, err := s.pool.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("开事务: %w", err)
@@ -226,6 +229,13 @@ func (s *Service) AdminResetMFA(actor Caller, targetUID int64) (err error) {
 	}
 	if _, err = tx.ExecContext(ctx, "DELETE FROM recovery_codes WHERE user_id = ?", targetUID); err != nil {
 		return fmt.Errorf("清恢复码: %w", err)
+	}
+	// 在途的 2FA 中间态与 Passkey 仪式一并清掉：重置后不能让半截登录继续完成。
+	if _, err = tx.ExecContext(ctx, "DELETE FROM login_states WHERE user_id = ?", targetUID); err != nil {
+		return fmt.Errorf("清登录中间态: %w", err)
+	}
+	if _, err = tx.ExecContext(ctx, "DELETE FROM webauthn_challenges WHERE user_id = ?", targetUID); err != nil {
+		return fmt.Errorf("清 Passkey 仪式: %w", err)
 	}
 	if _, err = tx.ExecContext(ctx,
 		"UPDATE users SET token_version = token_version + 1 WHERE id = ?", targetUID); err != nil {

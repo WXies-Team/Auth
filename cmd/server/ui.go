@@ -31,7 +31,10 @@ func registerPageRoutes(mux *http.ServeMux, svc *auth.Service) {
 
 	mux.Handle("GET /web/admin", pageHandler(svc, "admin", gateSuper))
 	mux.Handle("GET /web/admin/config", pageHandler(svc, "admin", gateSuper))
+	mux.Handle("GET /web/admin/config/{rest...}", pageHandler(svc, "admin", gateSuper))
 	mux.Handle("GET /web/admin/system", pageHandler(svc, "admin", gateSuper))
+	mux.Handle("GET /web/admin/system/{rest...}", pageHandler(svc, "admin", gateSuper))
+	mux.Handle("GET /web/admin/users", pageHandler(svc, "admin", gateSuper))
 	mux.Handle("GET /web/admin/users/{rest...}", pageHandler(svc, "admin", gateSuper))
 	mux.Handle("GET /web/admin/{rest...}", pageHandler(svc, "admin", gateAdmin))
 

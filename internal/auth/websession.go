@@ -390,7 +390,7 @@ func (s *Service) RequireReauth(sid int64) error {
 		return &HTTPError{Code: 503, Message: "服务暂时不可用，请稍后重试"}
 	}
 	if !reauth.Valid || time.Now().UnixMilli()-reauth.Int64 > ReauthWindow.Milliseconds() {
-		return &HTTPError{Code: 401, Message: MsgReauthRequired}
+		return &HTTPError{Code: 401, Message: MsgReauthRequired, Reason: ReasonReauthRequired}
 	}
 	return nil
 }

@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { Link, NavLink, Navigate, Outlet, useLocation } from 'react-router-dom'
+import { Link, Navigate, Outlet, useLocation } from 'react-router-dom'
 import {
   Activity,
   AppWindow,
@@ -60,28 +60,37 @@ const adminNav: NavItem[] = [
   { to: '/web/admin/system', label: '系统状态', icon: Activity },
 ]
 
+function isNavActive(pathname: string, to: string): boolean {
+  if (to === '/web/console') return pathname === '/web/console'
+  // 用户详情属于「用户」分区，否则停在 /web/admin/users/:uid 时没有任何高亮。
+  if (to === '/web/admin') return pathname === '/web/admin' || pathname.startsWith('/web/admin/users')
+  return pathname === to || pathname.startsWith(to + '/')
+}
+
 function NavList({ items, onNavigate }: { items: NavItem[]; onNavigate?: () => void }) {
+  const { pathname } = useLocation()
   return (
     <nav className="space-y-0.5">
-      {items.map((item) => (
-        <NavLink
-          key={item.to}
-          to={item.to}
-          end={item.to === '/web/console'}
-          onClick={onNavigate}
-          className={({ isActive }) =>
-            cn(
+      {items.map((item) => {
+        const active = isNavActive(pathname, item.to)
+        return (
+          <Link
+            key={item.to}
+            to={item.to}
+            onClick={onNavigate}
+            aria-current={active ? 'page' : undefined}
+            className={cn(
               'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors',
-              isActive
+              active
                 ? 'bg-sidebar-accent text-foreground'
                 : 'text-muted-foreground hover:bg-sidebar-accent hover:text-foreground',
-            )
-          }
-        >
-          <item.icon className="size-4" />
-          {item.label}
-        </NavLink>
-      ))}
+            )}
+          >
+            <item.icon className="size-4" />
+            {item.label}
+          </Link>
+        )
+      })}
     </nav>
   )
 }

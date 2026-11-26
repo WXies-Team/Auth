@@ -198,36 +198,38 @@ func registerWebRoutes(mux *http.ServeMux, svc *auth.Service) {
 		})))))
 
 	// ---- 会话（当前身份 / 重新验证 / 登出）----
-	mux.Handle("POST /web/session", authed("web-session", 60,
-		func(c auth.WebCaller, w http.ResponseWriter, r *http.Request) {
-			totpOn, err := svc.TOTPEnabled(c.UID)
-			if err != nil {
-				writeResult(w, nil, err)
-				return
-			}
-			keys, err := svc.ListPasskeys(c.UID, c.SID)
-			if err != nil {
-				writeResult(w, nil, err)
-				return
-			}
-			hasPassword, err := svc.HasPassword(c.UID)
-			if err != nil {
-				writeResult(w, nil, err)
-				return
-			}
-			// csrfToken 从可读 cookie 取回一份（Bearer 调用没有 cookie，回空串）
-			csrf := ""
-			if ck, err := r.Cookie(auth.WebCSRFCookieName); err == nil {
-				csrf = ck.Value
-			}
-			writeJSON(w, http.StatusOK, protocol.WebSessionResponse{
-				UID: c.UID, Email: c.Email, Role: c.Role, CSRFToken: csrf,
-				TotpEnabled: totpOn, PasskeyCount: len(keys), PasswordSet: hasPassword,
-				// isRoot 与 internal/auth 的 RootUID 同源（不是前端再抄一份 5939716）；
-				// UI 接线前硬编码的 ROOT_UID 应改为读这个字段。
-				IsRoot: svc.IsRootUID(c.UID),
-			})
-		}))
+	// 读身份是幂等 GET；POST 保留给旧前端与既有契约测试，两路同一处理器。
+	webSession := func(c auth.WebCaller, w http.ResponseWriter, r *http.Request) {
+		totpOn, err := svc.TOTPEnabled(c.UID)
+		if err != nil {
+			writeResult(w, nil, err)
+			return
+		}
+		keys, err := svc.ListPasskeys(c.UID, c.SID)
+		if err != nil {
+			writeResult(w, nil, err)
+			return
+		}
+		hasPassword, err := svc.HasPassword(c.UID)
+		if err != nil {
+			writeResult(w, nil, err)
+			return
+		}
+		// csrfToken 从可读 cookie 取回一份（Bearer 调用没有 cookie，回空串）
+		csrf := ""
+		if ck, err := r.Cookie(auth.WebCSRFCookieName); err == nil {
+			csrf = ck.Value
+		}
+		writeJSON(w, http.StatusOK, protocol.WebSessionResponse{
+			UID: c.UID, Email: c.Email, Role: c.Role, CSRFToken: csrf,
+			TotpEnabled: totpOn, PasskeyCount: len(keys), PasswordSet: hasPassword,
+			// isRoot 与 internal/auth 的 RootUID 同源（不是前端再抄一份 5939716）；
+			// UI 接线前硬编码的 ROOT_UID 应改为读这个字段。
+			IsRoot: svc.IsRootUID(c.UID),
+		})
+	}
+	mux.Handle("GET /web/session", authed("web-session", 60, webSession))
+	mux.Handle("POST /web/session", authed("web-session", 60, webSession))
 	// 会话 token 轮换（会话子系统重写）：cookie 会话主动换一枚新 token，旧 token
 	// 只保留 30 秒宽限窗（并发请求/网络滞后），窗外再用即判重放并吊销整个 family。
 	// 只对 cookie 生效：Bearer 调用方没有可 Set-Cookie 的通道，回了新 token 也落不下去。

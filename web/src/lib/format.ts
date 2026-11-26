@@ -1,3 +1,5 @@
+import { APPS } from './apps'
+
 export function relativeTime(ms?: number | null): string {
   if (!ms) return '未知'
   const diff = Date.now() - ms
@@ -29,14 +31,10 @@ export function bytes(n: number): string {
   return `${(n / 1024 ** i).toFixed(i ? 1 : 0)} ${units[i]}`
 }
 
+const APP_LABELS: Record<string, string> = Object.fromEntries(APPS.map((a) => [a.key, a.label]))
+
 export function appLabel(app?: string | null): string {
-  const map: Record<string, string> = {
-    CalorieDiary: '热量日记',
-    ExpenseDiary: '开支日记',
-    EPassportForMikey: '奇奇岛护照',
-    PersonalShortener: '屑涵短链',
-  }
-  return app ? (map[app] ?? app) : '全部项目'
+  return app ? (APP_LABELS[app] ?? app) : '全部项目'
 }
 
 export function roleLabel(role?: string | null): string {

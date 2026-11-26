@@ -25,7 +25,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     queryKey: ['session'],
     queryFn: async () => {
       try {
-        return await api.post<WebSession>('/web/session', {}, { reauth: false })
+        return await api.get<WebSession>('/web/session', { reauth: false })
       } catch (err) {
         if (err instanceof ApiError && (err.status === 401 || err.status === 403)) return null
         throw err
