@@ -150,6 +150,11 @@ func TestOAuthFullFlowViaRoutes(t *testing.T) {
 	if !strings.HasPrefix(back, "https://app.example.com/cb?") || !strings.Contains(back, "state=st-1") {
 		t.Fatalf("回跳地址不对: %q", back)
 	}
+	// CSP form-action 必须放行本条 tx 的回跳源：只写 'self' 会让 Chrome 拦下
+	// 表单 POST 后的外站 302，确认页按钮就会一直转圈。
+	if csp := confirm.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "https://app.example.com") {
+		t.Errorf("确认回执 CSP 应放行回跳源，得到 %q", csp)
+	}
 	parsed, _ := url.Parse(back)
 	code := parsed.Query().Get("code")
 	if code == "" {

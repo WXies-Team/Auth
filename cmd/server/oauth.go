@@ -24,7 +24,7 @@ import (
 // registerOAuthRoutes 挂四个端点。限流口径：authorize/resume/confirm 走 unauthed
 // 15/分/IP（limitN 同名桶），token 端点单独一桶 15/分/IP。
 // confirm 是纯 HTML 表单 POST（无 JS、设不了 X-CSRF-Token）：走 originGuard +
-// SameSite=Strict cookie 双闸——跨站表单根本不带 cookie，Origin 不同源再挡一道
+// SameSite=Lax cookie 双闸——跨站表单不带 POST cookie，Origin 不同源再挡一道
 // （与登录端点同款守卫组合，不进 withUID 的 CSRF 头闸）。
 func registerOAuthRoutes(mux *http.ServeMux, svc *auth.Service) {
 	const scope = "oauth-authorize"
@@ -39,7 +39,7 @@ func registerOAuthRoutes(mux *http.ServeMux, svc *auth.Service) {
 }
 
 // oauthWebCaller 直接用会话 cookie 换身份（**不经 withUID**：授权页是表单流，
-// 与 /web/delete-cancel 同款「cookie 即凭证」口径；CSRF 由 SameSite=Strict +
+// 与 /web/delete-cancel 同款「cookie 即凭证」口径；CSRF 由 SameSite=Lax +
 // originGuard 兜）。无效/缺失回 (zero,false)。
 func oauthWebCaller(svc *auth.Service, r *http.Request) (auth.WebCaller, bool) {
 	ck, err := r.Cookie(auth.WebCookieName)
@@ -122,6 +122,9 @@ func oauthConfirm(svc *auth.Service) http.HandlerFunc {
 			renderOAuthError(w, err, "无法完成授权")
 			return
 		}
+		// 表单 POST 的 302 也受 form-action 约束：放行本条 tx 的回跳 origin，
+		// 否则浏览器会拦下外站回跳，确认页按钮一直停在 loading。
+		w.Header().Set("Content-Security-Policy", contentSecurityPolicyWithFormAction("", formActionOrigin(redirect)))
 		http.Redirect(w, r, redirect, http.StatusFound)
 	}
 }
@@ -168,6 +171,19 @@ func oauthToken(svc *auth.Service) http.HandlerFunc {
 	}
 }
 
+// formActionOrigin 取回跳 URL 的 origin（scheme://host[:port]），用于 CSP
+// form-action 精确放行；解析失败回空串（不放宽）。
+func formActionOrigin(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return ""
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return ""
+	}
+	return u.Scheme + "://" + u.Host
+}
+
 // writeOAuthErr 是 OAuth 端点的统一失败回执（§5.2 形状）。
 func writeOAuthErr(w http.ResponseWriter, status int, code, description string) {
 	writeJSON(w, status, map[string]string{"error": code, "error_description": description})
@@ -181,6 +197,10 @@ func renderOAuthConfirm(svc *auth.Service, w http.ResponseWriter, tx string, uid
 		renderOAuthError(w, err, "无法继续授权")
 		return
 	}
+	// 确认页的 form-action 也要预先放行回跳源：Chrome 会按提交页的 CSP 检查
+	// 表单 POST 之后的 redirect 链，光在 POST 响应上补不够。
+	w.Header().Set("Content-Security-Policy",
+		contentSecurityPolicyWithFormAction("", "https://"+view.RedirectHost))
 	if err := ui.Render(w, "authorize", ui.Data{
 		Title: "授权登录", Minimal: true,
 		OAuth: &ui.OAuthView{

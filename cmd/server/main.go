@@ -485,12 +485,27 @@ func writeResult(w http.ResponseWriter, v any, err error) {
 // 一次性 token），它走 contentSecurityPolicy(nonce) 并把同一个 nonce 写在 <script>
 // 上——token 是每请求变化的，哈希白名单不适用。
 func contentSecurityPolicy(nonce string) string {
+	return contentSecurityPolicyWithFormAction(nonce)
+}
+
+// contentSecurityPolicyWithFormAction 在基线 CSP 上放行额外的表单回跳源。
+// `form-action` 同样约束「表单 POST 之后的 302 跳转」：授权确认页把结果 302
+// 回应用（tio.fyi / passport-mikey.horatio.cn）时，如果只写 'self'，Chrome 会
+// 拦下外站回跳，页面停在按钮 loading 上——表现为「点继续授权一直转圈」。
+// 只按当前 tx 的 redirect_uri 精确放行，不放宽成全站 https:。
+func contentSecurityPolicyWithFormAction(nonce string, extra ...string) string {
 	script := "script-src 'self'"
 	if nonce != "" {
 		script += " 'nonce-" + nonce + "'"
 	}
+	formAction := "form-action 'self'"
+	for _, origin := range extra {
+		if origin != "" {
+			formAction += " " + origin
+		}
+	}
 	return "default-src 'self'; " + script + "; style-src 'self' 'unsafe-inline'; " +
-		"img-src 'self' data:; connect-src 'self'; form-action 'self'; " +
+		"img-src 'self' data:; connect-src 'self'; " + formAction + "; " +
 		"frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
 }
 

@@ -327,10 +327,10 @@ func TestWebLoginIssuesCookies(t *testing.T) {
 	if sess == nil || csrf == nil {
 		t.Fatalf("应签发两枚 cookie，得到 %v", keys(jar))
 	}
-	if !sess.HttpOnly || !sess.Secure || sess.Path != "/" || sess.SameSite != http.SameSiteStrictMode {
+	if !sess.HttpOnly || !sess.Secure || sess.Path != "/" || sess.SameSite != http.SameSiteLaxMode {
 		t.Errorf("会话 cookie 属性不对: %+v", sess)
 	}
-	if csrf.HttpOnly || !csrf.Secure || csrf.SameSite != http.SameSiteStrictMode {
+	if csrf.HttpOnly || !csrf.Secure || csrf.SameSite != http.SameSiteLaxMode {
 		t.Errorf("CSRF cookie 应可读且同样严格: %+v", csrf)
 	}
 	// 库里只有 hash：明文 token 不落库

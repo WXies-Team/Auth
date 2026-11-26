@@ -68,7 +68,7 @@ Web 端点（**全部新增路径，老端点形状不变**；写操作需 `X-CS
 | `GET /admin/config`、`PUT /admin/config/{key}` | 配置中心：白名单键，secret 只回末 4 位 |
 | `GET /admin/ai-usage?days=30` | AI 用量与四档限额（空表如实为空） |
 
-登录态是 `__Host-auth_web` cookie（HttpOnly + Secure + SameSite=Strict，库里只存 sha256），
+登录态是 `__Host-auth_web` cookie（HttpOnly + Secure + SameSite=Lax，库里只存 sha256），
 配套一枚可读的 CSRF cookie——**所有非 GET 的 cookie 请求必须带 `X-CSRF-Token`**；
 `/admin/*` 只收 cookie、逐请求现查角色、要求已绑 MFA 且 2 小时内强认证过。
 Bearer（日记 App）照旧走 `/auth/*`，三条凭据路互不串用。

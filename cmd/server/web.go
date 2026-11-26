@@ -104,7 +104,7 @@ func registerWebRoutes(mux *http.ServeMux, svc *auth.Service) {
 
 	// ---- 接受邀请（B9）：纯 HTML 表单 POST（零 JS，invite.html 直接 method=post）。
 	// 与登录/OAuth 确认同款守卫组合——无登录态可搭 withUID 的 CSRF 头闸，靠
-	// originGuard（跨站表单必带 Origin，不同源即 403）+ SameSite=Strict 双闸兜底；
+	// originGuard（跨站表单必带 Origin，不同源即 403）+ SameSite=Lax 双闸兜底；
 	// 限流 unauthed 15/分/IP（与 GET 同一 web-invite 桶）。成功 = 建号 + 种 web
 	// cookie 302 回控制台（AcceptInvite 内已建会话并单次消费邀请）。
 	mux.Handle("POST /web/invite", withLogging(originGuard(limitN("web-invite", 15,
@@ -606,12 +606,12 @@ func credentialJSON(w http.ResponseWriter, raw json.RawMessage) ([]byte, bool) {
 func setWebCookies(w http.ResponseWriter, ws *auth.WebSession) {
 	http.SetCookie(w, &http.Cookie{
 		Name: auth.WebCookieName, Value: ws.Token, Path: "/",
-		HttpOnly: true, Secure: true, SameSite: http.SameSiteStrictMode,
+		HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode,
 		MaxAge: auth.WebCookieMaxAgeSeconds, Expires: ws.ExpiresAt,
 	})
 	http.SetCookie(w, &http.Cookie{
 		Name: auth.WebCSRFCookieName, Value: ws.CSRFToken, Path: "/",
-		HttpOnly: false, Secure: true, SameSite: http.SameSiteStrictMode,
+		HttpOnly: false, Secure: true, SameSite: http.SameSiteLaxMode,
 		MaxAge: auth.WebCookieMaxAgeSeconds, Expires: ws.ExpiresAt,
 	})
 }
@@ -622,14 +622,14 @@ func clearWebCookies(w http.ResponseWriter) {
 	for _, name := range []string{auth.WebCookieName, auth.WebCSRFCookieName} {
 		http.SetCookie(w, &http.Cookie{
 			Name: name, Value: "", Path: "/", HttpOnly: name == auth.WebCookieName,
-			Secure: true, SameSite: http.SameSiteStrictMode,
+			Secure: true, SameSite: http.SameSiteLaxMode,
 			MaxAge: -1, Expires: past,
 		})
 	}
 }
 
 // originGuard 对**无登录态**的状态变更请求做同源校验（登录 CSRF 的兜底：
-// SameSite=Strict 管的是「带不带 cookie」，这一步管的是「谁在提交表单」）。
+// SameSite=Lax 让 OAuth 顶层跳转能带上会话 cookie；这一步管的是「谁在提交表单」）。
 //
 // Origin 缺席时放行——浏览器跨站提交必带 Origin，缺席的是 App/curl 这类
 // 非浏览器客户端，它们本来就没有 cookie 可冒用。
