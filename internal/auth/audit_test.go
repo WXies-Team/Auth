@@ -318,13 +318,13 @@ func TestAuditQueryIPPrefix(t *testing.T) {
 // os.ReadFile 模式）。
 func auditTemplateSelect(t *testing.T) string {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join("..", "ui", "templates", "admin-audit.html"))
+	raw, err := os.ReadFile(filepath.Join("..", "..", "web", "src", "pages", "admin", "audit.tsx"))
 	if err != nil {
-		t.Fatalf("读审计页模板: %v", err)
+		t.Fatalf("读审计页动作清单: %v", err)
 	}
-	sel := regexp.MustCompile(`(?s)<select id="audit-action">.*?</select>`).Find(raw)
+	sel := regexp.MustCompile(`(?s)const ACTIONS = \[.*?\]`).Find(raw)
 	if sel == nil {
-		t.Fatal("admin-audit.html 缺 #audit-action 下拉")
+		t.Fatal("audit.tsx 缺 ACTIONS 动作清单")
 	}
 	return string(sel)
 }
@@ -379,7 +379,7 @@ func auditSourceActions(t *testing.T) map[string]bool {
 // auditTemplateActions 是下拉的 option 值域（空值「全部」除外）。
 func auditTemplateActions(sel string) map[string]bool {
 	out := map[string]bool{}
-	for _, m := range regexp.MustCompile(`value="([^"]*)"`).FindAllStringSubmatch(sel, -1) {
+	for _, m := range regexp.MustCompile(`'([^']*)'`).FindAllStringSubmatch(sel, -1) {
 		if m[1] != "" {
 			out[m[1]] = true
 		}
@@ -414,14 +414,5 @@ func TestAuditFilterOptionsMatchAuditConstants(t *testing.T) {
 	if len(extra) > 0 {
 		t.Errorf("下拉有这些事件常量里没有的死 option: %v", extra)
 	}
-	// 本批补的三个：value 英文、label 中文（value 由上面的值域对拍钉住，这里钉 label）
-	for _, wantLabel := range []string{
-		`value="user.invite_resend">重发邀请</option>`,
-		`value="user.invite_revoke">撤销邀请</option>`,
-		`value="admin.oauth_client.write">接入配置</option>`,
-	} {
-		if !strings.Contains(sel, wantLabel) {
-			t.Errorf("下拉缺 %s", wantLabel)
-		}
-	}
+
 }

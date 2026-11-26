@@ -7,6 +7,8 @@ Go+MySQL unified account service behind `auth.horatio.cn` (register/login, email
 | Purpose | Command |
 | --- | --- |
 | Build | `go build ./...` |
+| Web build | `cd web && npm ci && npm run build`（产物进 `internal/ui/dist`，随二进制嵌入） |
+| Web tests | `cd web && npm test` |
 | Tests (CI gate) | `go test ./...` (DB tests skip without `TEST_MYSQL_DSN`) |
 | One test | `go test ./... -run <Name>` |
 | Vet | `go vet ./...` (README; not in CI) |

@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/WXies-Team/Auth/internal/auth"
-	"github.com/WXies-Team/Auth/internal/ui"
 )
 
 // OAuth 跳转授权的 HTTP 层（B4）：
@@ -68,14 +67,20 @@ func oauthAuthorize(svc *auth.Service) http.HandlerFunc {
 			CodeChallengeMethod: q.Get("code_challenge_method"),
 		})
 		if err != nil {
-			renderOAuthError(w, err, "无法发起授权")
+			renderOAuthError(w, r, err, "无法发起授权")
 			return
 		}
 		if wc, ok := oauthWebCaller(svc, r); ok {
-			renderOAuthConfirm(svc, w, tx, wc.UID)
+			renderOAuthConfirm(svc, w, r, tx, wc.UID)
 			return
 		}
-		http.Redirect(w, r, "/web/login?tx="+url.QueryEscape(tx), http.StatusFound)
+		if wantsJSON(r) {
+			writeError(w, http.StatusUnauthorized, "请先登录后再继续授权")
+			return
+		}
+		// 直开授权链：回 SPA 入口，由前端带着原 query 取 JSON；未登录时前端
+		// 给「先登录再继续」，登录后 next 会回到本页。
+		serveSPA(w)
 	}
 }
 
@@ -88,6 +93,10 @@ func oauthResume(svc *auth.Service) http.HandlerFunc {
 		tx := r.URL.Query().Get("tx")
 		wc, ok := oauthWebCaller(svc, r)
 		if !ok {
+			if wantsJSON(r) {
+				writeError(w, http.StatusUnauthorized, "请先登录后再继续授权")
+				return
+			}
 			if strings.TrimSpace(tx) == "" {
 				http.Redirect(w, r, "/web/login", http.StatusFound)
 				return
@@ -95,7 +104,7 @@ func oauthResume(svc *auth.Service) http.HandlerFunc {
 			http.Redirect(w, r, "/web/login?tx="+url.QueryEscape(tx), http.StatusFound)
 			return
 		}
-		renderOAuthConfirm(svc, w, tx, wc.UID)
+		renderOAuthConfirm(svc, w, r, tx, wc.UID)
 	}
 }
 
@@ -119,7 +128,7 @@ func oauthConfirm(svc *auth.Service) http.HandlerFunc {
 		}
 		redirect, err := svc.OAuthDecide(wc.UID, tx, decision, webSessMeta(r))
 		if err != nil {
-			renderOAuthError(w, err, "无法完成授权")
+			renderOAuthError(w, r, err, "无法完成授权")
 			return
 		}
 		// 表单 POST 的 302 也受 form-action 约束：放行本条 tx 的回跳 origin，
@@ -189,42 +198,48 @@ func writeOAuthErr(w http.ResponseWriter, status int, code, description string) 
 	writeJSON(w, status, map[string]string{"error": code, "error_description": description})
 }
 
-// renderOAuthConfirm 渲染轻确认页：业务层取项目名/回跳域名/账号邮箱并做
-// deny 复查，这里只搬运到模板。失败按错误页兜（错误页与确认页同一张卡片语言）。
-func renderOAuthConfirm(svc *auth.Service, w http.ResponseWriter, tx string, uid int64) {
-	view, err := svc.OAuthAuthorizeView(tx, uid)
-	if err != nil {
-		renderOAuthError(w, err, "无法继续授权")
-		return
-	}
-	// 确认页的 form-action 也要预先放行回跳源：Chrome 会按提交页的 CSP 检查
-	// 表单 POST 之后的 redirect 链，光在 POST 响应上补不够。
-	w.Header().Set("Content-Security-Policy",
-		contentSecurityPolicyWithFormAction("", "https://"+view.RedirectHost, "http://"+view.RedirectHost))
-	if err := ui.Render(w, "authorize", ui.Data{
-		Title: "授权登录", Minimal: true,
-		OAuth: &ui.OAuthView{
-			Tx: view.Tx, App: view.App, AppName: view.AppName,
-			RedirectHost: view.RedirectHost, Email: view.Email,
-			Scopes: view.Scopes,
-		},
-	}); err != nil {
-		slog.Error("渲染授权页失败", "err", err)
-	}
+// wantsJSON 让同一批端点同时服务 SPA 与旧表单流：SPA 显式带 format=json，
+// 直开浏览器仍回 index.html（由前端再取 JSON）。
+func wantsJSON(r *http.Request) bool {
+	return r.URL.Query().Get("format") == "json" ||
+		strings.Contains(r.Header.Get("Accept"), "application/json")
 }
 
-// renderOAuthError 渲染授权错误页（友好中文、错误=出错+下一步、站内模板与动效）。
-// 状态码取业务 HTTPError 的原值（403 封禁/白名单、400 参数错），兜底 400。
-func renderOAuthError(w http.ResponseWriter, err error, title string) {
+// renderOAuthConfirm 把授权事务摊给 SPA；直开浏览器时回 index.html，
+// 表单回跳的 CSP 仍按本事务的 redirect_uri 精确放行。
+func renderOAuthConfirm(svc *auth.Service, w http.ResponseWriter, r *http.Request, tx string, uid int64) {
+	view, err := svc.OAuthAuthorizeView(tx, uid)
+	if err != nil {
+		renderOAuthError(w, r, err, "无法继续授权")
+		return
+	}
+	if wantsJSON(r) {
+		writeJSON(w, http.StatusOK, struct {
+			Tx           string   `json:"tx"`
+			App          string   `json:"app"`
+			AppName      string   `json:"appName"`
+			RedirectHost string   `json:"redirectHost"`
+			Email        string   `json:"email"`
+			Scopes       []string `json:"scopes"`
+		}{view.Tx, view.App, view.AppName, view.RedirectHost, view.Email, view.Scopes})
+		return
+	}
+	w.Header().Set("Content-Security-Policy",
+		contentSecurityPolicyWithFormAction("", "https://"+view.RedirectHost, "http://"+view.RedirectHost))
+	serveSPA(w)
+}
+
+// renderOAuthError 在 SPA 里回 JSON；直开浏览器回 index.html 并带业务状态码，
+// 由前端再取一次 JSON 显示同一句「出错 + 下一步」。
+func renderOAuthError(w http.ResponseWriter, r *http.Request, err error, title string) {
 	status := http.StatusBadRequest
 	var he *auth.HTTPError
 	if errors.As(err, &he) {
 		status = he.Code
 	}
-	if rerr := ui.Render(w, "authorize", ui.Data{
-		Title: title, Minimal: true, Status: status,
-		OAuth: &ui.OAuthView{ErrorTitle: title, ErrorMessage: errText(err)},
-	}); rerr != nil {
-		slog.Error("渲染授权错误页失败", "err", rerr)
+	if wantsJSON(r) {
+		writeError(w, status, errText(err))
+		return
 	}
+	serveSPAStatus(w, status)
 }

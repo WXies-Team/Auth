@@ -170,6 +170,7 @@ func (s *Service) OAuthDecide(uid int64, tx, decision string, meta SessionMeta) 
 	if err != nil {
 		return "", err
 	}
+	s.RecordConsent(uid, e.App)
 	s.oauthStore.putCode(code, &oauthCode{
 		UID: uid, App: e.App, RedirectURI: e.RedirectURI,
 		ClientID: e.ClientID, Challenge: e.Challenge,

@@ -3,7 +3,7 @@ package main
 // UA Client Hints 采集的路由层用例。**不碰数据库**——无 TEST_MYSQL_DSN 的 CI 也
 // 照常跑（建会话链的真库断言另在 routes_test.go 的 TestWebLoginStoresClientHintSuffix）。
 //
-// 采集链：/web 页面响应带 Accept-CH（internal/ui.Render 收口）→ 浏览器在本站
+// 采集链：/web 页面响应带 Accept-CH（cmd/server/ui.go 的 serveSPA 收口）→ 浏览器在本站
 // 后续请求自动带上 Sec-CH-UA-Platform / Sec-CH-UA-Model → web 登录路的
 // webSessMeta 读头进 SessionMeta → 建会话时并进 user_agent（auth.uaWithCH）。
 

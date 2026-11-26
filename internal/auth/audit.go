@@ -83,9 +83,14 @@ const (
 	// batch_id——审计页按它把「这是哪一批」关联还原出来。
 	AuditAdminBulk = "admin.bulk_action"
 
+	// SPA 新增：已授权应用与管理员重置 MFA。
+	AuditConsentGrant  = "oauth.consent_grant"
+	AuditConsentRevoke = "oauth.consent_revoke"
+	AuditAdminMFAReset = "admin.mfa.reset"
+
 	// 同步义务（全集口径）：**每个 Audit* 事件常量都必须在
-	// internal/ui/templates/admin-audit.html 的 #audit-action 下拉里有逐字同名
-	// option**（管理台按 action 筛选，漏一个该事件就筛不出来——B9 的
+	// web/src/pages/admin/audit.tsx 的 ACTIONS 清单里有逐字同名
+	// 事件名**（管理台按 action 筛选，漏一个该事件就筛不出来——B9 的
 	// user.invite_resend / user.invite_revoke 与 B4 的 admin.oauth_client.write
 	// 曾整批漏掉）。双向对拍（下拉多死值、常量缺 option 都算红）由 audit_test.go 的
 	// TestAuditFilterOptionsMatchAuditConstants 钉住，加常量忘加 option 即红。

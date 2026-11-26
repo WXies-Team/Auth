@@ -294,3 +294,14 @@ CREATE TABLE IF NOT EXISTS oauth_clients (
   created_by BIGINT NOT NULL DEFAULT 0,
   created_at BIGINT NOT NULL DEFAULT 0
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci;
+
+-- OAuth 授权记录（SPA 的「已授权应用」页）：一次 allow 一行，撤销即删行；
+-- 授权码换 token 时刷新 last_used_at。scopes 存空格分隔的固定档位。
+CREATE TABLE IF NOT EXISTS oauth_consents (
+  app VARCHAR(64) NOT NULL,
+  uid BIGINT NOT NULL,
+  scopes VARCHAR(255) NOT NULL DEFAULT '',
+  created_at BIGINT NOT NULL,
+  last_used_at BIGINT NOT NULL,
+  PRIMARY KEY (app, uid)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_general_ci;

@@ -1,3 +1,6 @@
+> **2026-11 已全量重写 UI**：页面与组件在 `web/`（React + Vite + Tailwind + shadcn 风格），
+> 本文档保留为当时的调研证据与结论记录，文中 `internal/ui/*` 路径已不存在。
+
 # UI 改造差距研究报告（2026-10）
 
 > 范围：`internal/ui/` 16 个模板页 + `app.js` + `style.css`，服务端能力以 `cmd/server/`、`internal/auth/` 现状为准。

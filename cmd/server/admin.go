@@ -7,13 +7,18 @@ import (
 	"encoding/hex"
 	"log/slog"
 	"net/http"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/WXies-Team/Auth/internal/auth"
+	"github.com/WXies-Team/Auth/internal/config"
+	mailsvc "github.com/WXies-Team/Auth/internal/mail"
 )
+
+var processStartedAt = time.Now()
 
 // 管理后台的 HTTP 层（规格 A2.5 + W2 分级授权）。授权闸全部在这里，每请求都过：
 //
@@ -32,7 +37,7 @@ import (
 //	         scope 过滤（?app= 越界即 403），users/roles/config 端点 403。
 //
 // 数据操作与审计都在 internal/auth，这里只做参数与回执。
-func registerAdminRoutes(mux *http.ServeMux, svc *auth.Service) {
+func registerAdminRoutes(mux *http.ServeMux, svc *auth.Service, cfg *config.Store) {
 	// adminCtx 是过完四道闸之后的调用现场：身份 + 是否平台管理员 + 授权 app 清单。
 	// app-admin 的清单每请求现查（撤销 scope 当场生效，与 role 现查同款理由）。
 	type adminCtx struct {
@@ -678,6 +683,58 @@ func registerAdminRoutes(mux *http.ServeMux, svc *auth.Service) {
 	}))
 
 	// ---- 配置中心（super only：全局配置，app-admin 不能碰） ----
+	// ---- SPA 新增：管理员重置 MFA、系统状态 ----
+	mux.Handle("POST /admin/users/{uid}/mfa-reset", admin("admin-mfa-reset", func(ac adminCtx, w http.ResponseWriter, r *http.Request) {
+		if !requireSuper(w, ac) {
+			return
+		}
+		uid, ok := pathInt64(w, r.PathValue("uid"))
+		if !ok {
+			return
+		}
+		if err := svc.AdminResetMFA(ac.caller.Caller, uid); err != nil {
+			writeResult(w, nil, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+	}))
+	mux.Handle("GET /admin/status", admin("admin-status", func(ac adminCtx, w http.ResponseWriter, _ *http.Request) {
+		if !requireSuper(w, ac) {
+			return
+		}
+		counts, err := svc.SystemCounts()
+		if err != nil {
+			writeResult(w, nil, err)
+			return
+		}
+		latency, pingErr := svc.PingDB()
+		mailOK, _, merr := mailsvc.ConfigState(cfg.Require)
+		if merr != nil {
+			mailOK = false
+		}
+		version := "dev"
+		if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" {
+			version = bi.Main.Version
+		}
+		writeJSON(w, http.StatusOK, struct {
+			Version            string            `json:"version"`
+			StartedAt          int64             `json:"startedAt"`
+			UptimeSeconds      int64             `json:"uptimeSeconds"`
+			DBOK               bool              `json:"dbOK"`
+			DBLatencyMs        int64             `json:"dbLatencyMs"`
+			MailConfigured     bool              `json:"mailConfigured"`
+			JWTConfigured      bool              `json:"jwtConfigured"`
+			PasskeysConfigured bool              `json:"passkeysConfigured"`
+			Counts             auth.SystemCounts `json:"counts"`
+		}{
+			Version: version, StartedAt: processStartedAt.UnixMilli(),
+			UptimeSeconds: int64(time.Since(processStartedAt).Seconds()),
+			DBOK:          pingErr == nil, DBLatencyMs: latency.Milliseconds(),
+			MailConfigured: mailOK, JWTConfigured: true, PasskeysConfigured: svc.PasskeysConfigured(),
+			Counts: counts,
+		})
+	}))
+
 	mux.Handle("GET /admin/config", admin("admin-config", func(ac adminCtx, w http.ResponseWriter, r *http.Request) {
 		if !requireSuper(w, ac) {
 			return

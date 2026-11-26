@@ -143,11 +143,10 @@ func TestDeleteCancelPageCSPNonce(t *testing.T) {
 	}
 }
 
-// 403 页用 ui.Data.Status 起头，而不是先 WriteHeader：先冲刷会让 Render 设置的
-// Cache-Control: no-store 等头丢失（403 页被缓存是真实后果）。
-func TestRenderDeniedKeepsRenderHeaders(t *testing.T) {
+// SPA 兜底页也要带 no-store 与 text/html：403 页被缓存是真实后果。
+func TestServeSPAStatusKeepsHeaders(t *testing.T) {
 	rec := httptest.NewRecorder()
-	renderDenied(rec, "CalorieDiary", auth.ReasonPermission)
+	serveSPAStatus(rec, http.StatusForbidden)
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("应 403，得到 %d", rec.Code)
 	}
@@ -157,7 +156,7 @@ func TestRenderDeniedKeepsRenderHeaders(t *testing.T) {
 	if ct := rec.Header().Get("Content-Type"); !strings.Contains(ct, "text/html") {
 		t.Errorf("403 页应是 text/html，得到 %q", ct)
 	}
-	if body := rec.Body.String(); !strings.Contains(body, "无权访问") {
-		t.Errorf("403 页正文不对: %s", body)
+	if body := rec.Body.String(); !strings.Contains(body, `id="root"`) {
+		t.Errorf("403 页应回 SPA 入口: %s", body)
 	}
 }

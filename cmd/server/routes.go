@@ -311,6 +311,6 @@ func registerRoutes(mux *http.ServeMux, authSvc *auth.Service, cfg *config.Store
 	registerStaticRoutes(mux)
 	registerPageRoutes(mux, authSvc)
 	registerWebRoutes(mux, authSvc)
-	registerAdminRoutes(mux, authSvc)
+	registerAdminRoutes(mux, authSvc, cfg)
 	registerOAuthRoutes(mux, authSvc)
 }

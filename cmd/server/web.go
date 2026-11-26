@@ -15,6 +15,7 @@ import (
 
 	"github.com/WXies-Team/Auth/internal/auth"
 	"github.com/WXies-Team/Auth/internal/protocol"
+	"github.com/WXies-Team/Auth/internal/ui"
 )
 
 // Web 管理台的 HTTP 层：cookie 签发/清除、CSRF 与 Origin 两道守卫、
@@ -102,44 +103,91 @@ func registerWebRoutes(mux *http.ServeMux, svc *auth.Service) {
 			writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 		}))))
 
-	// ---- 接受邀请（B9）：纯 HTML 表单 POST（零 JS，invite.html 直接 method=post）。
-	// 与登录/OAuth 确认同款守卫组合——无登录态可搭 withUID 的 CSRF 头闸，靠
-	// originGuard（跨站表单必带 Origin，不同源即 403）+ SameSite=Lax 双闸兜底；
-	// 限流 unauthed 15/分/IP（与 GET 同一 web-invite 桶）。成功 = 建号 + 种 web
-	// cookie 302 回控制台（AcceptInvite 内已建会话并单次消费邀请）。
-	mux.Handle("POST /web/invite", withLogging(originGuard(limitN("web-invite", 15,
+	// ---- 接受邀请：SPA 走 JSON，旧邮件里的纯表单 POST 仍兼容 ----
+	// 无登录态可搭 withUID 的 CSRF 头闸，靠 originGuard + SameSite=Lax 双闸兜底。
+	mux.Handle("GET /web/invite/info", withLogging(limitN("web-invite-info", 30,
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// 表单只有 token/password/nickname 三个字段，8KB 上限足够
-			//（与 OAuth confirm 同款防膨口径：不给匿名端点塞 10MB 默认值的机会）
-			r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
-			if err := r.ParseForm(); err != nil {
-				renderInviteError(w, "请求格式不正确，请从邀请邮件重新打开")
+			inv, err := svc.InviteLookup(r.URL.Query().Get("token"))
+			if err != nil {
+				writeResult(w, nil, err)
 				return
 			}
-			token, password := r.PostFormValue("token"), r.PostFormValue("password")
-			res, err := svc.AcceptInvite(token, password, r.PostFormValue("nickname"), webSessMeta(r))
+			writeJSON(w, http.StatusOK, map[string]string{
+				"email": inv.Email, "app": inv.App, "appName": ui.AppLabel(inv.App),
+			})
+		}))))
+	mux.Handle("POST /web/invite", withLogging(originGuard(limitN("web-invite", 15,
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
+			var token, password, nickname string
+			isJSON := strings.Contains(r.Header.Get("Content-Type"), "application/json")
+			if isJSON {
+				var req struct {
+					Token    string `json:"token"`
+					Password string `json:"password"`
+					Nickname string `json:"nickname"`
+				}
+				if !decodeOr400(w, r, &req) {
+					return
+				}
+				token, password, nickname = req.Token, req.Password, req.Nickname
+			} else {
+				if err := r.ParseForm(); err != nil {
+					writeError(w, http.StatusBadRequest, "请求格式不正确，请从邀请邮件重新打开")
+					return
+				}
+				token, password, nickname = r.PostFormValue("token"), r.PostFormValue("password"), r.PostFormValue("nickname")
+			}
+			res, err := svc.AcceptInvite(token, password, nickname, webSessMeta(r))
 			if err != nil {
-				// 业务打回就地重渲染：token 仍有效（密码不合规）→ 表单 + 字段下报错；
-				// token 已失效 → 同模板错误变体（renderInvitePage 内部分流）
-				renderInvitePage(svc, w, token, errText(err))
+				writeResult(w, nil, err)
 				return
 			}
 			setWebCookies(w, res.Session)
+			if isJSON {
+				writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+				return
+			}
 			http.Redirect(w, r, "/web/console", http.StatusFound)
 		})))))
 
-	// 管理员重置通知信里的「一次性设密」落地页：token 是凭证，表单只收它和新密码。
-	// 成功后不直接建会话——跳登录页用新密码登录，语义清楚且不与既有会话逻辑打架。
+	// 一次性设密：SPA 走 JSON，旧表单 POST 兼容。成功后不建会话，回登录页。
+	mux.Handle("GET /web/setup-password/info", withLogging(limitN("web-setup-info", 30,
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			info, err := svc.PasswordSetupLookup(r.URL.Query().Get("token"))
+			if err != nil {
+				writeResult(w, nil, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]string{"email": info.Email})
+		}))))
 	mux.Handle("POST /web/setup-password", withLogging(originGuard(limitN("web-setup-password", 15,
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
-			if err := r.ParseForm(); err != nil {
-				renderSetupPasswordPage(svc, w, "", "请求格式不正确，请从邮件重新打开")
+			var token, password string
+			isJSON := strings.Contains(r.Header.Get("Content-Type"), "application/json")
+			if isJSON {
+				var req struct {
+					Token    string `json:"token"`
+					Password string `json:"password"`
+				}
+				if !decodeOr400(w, r, &req) {
+					return
+				}
+				token, password = req.Token, req.Password
+			} else {
+				if err := r.ParseForm(); err != nil {
+					writeError(w, http.StatusBadRequest, "请求格式不正确，请从邮件重新打开")
+					return
+				}
+				token, password = r.PostFormValue("token"), r.PostFormValue("password")
+			}
+			if err := svc.CompletePasswordSetup(token, password); err != nil {
+				writeResult(w, nil, err)
 				return
 			}
-			token, password := r.PostFormValue("token"), r.PostFormValue("password")
-			if err := svc.CompletePasswordSetup(token, password); err != nil {
-				renderSetupPasswordPage(svc, w, token, errText(err))
+			if isJSON {
+				writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 				return
 			}
 			http.Redirect(w, r, "/web/login", http.StatusFound)
@@ -388,6 +436,49 @@ func registerWebRoutes(mux *http.ServeMux, svc *auth.Service) {
 			}
 			writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 		}))
+	// ---- 已授权应用 / 自己的安全活动 / 数据导出（SPA 新增）----
+	mux.Handle("GET /api/connected-apps", authed("connected-apps", 30,
+		func(c auth.WebCaller, w http.ResponseWriter, _ *http.Request) {
+			list, err := svc.ListConnectedApps(c.UID)
+			if err != nil {
+				writeResult(w, nil, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, list)
+		}))
+	mux.Handle("DELETE /api/connected-apps/{app}", reauthed("connected-apps-revoke", 10,
+		func(c auth.WebCaller, w http.ResponseWriter, r *http.Request) {
+			app := r.PathValue("app")
+			if !auth.AppAllowed(app) {
+				writeError(w, http.StatusBadRequest, "未知项目，请刷新后重试")
+				return
+			}
+			if err := svc.RevokeConnectedApp(c.UID, app); err != nil {
+				writeResult(w, nil, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+		}))
+	mux.Handle("GET /api/security-log", authed("security-log", 30,
+		func(c auth.WebCaller, w http.ResponseWriter, r *http.Request) {
+			list, total, err := svc.UserAuditLog(c.UID, queryInt(r.URL.Query().Get("limit")), queryInt(r.URL.Query().Get("offset")))
+			if err != nil {
+				writeResult(w, nil, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, page{Items: list, Total: total})
+		}))
+	mux.Handle("POST /api/account/export", reauthed("account-export", 5,
+		func(c auth.WebCaller, w http.ResponseWriter, _ *http.Request) {
+			data, err := svc.ExportAccount(c.UID)
+			if err != nil {
+				writeResult(w, nil, err)
+				return
+			}
+			w.Header().Set("Content-Disposition", `attachment; filename="auth-export-`+time.Now().Format("2006-01-02")+`.json"`)
+			writeJSON(w, http.StatusOK, data)
+		}))
+
 	mux.Handle("POST /api/totp/regenerate-recovery-codes", reauthed("totp-recovery", 10,
 		func(c auth.WebCaller, w http.ResponseWriter, r *http.Request) {
 			var req protocol.CodeRequest
@@ -425,7 +516,7 @@ type ceremonyResponse struct {
 // writeLoginResult 分流登录回执，两支的回体都是 {token,email}（AuthResponse 同形，
 // C 批零新解析）：还差第二步 → {status,loginToken,methods}；web 流程 → 签双 cookie，
 // **回体 token 恒空串**（凭据只在 HttpOnly cookie 里，回给脚本一个能直连双凭据
-// 路由的会话 token 等于把 CSRF 闸拆了——internal/ui/app.js 全程不读 body token）；
+// 路由的会话 token 等于把 CSRF 闸拆了——web/src/lib/api.ts 全程不读 body token）；
 // App 流程 → 回 JWT 且**一枚 cookie 都不发**（调用方是原生 App，没有 cookie 可用，
 // 也就没有 cookie 会话的 CSRF 闸要吃）。
 func writeLoginResult(svc *auth.Service, w http.ResponseWriter, res *auth.WebLoginResult) {
@@ -578,7 +669,7 @@ go.addEventListener('click', async () => {
 // credentialJSON 把 response 归一成库要的 PublicKeyCredential **对象字节**，
 // 两种已上线的形态都收：
 //
-//	网页端（internal/ui/app.js）传 JSON 对象 → 原样透传，web 路的字节一个不变；
+//	网页端（web/src/lib/api.ts）传 JSON 对象 → 原样透传，web 路的字节一个不变；
 //	日记 App 传 Credential Manager 的 authenticationResponseJson → 那是 JSON **字符串**
 //	（WebAuthDtos.kt 的 response: String），解一层再交库——不解的话库拿到带引号的
 //	字符串，解析直接 400，App 的 passkey 登录/注册全废。

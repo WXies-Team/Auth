@@ -669,7 +669,7 @@ func sessMeta(r *http.Request) auth.SessionMeta {
 
 // webSessMeta 在 sessMeta 之上再取 UA Client Hints 两头：Sec-CH-UA-Platform
 // （低熵，默认随请求带）与 Sec-CH-UA-Model（高熵，要 /web 页面响应先带过
-// Accept-CH——见 internal/ui.Render——浏览器才自动带上；Firefox/Safari 不支持，
+// Accept-CH——见 cmd/server/ui.go 的 serveSPA——浏览器才自动带上；Firefox/Safari 不支持，
 // 取不到就是空串，存储串不加后缀，设备名回退 UA 解析，零回归）。
 //
 // **只在 web 登录路用**（/web/login/*、/webauthn/login/finish、/web/invite、

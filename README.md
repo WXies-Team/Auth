@@ -37,12 +37,17 @@
 | 页面 | 说明 |
 |---|---|
 | `/web/login` | 密码 / 邮箱验证码 / 找回密码三个入口 + Passkey 登录（不支持则隐藏） |
-| `/web/console` | 概览：账号身份、三种登录方式的状态与管理入口 |
+| `/web/console` | 概览：安全评分、最近登录、三种登录方式状态 |
 | `/web/console/sessions` | 已登录设备：踢单台、退出其它设备 |
 | `/web/console/passkeys` | Passkey 列表：添加 / 改名 / 删除（保住「至少一种登录方式」） |
-| `/web/console/security` | 两步验证：开启（二维码 + 手输）、恢复码、关闭 |
-| `/web/console/account` | 改密码（原密码 / 验证码两路）、改邮箱、注销账号 |
-| `/web/admin/*` | 管理后台：用户、会话总览、审计日志、配置中心、AI 用量 |
+| `/web/console/security` | 两步验证：开启（二维码 + 手输）、恢复码余量、关闭 |
+| `/web/console/account` | 资料、改密码（原密码 / 验证码两路）、改邮箱、登录提醒、数据导出、注销 |
+| `/web/console/connections` | 已授权应用：查看 scope、撤销授权（同时吊销该应用会话） |
+| `/web/console/activity` | 自己的安全活动时间线（登录、改密、凭证变更） |
+| `/web/admin/*` | 管理后台：用户、项目访问、会话总览、审计、配置、AI 用量、系统状态 |
+
+UI 源码在 `web/`（React 19 + Vite + Tailwind v4 + shadcn 风格组件），构建产物在
+`internal/ui/dist/` 并由 `go:embed` 打进二进制；Go 只回 index.html 与静态资产。
 
 Web 端点（**全部新增路径，老端点形状不变**；写操作需 `X-CSRF-Token`）：
 
@@ -67,6 +72,14 @@ Web 端点（**全部新增路径，老端点形状不变**；写操作需 `X-CS
 | `GET /admin/projects/{app}/candidates?query=&limit=&offset=` | 项目成员选择器：按项目鉴权分页列出/筛选已注册用户（uid/email/role，`total` + 每页最多 200），不暴露全站目录 |
 | `GET /admin/config`、`PUT /admin/config/{key}` | 配置中心：白名单键，secret 只回末 4 位 |
 | `GET /admin/ai-usage?days=30` | AI 用量与四档限额（空表如实为空） |
+| `GET /api/connected-apps`、`DELETE /api/connected-apps/{app}` | 已授权应用与撤销（撤销同时吊销该应用会话） |
+| `GET /api/security-log?limit=&offset=` | 自己的安全活动（actor 或 target 命中本 uid） |
+| `POST /api/account/export` | 导出账号数据（JSON；需 2 小时内强认证） |
+| `POST /admin/users/{uid}/mfa-reset` | 管理员重置 TOTP + Passkey 并吊销会话（super） |
+| `GET /admin/status` | 系统状态：版本、运行时长、DB 延迟、邮件/WebAuthn 自检、计数 |
+| `GET /web/invite/info?token=`、`POST /web/invite` | SPA 邀请信息 / 接受邀请（JSON，旧表单 POST 仍兼容） |
+| `GET /web/setup-password/info?token=`、`POST /web/setup-password` | SPA 一次性设密信息 / 提交（JSON，旧表单 POST 仍兼容） |
+| `GET /oauth/authorize?format=json` | 授权确认页数据（tx / 应用名 / 回跳域 / scope） |
 
 登录态是 `__Host-auth_web` cookie（HttpOnly + Secure + SameSite=Lax，库里只存 sha256），
 配套一枚可读的 CSRF cookie——**所有非 GET 的 cookie 请求必须带 `X-CSRF-Token`**；
@@ -86,8 +99,10 @@ Bearer（日记 App）照旧走 `/auth/*`，三条凭据路互不串用。
 ## 本地命令
 
 ```bash
-go build ./...        # 编译
-go test ./...         # 测试（DB 相关用例需要 TEST_MYSQL_DSN，缺省自动 Skip）
+cd web && npm ci && npm run build   # 构建前端到 internal/ui/dist
+go build ./...                      # 编译（需要先有 internal/ui/dist/index.html）
+go test ./...                       # 测试（DB 相关用例需要 TEST_MYSQL_DSN，缺省自动 Skip）
+cd web && npm test                  # 前端单测
 go vet ./...          # 静态检查
 ci/build-server.sh    # 测试 + 打包 dist/server.tar（CI 部署用的同一入口）
 ```

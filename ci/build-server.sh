@@ -16,6 +16,13 @@ command -v "$GO" >/dev/null || { echo "::error::未找到 go，请先安装（�
 OUT_TAR="dist/server.tar"
 STAGE="dist/go-stage"
 
+# 前端产物随源码提交：CI 不跑 Node，避免自托管 runner 依赖 npm 网络。
+# 改 UI 后先在本地 `cd web && npm run build`，把 internal/ui/dist 一起提交。
+if [ ! -f internal/ui/dist/index.html ]; then
+  echo "::error::缺少前端产物 internal/ui/dist/index.html；先 cd web && npm ci && npm run build"
+  exit 1
+fi
+
 echo "== go test =="
 # 真库测试靠 TEST_MYSQL_DSN 注入，CI 没有 MySQL 时自动 Skip，
 # 限流/aud 白名单/雪花 id/verify 路由这些不依赖数据库的测试照常跑。
