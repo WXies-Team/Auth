@@ -16,6 +16,7 @@ import {
   UserCog,
 } from 'lucide-react'
 import { api } from '@/lib/api'
+import { useAuth } from '@/lib/auth'
 import { APPS } from '@/lib/apps'
 import type { AdminUserDetail, AuditRow, BanInfo, Page, Passkey } from '@/lib/types'
 import { dateOnly, dateTime, relativeTime } from '@/lib/format'
@@ -45,6 +46,7 @@ export default function AdminUserDetailPage() {
   const [busy, setBusy] = React.useState(false)
   const [tempPassword, setTempPassword] = React.useState('')
   const [pendingRole, setPendingRole] = React.useState<string | null>(null)
+  const { session } = useAuth()
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['admin-user', uid],
@@ -169,7 +171,12 @@ export default function AdminUserDetailPage() {
             <Button variant="outline" size="sm" onClick={() => setDialog('password')}>
               <KeyRound /> 重置密码
             </Button>
-            <Button variant="outline" size="sm" onClick={() => setDialog('mfa')}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDialog('mfa')}
+              disabled={data.isRoot && !session?.isRoot}
+            >
               <ShieldOff /> 重置 MFA
             </Button>
           </>
@@ -200,7 +207,11 @@ export default function AdminUserDetailPage() {
               <div className="space-y-1.5">
                 <Label>角色</Label>
                 <div className="flex gap-2">
-                  <Select value={pendingRole ?? data.role} onChange={(e) => setPendingRole(e.target.value)} disabled={busy}>
+                  <Select
+                    value={pendingRole ?? data.role}
+                    onChange={(e) => setPendingRole(e.target.value)}
+                    disabled={busy || session?.uid === data.uid || (data.isRoot && !session?.isRoot)}
+                  >
                     <option value="user">普通用户</option>
                     <option value="admin">项目管理员</option>
                     <option value="super">平台管理员</option>

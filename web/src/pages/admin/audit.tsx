@@ -1,5 +1,6 @@
 import * as React from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
 import { Download, RefreshCw, ScrollText, Search } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { AuditRow, Page } from '@/lib/types'
@@ -129,7 +130,7 @@ export default function AdminAuditPage() {
                       <TableCell className="text-muted-foreground text-xs whitespace-nowrap">{dateTime(r.ts)}</TableCell>
                       <TableCell className="font-mono text-xs">{r.action}</TableCell>
                       <TableCell className="text-sm">{r.actorEmail || (r.actorUid ? `uid ${r.actorUid}` : '系统')}</TableCell>
-                      <TableCell className="text-sm">{r.targetUid || '—'}</TableCell>
+                      <TableCell className="text-sm">{r.targetUid ? <Link className="hover:underline" to={`/web/admin/users/${r.targetUid}`}>{r.targetUid}</Link> : '—'}</TableCell>
                       <TableCell>
                         {r.result === 'ok' ? <Badge variant="success">成功</Badge> : <Badge variant="destructive">失败</Badge>}
                       </TableCell>
