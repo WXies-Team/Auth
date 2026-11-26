@@ -2064,6 +2064,21 @@ func TestAdminSessionsOverviewAggregation(t *testing.T) {
 	}
 }
 
+// 项目管理员是项目授权的派生身份，不能再作为平台角色下拉项：否则会出现
+// 「选了项目管理员 → 又提示先授予项目」的循环。平台级角色只留普通用户/平台管理员。
+func TestProjectAdminIsDerivedNotAssignable(t *testing.T) {
+	js := mustJS(t)
+	block := jsBlock(t, js, "const roleCtl = `", "// 应用授权开关")
+	if strings.Contains(block, `value="admin"`) {
+		t.Error("角色下拉不应再暴露「项目管理员」这个派生身份")
+	}
+	for _, want := range []string{"项目管理员不是手工角色", `data-role="super"`} {
+		if !strings.Contains(js, want) {
+			t.Errorf("项目管理员派生说明/平台管理员操作缺 %q", want)
+		}
+	}
+}
+
 // 用户页：服务端跨页筛选 chips（角色/封禁，写入 URL）、项目权限列与项目管理员语义、
 // 详情面板把高风险操作收进 danger-zone。
 func TestAdminUsersExemptionAndDangerZone(t *testing.T) {
@@ -2299,10 +2314,10 @@ func TestRoleHierarchyAppointmentGating(t *testing.T) {
 		"reportDenial('#users-denied'",          // 用户页写操作
 		"reportDenial('#access-denied'",         // 项目访问写操作
 		"reportDenial('#sess-denied'",           // 会话退出写操作
-		"平台管理员的角色只有根管理员能任命或回收",                  // 锁死目标的解释
 		"只有根管理员能任命/回收平台管理员",                     // 非根视角的解释
 		"根管理员账号只有本人能调整",                         // 目标是根时的解释
-		`${canAppointSuper ? '' : ' disabled'}`, // 平台管理员选项按能力禁用
+		"项目管理员不是手工角色",                            // admin 是项目授权的派生身份
+		`data-role="super"`,                     // 平台管理员仍是显式操作
 		`title="唯一的平台管理员任命者"`,                   // 列表根徽标
 		"不跨项目",                                  // 项目管理员的授权边界
 	} {

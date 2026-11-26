@@ -2577,25 +2577,27 @@ function initAdminUsers() {
       //（非根视角）——下拉整体禁用并说明原因；其余情况只禁掉「平台管理员」项。
       const targetLocked = isSelf || (isRootTarget && !root) ||
         (d.role === 'super' && !root);
-      const canAppointSuper = root;
+      const canAppointSuper = root && !targetLocked;
       const roleNote = isSelf
         ? '不能修改自己的角色。'
         : isRootTarget && !root
           ? '根管理员账号只有本人能调整。'
-          : targetLocked && !isSelf
-            ? '平台管理员的角色只有根管理员能任命或回收。'
+          : d.role === 'admin'
+            ? '项目管理员不是手工角色：它由项目授权自动获得，移除全部项目后自动回到普通用户。'
             : canAppointSuper
-              ? '你是根管理员：可任命/回收平台管理员；平台管理员可任命项目管理员与普通用户。不能授予高于自己的角色。'
-              : '只有根管理员能任命/回收平台管理员；你可任命项目管理员与普通用户。项目管理员只在被授予的项目内行使管理权，不跨项目。';
+              ? '你是根管理员：可任命/回收平台管理员。项目管理员由项目授权自动派生，不需要在这里选。'
+              : '只有根管理员能任命/回收平台管理员；项目管理员由项目授权自动派生。';
+      // 角色只显示“平台级”身份；admin 是项目授权的派生结果，不再放进下拉，
+      // 避免“选了项目管理员又提示先授权”的循环。
       const roleCtl = `
-        <label class="row" style="gap:8px"><span class="dim">角色</span>
-          <select id="ud-role" ${targetLocked ? 'disabled title="该角色调整超出你的能力范围"' : ''}>
-            <option value="user"${d.role === 'user' ? ' selected' : ''}>普通用户</option>
-            <option value="admin"${d.role === 'admin' ? ' selected' : ''}>项目管理员</option>
-            <option value="super"${d.role === 'super' ? ' selected' : ''}${canAppointSuper ? '' : ' disabled'}>平台管理员</option>
-          </select>
-        </label>
-        <button type="button" class="btn small primary" id="ud-save-role" ${targetLocked ? 'disabled' : ''}>保存角色</button>`;
+        <span class="row" style="gap:8px"><span class="dim">角色</span>
+          <span class="badge ${d.role === 'super' ? 'on' : 'plain'}">${esc(ROLE_LABEL[d.role] || d.role)}</span>
+        </span>
+        ${canAppointSuper
+          ? (d.role === 'super'
+            ? '<button type="button" class="btn small" id="ud-role-set" data-role="user">取消平台管理员</button>'
+            : '<button type="button" class="btn small primary" id="ud-role-set" data-role="super">设为平台管理员</button>')
+          : ''}`;
       // 应用授权开关：选项来自服务端注册表；每项的语义 = 该项目管理员（与访问页同口径）
       const scopeList = d.role === 'super'
         ? '<div class="empty">平台管理员管理全部项目，无需逐项授权。</div>'
@@ -2721,20 +2723,18 @@ function initAdminUsers() {
           () => api(`/admin/roles/${uid}/scope`, { method: 'POST', body: { app, op } }),
           op === 'revoke');
       }));
-      const saveRole = $('#ud-save-role');
-      if (saveRole) saveRole.addEventListener('click', () => {
-        const role = $('#ud-role').value;
+      const roleSet = $('#ud-role-set');
+      if (roleSet) roleSet.addEventListener('click', () => {
+        const role = roleSet.dataset.role;
+        const toSuper = role === 'super';
         confirmAction(
-          '调整角色',
-          role === 'super'
-            ? '将该用户设为平台管理员：可管理全部项目、用户目录与全局配置，并可任命项目管理员。此操作只有根管理员能执行。'
-            : role === 'admin'
-              ? '将该用户设为项目管理员：需再授予至少一个项目才有实际管理范围；其授权不跨项目。'
-              : '将该用户降为普通用户：项目授权会一并收回。',
-          role === 'super' ? '已设为平台管理员'
-            : role === 'admin' ? '已设为项目管理员' : '已降为普通用户',
+          toSuper ? '设为平台管理员' : '取消平台管理员',
+          toSuper
+            ? '该账号将获得平台级权限：管理全部项目、用户目录与全局配置，并可任命/回收项目管理员。'
+            : '该账号将失去平台级权限并回到普通用户；如果仍保留项目授权，请先移除项目。',
+          toSuper ? '已设为平台管理员' : '已取消平台管理员',
           () => api(`/admin/users/${uid}/role`, { method: 'POST', body: { role } }),
-          role === 'user');
+          !toSuper);
       });
       $('#ud-kick-all').addEventListener('click', () => {
         confirmAction(
