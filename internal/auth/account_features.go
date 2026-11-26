@@ -208,6 +208,9 @@ func (s *Service) AdminResetMFA(actor Caller, targetUID int64) (err error) {
 	if _, err = tx.ExecContext(ctx, "DELETE FROM passkeys WHERE user_id = ?", targetUID); err != nil {
 		return fmt.Errorf("清 Passkey: %w", err)
 	}
+	if _, err = tx.ExecContext(ctx, "DELETE FROM recovery_codes WHERE user_id = ?", targetUID); err != nil {
+		return fmt.Errorf("清恢复码: %w", err)
+	}
 	if _, err = tx.ExecContext(ctx,
 		"UPDATE users SET token_version = token_version + 1 WHERE id = ?", targetUID); err != nil {
 		return fmt.Errorf("升 token_version: %w", err)
