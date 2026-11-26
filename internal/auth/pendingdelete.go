@@ -173,6 +173,12 @@ func (s *Service) CheckDeleteCancel(token string) error {
 	return err
 }
 
+// DeleteCancelInfo 给 SPA 的撤销页取注册邮箱（只回已验签、仍在宽限期的账号）。
+func (s *Service) DeleteCancelInfo(token string) (string, error) {
+	_, email, err := s.checkCancelEligible(token)
+	return email, err
+}
+
 // checkCancelEligible 验签 + 判宽限，回 (uid, registered_email)；不满足回 400。
 func (s *Service) checkCancelEligible(token string) (int64, string, error) {
 	uid, err := s.parseDeleteCancelToken(token)

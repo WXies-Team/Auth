@@ -85,14 +85,18 @@ func registerWebRoutes(mux *http.ServeMux, svc *auth.Service) {
 	// 全部会话已被吊销），撤销 token 即凭证、不可猜。GET 渲染确认页 / 友好错误页，
 	// POST 提交；两路各吃 IP 10/分 限流。页面 HTML 内嵌在本文件（不进
 	// internal/ui 的模板集——那批文件由并行批次维护，且这页无需登录壳）。
-	mux.Handle("GET /web/delete-cancel", withLogging(limitN("delete-cancel", 10,
+	mux.Handle("GET /web/delete-cancel/info", withLogging(limitN("delete-cancel", 10,
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			token := r.URL.Query().Get("token")
-			if err := svc.CheckDeleteCancel(token); err != nil {
-				writeDeleteCancelPage(w, token, false, errText(err))
+			email, err := svc.DeleteCancelInfo(r.URL.Query().Get("token"))
+			if err != nil {
+				writeResult(w, nil, err)
 				return
 			}
-			writeDeleteCancelPage(w, token, true, "")
+			writeJSON(w, http.StatusOK, map[string]string{"email": email})
+		}))))
+	mux.Handle("GET /web/delete-cancel", withLogging(limitN("delete-cancel", 10,
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			serveSPA(w)
 		}))))
 	mux.Handle("POST /web/delete-cancel", withLogging(limitN("delete-cancel", 10,
 		jsonBody[deleteCancelRequest](func(req *deleteCancelRequest, w http.ResponseWriter, _ *http.Request) {

@@ -6,6 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 const LoginPage = lazy(() => import('@/pages/login'))
 const InvitePage = lazy(() => import('@/pages/invite'))
 const SetupPasswordPage = lazy(() => import('@/pages/setup-password'))
+const DeleteCancelPage = lazy(() => import('@/pages/delete-cancel'))
 const AuthorizePage = lazy(() => import('@/pages/authorize'))
 const ConsolePage = lazy(() => import('@/pages/console'))
 const SessionsPage = lazy(() => import('@/pages/sessions'))
@@ -41,6 +42,7 @@ export default function App() {
         <Route path="/web/login" element={<LoginPage />} />
         <Route path="/web/invite" element={<InvitePage />} />
         <Route path="/web/setup-password" element={<SetupPasswordPage />} />
+        <Route path="/web/delete-cancel" element={<DeleteCancelPage />} />
         <Route path="/oauth/authorize" element={<AuthorizePage />} />
 
         <Route element={<RequireAuth />}>
