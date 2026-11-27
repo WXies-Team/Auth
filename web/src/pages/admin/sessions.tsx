@@ -2,7 +2,7 @@ import * as React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
-import { Globe, Monitor, RefreshCw, Search, ShieldAlert, Users } from 'lucide-react'
+import { AppWindow, Monitor, RefreshCw, Search, ShieldAlert, Users } from 'lucide-react'
 import { api } from '@/lib/api'
 import { APP_OPTIONS } from '@/lib/apps'
 import type { AdminSession, SessionPage } from '@/lib/types'
@@ -85,7 +85,7 @@ export default function AdminSessionsPage() {
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="会话" value={data?.total ?? '—'} icon={Monitor} />
         <StatCard label="用户" value={data?.totalUsers ?? '—'} icon={Users} />
-        <StatCard label="项目" value={data?.apps?.length ?? '—'} icon={Globe} />
+        <StatCard label="项目" value={data?.apps?.length ?? '—'} icon={AppWindow} />
         <StatCard
           label="地区"
           value={data?.regions?.length ?? '—'}

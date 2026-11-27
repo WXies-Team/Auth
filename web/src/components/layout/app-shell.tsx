@@ -5,7 +5,8 @@ import {
   AppWindow,
   ChartColumn,
   ChevronDown,
-  KeyRound,
+  HeartPulse,
+  Fingerprint,
   Languages,
   LayoutDashboard,
   Lock,
@@ -50,7 +51,7 @@ type NavItem = { to: string; labelKey: string; icon: React.ComponentType<{ class
 const userNav: NavItem[] = [
   { to: '/web/console', labelKey: 'nav.console', icon: LayoutDashboard },
   { to: '/web/console/sessions', labelKey: 'nav.sessions', icon: Monitor },
-  { to: '/web/console/passkeys', labelKey: 'nav.passkeys', icon: KeyRound },
+  { to: '/web/console/passkeys', labelKey: 'nav.passkeys', icon: Fingerprint },
   { to: '/web/console/security', labelKey: 'nav.security', icon: ShieldCheck },
   { to: '/web/console/connections', labelKey: 'nav.connections', icon: AppWindow },
   { to: '/web/console/activity', labelKey: 'nav.activity', icon: Activity },
@@ -64,7 +65,7 @@ const adminNav: NavItem[] = [
   { to: '/web/admin/audit', labelKey: 'nav.audit', icon: ScrollText },
   { to: '/web/admin/config', labelKey: 'nav.config', icon: SlidersHorizontal },
   { to: '/web/admin/ai-usage', labelKey: 'nav.ai', icon: ChartColumn },
-  { to: '/web/admin/system', labelKey: 'nav.system', icon: Activity },
+  { to: '/web/admin/system', labelKey: 'nav.system', icon: HeartPulse },
 ]
 
 function isNavActive(pathname: string, to: string): boolean {

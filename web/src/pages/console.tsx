@@ -3,8 +3,8 @@ import {
   Activity,
   ArrowRight,
   CheckCircle2,
+  Fingerprint,
   KeyRound,
-  Lock,
   MonitorSmartphone,
   ShieldCheck,
   TriangleAlert,
@@ -42,7 +42,7 @@ export default function ConsolePage() {
       desc: session.passwordSet ? '已设置，可用于登录' : '未设置，只能用验证码或 Passkey',
       on: session.passwordSet,
       href: '/web/console/account',
-      icon: Lock,
+      icon: KeyRound,
     },
     {
       title: '两步验证',
@@ -60,7 +60,7 @@ export default function ConsolePage() {
       desc: passkeyCount > 0 ? `${passkeyCount} 把，可用于免密登录` : '未添加，登录更慢一步',
       on: passkeyCount > 0,
       href: '/web/console/passkeys',
-      icon: KeyRound,
+      icon: Fingerprint,
     },
   ]
 
@@ -175,7 +175,7 @@ export default function ConsolePage() {
         <Link to="/web/console/passkeys" className="group">
           <Card className="hover:border-primary/40 h-full transition-colors">
             <CardHeader>
-              <KeyRound className="text-muted-foreground size-5" />
+              <Fingerprint className="text-muted-foreground size-5" />
               <CardTitle>{passkeyCount > 0 ? '管理 Passkey' : '添加 Passkey'}</CardTitle>
               <CardDescription>
                 {passkeyCount > 0 ? `已添加 ${passkeyCount} 把，可查看或再添加。` : '用指纹、面容或安全密钥免密登录。'}

@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Globe, Loader2, Lock, Plus, RotateCw, Search, ShieldCheck, SlidersHorizontal, Trash2, UserPlus, Users } from 'lucide-react'
+import { KeyRound, Loader2, Lock, Plus, Save, Search, ShieldCheck, SlidersHorizontal, Trash2, UserPlus, Users } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import type { AdminProject, Page, ProjectMember } from '@/lib/types'
@@ -216,7 +216,7 @@ export default function AdminAccessPage() {
                     </p>
                   </div>
                   <Button variant="outline" size="sm" onClick={() => setOauthProject(p)}>
-                    <Globe /> 配置
+                    <KeyRound /> 配置
                   </Button>
                 </div>
               </CardContent>
@@ -615,7 +615,7 @@ function OAuthDialog({
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>关闭</Button>
           <Button onClick={save} disabled={busy}>
-            {busy && <Loader2 className="animate-spin" />} <RotateCw /> 保存
+            {busy && <Loader2 className="animate-spin" />} <Save /> 保存
           </Button>
         </DialogFooter>
       </DialogContent>

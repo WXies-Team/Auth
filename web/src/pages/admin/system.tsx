@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Activity, CheckCircle2, Database, KeyRound, Mail, Server, XCircle } from 'lucide-react'
+import { CheckCircle2, Database, Fingerprint, Mail, Monitor, Users, XCircle } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { SystemStatus } from '@/lib/types'
 import { relativeTime } from '@/lib/format'
@@ -45,9 +45,9 @@ export default function AdminSystemPage() {
       ) : data ? (
         <>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard label="账号" value={data.counts.users} icon={Server} />
-            <StatCard label="活跃会话" value={data.counts.sessions} icon={Activity} />
-            <StatCard label="Passkey" value={data.counts.passkeys} icon={KeyRound} />
+            <StatCard label="账号" value={data.counts.users} icon={Users} />
+            <StatCard label="活跃会话" value={data.counts.sessions} icon={Monitor} />
+            <StatCard label="Passkey" value={data.counts.passkeys} icon={Fingerprint} />
             <StatCard label="两步验证" value={data.counts.totp} icon={CheckCircle2} />
           </div>
 
@@ -91,7 +91,7 @@ export default function AdminSystemPage() {
                   {data.goVersion} · 数据库 {data.counts.tables} 张表 / {data.counts.indexes} 个索引 · schema {data.schemaVersion}
                 </p>
                 <div className="flex items-center gap-2">
-                  <KeyRound className="text-muted-foreground size-4" />
+                  <Fingerprint className="text-muted-foreground size-4" />
                   <span>{data.passkeysConfigured ? 'WebAuthn RP 已就绪' : 'WebAuthn 未配置'}</span>
                 </div>
               </CardContent>

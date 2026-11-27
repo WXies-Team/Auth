@@ -5,8 +5,11 @@ import { toast } from 'sonner'
 import {
   Ban,
   CheckSquare,
+  CircleCheck,
+  KeyRound,
   Loader2,
   MailPlus,
+  MonitorSmartphone,
   Search,
   Users,
 } from 'lucide-react'
@@ -226,7 +229,7 @@ export default function AdminUsersPage() {
                   setBulkOpen(true)
                 }}
               >
-                解除封禁
+                <CircleCheck /> 解除封禁
               </Button>
               <Button
                 size="sm"
@@ -236,7 +239,7 @@ export default function AdminUsersPage() {
                   setBulkOpen(true)
                 }}
               >
-                重置密码
+                <KeyRound /> 重置密码
               </Button>
               <Button
                 size="sm"
@@ -246,7 +249,7 @@ export default function AdminUsersPage() {
                   setBulkOpen(true)
                 }}
               >
-                退出所有会话
+                <MonitorSmartphone /> 退出所有会话
               </Button>
               <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
                 清空

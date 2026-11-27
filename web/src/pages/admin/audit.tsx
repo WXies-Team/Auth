@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
-import { Download, RefreshCw, ScrollText, Search } from 'lucide-react'
+import { Download, FilterX, RefreshCw, ScrollText } from 'lucide-react'
 import { api } from '@/lib/api'
 import type { AuditRow, Page } from '@/lib/types'
 import { dateTime } from '@/lib/format'
@@ -118,7 +118,7 @@ export default function AdminAuditPage() {
                 setAction(''); setActor(''); setTarget(''); setResult(''); setIp(''); setFrom(''); setTo(''); setPage(1)
               }}
             >
-              <Search /> 重置筛选
+              <FilterX /> 重置筛选
             </Button>
           </div>
 

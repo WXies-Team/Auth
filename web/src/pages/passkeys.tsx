@@ -1,7 +1,7 @@
 import * as React from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Fingerprint, KeyRound, Loader2, Pencil, Trash2 } from 'lucide-react'
+import { Fingerprint, Loader2, Pencil, Trash2 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { usePasskeys } from '@/lib/queries'
 import { registerPasskey } from '@/lib/webauthn'
@@ -106,7 +106,7 @@ export default function PasskeysPage() {
             <ListSkeleton rows={2} action />
           ) : rows.length === 0 ? (
             <EmptyState
-              icon={KeyRound}
+              icon={Fingerprint}
               title="还没有 Passkey"
               description="添加后可以用本机指纹、面容或外接安全密钥登录，比密码更快也更安全。"
               action={
@@ -120,7 +120,7 @@ export default function PasskeysPage() {
               {rows.map((row) => (
                 <li key={row.id} className="flex flex-wrap items-center gap-3 p-4">
                   <div className="bg-muted flex size-9 shrink-0 items-center justify-center rounded-md">
-                    <KeyRound className="size-4" />
+                    <Fingerprint className="size-4" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="flex items-center gap-2 text-sm font-medium">

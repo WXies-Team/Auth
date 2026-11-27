@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { KeyRound, Loader2, ShieldCheck } from 'lucide-react'
+import { Fingerprint, Loader2, ShieldCheck } from 'lucide-react'
 import { reauthWithPasskey } from './webauthn'
 
 type AuthState = {
@@ -208,7 +208,7 @@ function ReauthDialog({ open, onClose }: { open: boolean; onClose: (ok: boolean)
 
         {hasPasskey && (
           <Button type="button" onClick={byPasskey} disabled={busy} className="w-full">
-            {busy ? <Loader2 className="animate-spin" /> : <KeyRound />} 使用 Passkey 验证
+            {busy ? <Loader2 className="animate-spin" /> : <Fingerprint />} 使用 Passkey 验证
           </Button>
         )}
 
