@@ -1,15 +1,20 @@
 package main
 
-// Command genicons 生成本仓全部图形资产（一次性画、可随时重生）。两种画法：
+// Command genicons 生成本仓全部图形资产（一次性画、可随时重生）。全渠道同一种画法：
+// **纯色 miuix 品牌蓝 #3482FF 实底 + 白色矢量，squircle 外形**（2026-11-27 作者拍板：
+// 站点图标也带底，与邮件里的 Auth logo 完全一致）。
 //
-//	品牌画法（纯色 miuix 品牌蓝 #3482FF 实底 + 白色矢量，squircle 外形）
-//	  internal/ui/static/brand/<slug>-v1.png  品牌邮件 logo（128px = 64@2x，单版本；
-//	                                          邮件以 https://auth.horatio.cn/brand/ 引用）
-//	  internal/ui/static/brand/<slug>.svg     同款矢量源（squircle 用采样折线逼近）
-//	站点画法（**透明底 + miuix 蓝 #3482FF 描边本体**，2026-10-20 作者拍板）
-//	  internal/ui/static/apple-touch-icon.png                     180px（iOS 主屏会给透明图标垫黑底）
-//	  internal/ui/static/favicon.ico                              16/32/48 三档
-//	  internal/ui/static/favicon.svg                              96px，纯蓝描边 glyph
+//	internal/ui/static/brand/<slug>-v1.png  品牌 logo（128px = 64@2x，单版本；
+//	                                        邮件以 https://auth.horatio.cn/brand/ 引用）
+//	internal/ui/static/brand/<slug>.svg     同款矢量源（squircle 用采样折线逼近）
+//	internal/ui/static/favicon.svg          108 视口 / 8% 留白 / 64 字形方框（与日记站图标同几何）
+//	internal/ui/static/favicon.ico          16/32/48 三档，蓝底 squircle
+//	internal/ui/static/apple-touch-icon.png 180px 满幅蓝底（iOS 自己套圆角）
+//	internal/ui/static/icon-192.png         PWA 图标（满幅，maskable 安全区）
+//	internal/ui/static/icon-512.png         同上 512px
+//
+// 站点图标同时写一份到 web/public/（Vite 构建的公开目录），两处字节一致，
+// 由 TestGeneratedAssetsInSync 钉死，避免手工复制漂移。
 //
 // 用法（仓库根目录）：
 //
@@ -66,7 +71,7 @@ var brandGlyphs = map[string][]string{
 	"CalorieDiary":      flamePaths,
 	"ExpenseDiary":      receiptPaths,
 	"EPassportForMikey": stampPaths,
-	"Shortener": linkPaths,
+	"Shortener":         linkPaths,
 	"auth":              shieldPaths,
 }
 
@@ -75,7 +80,7 @@ var brandLabels = map[string]string{
 	"CalorieDiary":      "热量日记",
 	"ExpenseDiary":      "开支日记",
 	"EPassportForMikey": "奇奇岛护照",
-	"Shortener": "屑涵短链",
+	"Shortener":         "屑涵短链",
 	"auth":              "Auth",
 }
 
@@ -104,26 +109,50 @@ func generate() ([]fileOut, error) {
 		out = append(out, fileOut{"internal/ui/static/brand/" + name + ".svg", []byte(svg)})
 	}
 
-	// apple-touch-icon：与 favicon 同款**透明底 + #3482FF 蓝 glyph**（2026-10-20 作者
-	// 拍板）。满幅不切角——iOS 主屏自己套超椭圆蒙版；**iOS 会给透明图标垫黑底**
-	//（平台行为），嫌黑再议。
-	apple, err := encodePNG(iconSpec{size: 180, boxFrac: 0.6, paths: shieldPaths, transparentBlue: true})
-	if err != nil {
-		return nil, fmt.Errorf("画 apple-touch-icon: %w", err)
+	// 站点图标：与品牌邮件 logo 同一画法（蓝底 + 白盾）。favicon 保留超椭圆切角；
+	// apple-touch / PWA 图标满幅不切角——iOS 与 Android 启动器自己套蒙版，
+	// 满幅实底才不会在蒙版外露黑边。字形统一 70% 外包盒，落在 maskable 安全区内。
+	type namedFile struct {
+		name string
+		data []byte
 	}
-	out = append(out, fileOut{"internal/ui/static/apple-touch-icon.png", apple})
+	var icons []namedFile
 
-	ico, err := encodeICO([]int{16, 32, 48}, 0.6, shieldPaths)
-	if err != nil {
-		return nil, fmt.Errorf("画 favicon.ico: %w", err)
-	}
-	out = append(out, fileOut{"internal/ui/static/favicon.ico", ico})
-
-	svg, err := faviconSVG(96, shieldPaths)
+	svg, err := siteIconSVG("Auth", shieldPaths)
 	if err != nil {
 		return nil, fmt.Errorf("画 favicon.svg: %w", err)
 	}
-	out = append(out, fileOut{"internal/ui/static/favicon.svg", []byte(svg)})
+	icons = append(icons, namedFile{"favicon.svg", []byte(svg)})
+
+	// favicon 与 favicon.svg 同一套日记站几何：108 视口 / 8% 留白 / 64 字形方框。
+	ico, err := encodeICO([]int{16, 32, 48}, iconSpec{
+		cutCorners: true,
+		inset:      0.08,
+		boxFrac:    64.0 / 108.0,
+		viewBox:    24,
+		paths:      shieldPaths,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("画 favicon.ico: %w", err)
+	}
+	icons = append(icons, namedFile{"favicon.ico", ico})
+
+	for _, size := range []int{180, 192, 512} {
+		png, err := encodePNG(iconSpec{size: size, boxFrac: 0.7, paths: shieldPaths})
+		if err != nil {
+			return nil, fmt.Errorf("画 %dpx 站点图标: %w", size, err)
+		}
+		name := "apple-touch-icon.png"
+		if size != 180 {
+			name = fmt.Sprintf("icon-%d.png", size)
+		}
+		icons = append(icons, namedFile{name, png})
+	}
+
+	for _, icon := range icons {
+		out = append(out, fileOut{"internal/ui/static/" + icon.name, icon.data})
+		out = append(out, fileOut{"web/public/" + icon.name, icon.data})
+	}
 
 	return out, nil
 }

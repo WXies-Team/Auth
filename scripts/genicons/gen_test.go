@@ -20,8 +20,8 @@ func TestGeneratedAssetsInSync(t *testing.T) {
 	if err != nil {
 		t.Fatalf("生成资产: %v", err)
 	}
-	if len(files) != 13 {
-		t.Fatalf("资产清单应为 13 份（5 品牌 PNG + 5 品牌 SVG + apple-touch + ico + svg），得到 %d", len(files))
+	if len(files) != 20 {
+		t.Fatalf("资产清单应为 20 份（5 品牌 PNG + 5 品牌 SVG + 5 站点图标 × 2 个目录），得到 %d", len(files))
 	}
 	for _, f := range files {
 		got, err := os.ReadFile(filepath.Join("..", "..", f.rel))
@@ -98,53 +98,73 @@ func px(img image.Image, x, y int) (r, g, b, a uint8) {
 		uint8(ca >> 8)
 }
 
-// 站点 favicon 三件套（2026-10-20 作者拍板）：**透明底 + miuix 蓝 #3482FF 的描边本体**，
-// 不带任何背景；品牌邮件 logo（2026-10-21 换装自 CID 内嵌图）：**纯色 #3482FF 实底**
-// （不许渐变）+ 白色矢量，squircle 外形不变。
-func TestFaviconTransparentBlueAndBrandLogosUnchanged(t *testing.T) {
-	// ---- favicon.svg：纯蓝描边，无渐变、无底 ----
+// 站点图标（2026-11-27 作者拍板）：与邮件里的 Auth logo 完全一致的
+// **纯色 #3482FF 实底 + 白色盾形**；favicon 保留超椭圆切角，apple-touch 与
+// PWA 图标满幅实底（交给自己套蒙版的平台）。任何一处退回透明底/描边画法，这里先红。
+func TestSiteIconsShareBrandBackground(t *testing.T) {
+	// ---- favicon.svg：蓝底 + 白盾 ----
 	svg := string(readAsset(t, "internal/ui/static/favicon.svg"))
-	if !strings.Contains(svg, `stroke="#3482FF"`) {
-		t.Error("favicon.svg 应是 #3482FF 描边")
+	for _, want := range []string{
+		`viewBox="0 0 108 108"`,            // 日记站口径：108 视口
+		`translate(22 22) scale(2.666667)`, // 64×64 居中字形方框
+		`stroke-width="2"`,
+		`fill="#3482FF"`, `stroke="#FFFFFF"`, shieldPaths[0], `<title>Auth</title>`,
+	} {
+		if !strings.Contains(svg, want) {
+			t.Errorf("favicon.svg 缺 %q", want)
+		}
 	}
-	if !strings.Contains(svg, `fill="none"`) {
-		t.Error("favicon.svg 字形应 fill=none（只有描边）")
-	}
-	for _, bad := range []string{"linearGradient", "url(#", `fill="#`, "FF4D95", "2B6DE8"} {
+	for _, bad := range []string{"linearGradient", "url(#"} {
 		if strings.Contains(svg, bad) {
-			t.Errorf("favicon.svg 不该带底/渐变，却含 %q", bad)
+			t.Errorf("favicon.svg 不该带渐变，却含 %q", bad)
+		}
+	}
+	// 站点 favicon 与品牌位的画法一致：同样的蓝底 + 白盾（尺寸不同，数值不同）
+	brandSVG := string(readAsset(t, "internal/ui/static/brand/auth.svg"))
+	for _, want := range []string{`fill="#3482FF"`, `stroke="#FFFFFF"`, shieldPaths[0]} {
+		if !strings.Contains(brandSVG, want) {
+			t.Errorf("brand/auth.svg 缺 %q", want)
 		}
 	}
 
-	// ---- apple-touch-icon.png：四角透明、不透明像素全是 miuix 蓝 ----
-	apple, err := png.Decode(bytes.NewReader(readAsset(t, "internal/ui/static/apple-touch-icon.png")))
-	if err != nil {
-		t.Fatalf("解码 apple-touch-icon: %v", err)
-	}
-	if r, g, b, a := px(apple, 0, 0); a != 0 {
-		t.Errorf("apple-touch-icon 四角应透明（iOS 会自己套蒙版），得到 %v%v%v/%v", r, g, b, a)
-	}
-	var opaque, offBlue int
-	for y := 0; y < apple.Bounds().Dy(); y++ {
-		for x := 0; x < apple.Bounds().Dx(); x++ {
-			r, g, b, a := px(apple, x, y)
-			if a == 0 {
-				continue
-			}
-			opaque++
-			if r != 0x34 || g != 0x82 || b != 0xFF {
-				offBlue++
+	// ---- apple-touch-icon / PWA 图标：满幅不透明蓝底 + 白盾 ----
+	for _, c := range []struct {
+		file string
+		size int
+	}{
+		{"apple-touch-icon.png", 180},
+		{"icon-192.png", 192},
+		{"icon-512.png", 512},
+	} {
+		img, err := png.Decode(bytes.NewReader(readAsset(t, "internal/ui/static/"+c.file)))
+		if err != nil {
+			t.Fatalf("解码 %s: %v", c.file, err)
+		}
+		if got := img.Bounds().Dx(); got != c.size {
+			t.Errorf("%s 应为 %dpx，得到 %d", c.file, c.size, got)
+		}
+		// 四角必须是不透明实底：满幅图标给 iOS/Android 自己套蒙版，透明角会露黑边
+		for _, p := range [][2]int{{0, 0}, {c.size - 1, 0}, {0, c.size - 1}, {c.size - 1, c.size - 1}} {
+			r, g, b, a := px(img, p[0], p[1])
+			if a != 255 || r != 0x34 || g != 0x82 || b != 0xFF {
+				t.Errorf("%s 角 (%d,%d) 应为不透明 #3482FF，得到 rgba(%d,%d,%d,%d)", c.file, p[0], p[1], r, g, b, a)
 			}
 		}
-	}
-	if opaque == 0 {
-		t.Error("apple-touch-icon 没有字形")
-	}
-	if offBlue != 0 {
-		t.Errorf("apple-touch-icon 应只有 #3482FF 一种字形色，有 %d 个异色像素（背景必须透明而不是白/粉底）", offBlue)
+		var white int
+		for y := 0; y < c.size; y++ {
+			for x := 0; x < c.size; x++ {
+				r, g, b, a := px(img, x, y)
+				if a == 255 && r > 240 && g > 240 && b > 240 {
+					white++
+				}
+			}
+		}
+		if white == 0 {
+			t.Errorf("%s 缺白色盾形前景", c.file)
+		}
 	}
 
-	// ---- favicon.ico：16/32/48 三条 32bpp 条目，角落 alpha=0 且 AND 掩码置位 ----
+	// ---- favicon.ico：16/32/48 三条 32bpp 条目；超椭圆切角外 alpha=0 且 AND 掩码置位 ----
 	ico := readAsset(t, "internal/ui/static/favicon.ico")
 	if len(ico) < 6 || binary.LittleEndian.Uint16(ico[2:4]) != 1 {
 		t.Fatalf("favicon.ico 头不对: %x", ico[:min(6, len(ico))])
@@ -173,14 +193,14 @@ func TestFaviconTransparentBlueAndBrandLogosUnchanged(t *testing.T) {
 			t.Fatalf("%dpx 条目越界", w)
 		}
 		bmp := ico[off : off+size]
-		// 位图像素：40 字节头后第一行 = 图像最底行，角落是背景 → alpha 必须 0
+		// 位图像素：40 字节头后第一行 = 图像最底行，角落是超椭圆切角 → alpha 必须 0
 		if a := bmp[40+3]; a != 0 {
-			t.Errorf("%dpx 条目角落 alpha 应为 0（透明底），得到 %d", w, a)
+			t.Errorf("%dpx 条目角落 alpha 应为 0（切角外透明），得到 %d", w, a)
 		}
-		// AND 掩码紧随像素区，位=1 表示透明：只看掩码的老客户端也得读出透明
+		// AND 掩码紧随像素区，位=1 表示透明：只看掩码的老客户端也得读出切角
 		mask := 40 + w*h*4
 		if mask >= len(bmp) || bmp[mask]&0x80 == 0 {
-			t.Errorf("%dpx 条目的 AND 掩码未把背景置为透明", w)
+			t.Errorf("%dpx 条目的 AND 掩码未把切角置为透明", w)
 		}
 	}
 	for _, want := range []int{16, 32, 48} {
@@ -189,7 +209,7 @@ func TestFaviconTransparentBlueAndBrandLogosUnchanged(t *testing.T) {
 		}
 	}
 
-	// ---- 品牌邮件 logo：纯色 #3482FF 实底（**零渐变**）+ 白矢量 + 超椭圆切角 ----
+	// ---- 品牌 logo（含 Auth 邮件位）：纯色 #3482FF 实底（**零渐变**）+ 白矢量 + 超椭圆切角 ----
 	for _, name := range []string{"CalorieDiary", "ExpenseDiary", "EPassportForMikey", "Shortener", "auth"} {
 		img, err := png.Decode(bytes.NewReader(readAsset(t, "internal/ui/static/brand/"+name+"-v1.png")))
 		if err != nil {
@@ -302,11 +322,11 @@ func TestBrandLogoGlyphMapping(t *testing.T) {
 		if err != nil {
 			t.Fatalf("解码 %s-v1.png: %v", c.file, err)
 		}
-		ref, err := renderIcon(iconSpec{size: 128, boxFrac: 0.76, paths: c.paths, transparentBlue: true})
+		ref, err := renderIcon(iconSpec{size: 128, cutCorners: true, boxFrac: 0.76, paths: c.paths})
 		if err != nil {
 			t.Fatalf("渲染参照字形: %v", err)
 		}
-		got, want := glyphMask(img, true), glyphMask(ref, false)
+		got, want := glyphMask(img, true), glyphMask(ref, true)
 		if len(got) != len(want) {
 			t.Fatalf("%s 尺寸与参照不一致", c.file)
 		}
@@ -348,22 +368,16 @@ func TestAuthGlyphSingleSourceShield(t *testing.T) {
 		}
 		return out
 	}
-	// ② favicon.svg：整份文件只该有 shield 一条字形路径
-	fav := pathDs("internal/ui/static/favicon.svg")
-	if len(fav) != len(shieldPaths) {
-		t.Fatalf("favicon.svg 应恰有 %d 条字形路径，得到 %d 条: %v", len(shieldPaths), len(fav), fav)
-	}
-	// brand/auth.svg：第 1 条是超椭圆底（M...Z 折线），其后才是字形
-	brand := pathDs("internal/ui/static/brand/auth.svg")
-	if len(brand) != len(shieldPaths)+1 {
-		t.Fatalf("brand/auth.svg 应为 1 条超椭圆底 + %d 条字形，得到 %d 条", len(shieldPaths), len(brand))
-	}
-	for i, d := range shieldPaths {
-		if fav[i] != d {
-			t.Errorf("favicon.svg 字形[%d] 与 shieldPaths 不一致——站点位脱离了同源:\n got %s\nwant %s", i, fav[i], d)
+	// ② favicon.svg / brand/auth.svg：第 1 条是超椭圆底（M...Z 折线），其后才是字形
+	for _, rel := range []string{"internal/ui/static/favicon.svg", "internal/ui/static/brand/auth.svg"} {
+		ds := pathDs(rel)
+		if len(ds) != len(shieldPaths)+1 {
+			t.Fatalf("%s 应为 1 条超椭圆底 + %d 条字形，得到 %d 条", rel, len(shieldPaths), len(ds))
 		}
-		if brand[i+1] != d {
-			t.Errorf("brand/auth.svg 字形[%d] 与 shieldPaths 不一致——品牌位脱离了同源:\n got %s\nwant %s", i, brand[i+1], d)
+		for i, d := range shieldPaths {
+			if ds[i+1] != d {
+				t.Errorf("%s 字形[%d] 与 shieldPaths 不一致——站点/品牌位脱离了同源:\n got %s\nwant %s", rel, i, ds[i+1], d)
+			}
 		}
 	}
 }

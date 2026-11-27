@@ -1,11 +1,8 @@
 package main
 
-// 图标光栅化与序列化：超椭圆底 + 白色/蓝色描边字形。两种画法：
-//
-//	品牌画法（/brand/ 品牌邮件 logo）：**纯色 miuix 品牌蓝 #3482FF 实底**（2026-10-20
-//	作者拍板重做：去掉渐变，起始色既非品牌蓝也非启动图标渐变）+ 白色 lucide 矢量前景，
-//	iOS 超椭圆（squircle）圆角，不透明。
-//	站点画法（favicon 三件套）：**透明底 + #3482FF 描边本体**，不铺任何底色。
+// 图标光栅化与序列化：超椭圆底 + 白色描边字形，全渠道一种画法——**纯色 miuix 品牌蓝
+// #3482FF 实底**（零渐变）+ 白色 lucide 矢量前景。品牌邮件 logo、站点 favicon 三件套、
+// PWA 图标共用这套几何，区别只在画布尺寸与是否切圆角（由平台自己套蒙版的满幅方形）。
 //
 // 自带一个小光栅器的原因：图标要在仓库里可复现地重生（scripts/genicons 一键出全部
 // 资产），不引入任何外部绘图库——Go 标准库画不了路径描边，而图标只有「超椭圆填充 +
@@ -27,34 +24,42 @@ var (
 )
 
 const (
-	squircleN = 5.0 // 超椭圆指数：|u|^n+|v|^n ≤ 1；n=5 是 iOS 连续圆角的常用近似
-	subSamples = 3  // 每边 3 个子采样（每像素 9 点）——超椭圆与描边边缘的抗锯齿
+	squircleN  = 5.0 // 超椭圆指数：|u|^n+|v|^n ≤ 1；n=5 是 iOS 连续圆角的常用近似
+	subSamples = 3   // 每边 3 个子采样（每像素 9 点）——超椭圆与描边边缘的抗锯齿
 )
 
 // iconSpec 一枚图标的绘制参数。boxFrac 是字形外包盒占画布的比例（不含描边宽）。
 type iconSpec struct {
 	size       int
 	cutCorners bool // false = 满幅方形（apple-touch-icon：iOS 自己套超椭圆蒙版）
-	boxFrac    float64
-	paths      []string
-	// transparentBlue = 站点 favicon 三件套的画法（2026-10-20 作者拍板）：
-	// **透明底 + miuix 蓝 #3482FF 的描边本体**，与页面内 lucide .ico 图标同款，
-	// 不带任何背景。false = 品牌画法（**纯色 #3482FF 实底** + 白矢量，品牌邮件 logo 用）。
-	transparentBlue bool
+	// inset 是超椭圆底相对画布的内缩比例（0 = 满幅）；0.08 与日记站图标一致，
+	// 让蓝底四周留出呼吸位而不是顶到画布边缘。
+	inset   float64
+	boxFrac float64
+	// viewBox > 0 时按 lucide 的 24 视口缩放进 boxFrac 居中方框（日记站口径：
+	// 108 画布、64 方框、字形不按自身外包盒放大）；0 = 按字形外包盒归一化。
+	viewBox float64
+	paths   []string
 }
 
 // transformFor 把字形外包盒缩放居中到 size×size 画布，返回 (scale, tx, ty)。
 // 按字形实际外包盒归一化（而不是按 24 的 viewBox）——火焰、收据、素盾三者的
 // 有效图形大小不同，不归一化会一枚大一枚小。
-func transformFor(size, boxFrac float64, segs []seg) (s, tx, ty float64) {
+func transformFor(spec iconSpec, segs []seg) (s, tx, ty float64) {
+	size := float64(spec.size)
+	if spec.viewBox > 0 {
+		side := spec.boxFrac * size
+		s = side / spec.viewBox
+		return s, (size - side) / 2, (size - side) / 2
+	}
 	min, max := bboxOf(segs)
 	w, h := max.x-min.x, max.y-min.y
 	if w <= 0 || h <= 0 {
 		w, h = 24, 24
 	}
 	d := math.Max(w, h)
-	s = boxFrac * size / d
-	return s, (size - w*s)/2 - min.x*s, (size - h*s)/2 - min.y*s
+	s = spec.boxFrac * size / d
+	return s, (size-w*s)/2 - min.x*s, (size-h*s)/2 - min.y*s
 }
 
 // strokePx 是描边在像素空间的宽度：小尺寸要**光学加粗**——16px 下按 5% 只有 0.8px，
@@ -64,7 +69,7 @@ func strokePxFor(size int) float64 {
 }
 
 type pseg struct {
-	a, b             pt
+	a, b                   pt
 	minx, miny, maxx, maxy float64
 }
 
@@ -128,9 +133,8 @@ func lerpColor(a, b color.RGBA, t float64) color.RGBA {
 // miuixBlue 是站点 favicon 的描边色（页面主色，与按钮 / theme-color 同值）。
 var miuixBlue = color.RGBA{R: 0x34, G: 0x82, B: 0xFF, A: 0xFF}
 
-// renderIcon 画一枚图标。品牌画法（transparentBlue=false）：超椭圆**纯色 #3482FF 实底**
-// + 白描边字形，A=覆盖率（切角处完全透明）；站点画法（transparentBlue=true）：
-// **背景完全透明，只留 #3482FF 描边本体**——不铺任何底色。
+// renderIcon 画一枚图标：超椭圆**纯色 #3482FF 实底** + 白描边字形，A=覆盖率
+// （切角处完全透明，满幅方形时整幅不透明）。站点图标与品牌邮件 logo 同一种画法。
 //
 // 画布用 *image.NRGBA（**非预乘**）：我们要的是「色不变、只有 alpha 随覆盖率变」，
 // 而 image.RGBA 是预乘语义——把非预乘值塞进去会被 png.Encode 当预乘反算一遍，
@@ -147,7 +151,7 @@ func renderIcon(spec iconSpec) (*image.NRGBA, error) {
 	if len(all) == 0 {
 		return nil, fmt.Errorf("字形路径为空")
 	}
-	s, tx, ty := transformFor(float64(spec.size), spec.boxFrac, all)
+	s, tx, ty := transformFor(spec, all)
 	ps := toPixel(all, s, tx, ty)
 	hw := strokePxFor(spec.size) / 2
 
@@ -163,7 +167,11 @@ func renderIcon(spec iconSpec) (*image.NRGBA, error) {
 					ox := (float64(sx) + step) / subSamples
 					px := float64(x) + ox
 					py := float64(y) + oy
-					if spec.cutCorners && !superellipseInside((px-half)/half, (py-half)/half) {
+					r := half - spec.inset*float64(spec.size)
+					if r <= 0 {
+						r = half
+					}
+					if spec.cutCorners && !superellipseInside((px-half)/r, (py-half)/r) {
 						continue
 					}
 					inside++
@@ -176,17 +184,7 @@ func renderIcon(spec iconSpec) (*image.NRGBA, error) {
 				continue
 			}
 			samples := subSamples * subSamples
-			if spec.transparentBlue {
-				// 透明底：只有描边覆盖到的像素才上色，覆盖率即 alpha（抗锯齿）
-				if stroke == 0 {
-					continue
-				}
-				c := miuixBlue
-				c.A = uint8(float64(stroke)/float64(samples)*255 + 0.5)
-				img.SetNRGBA(x, y, color.NRGBA{R: c.R, G: c.G, B: c.B, A: c.A})
-				continue
-			}
-			// 品牌画法：纯色 #3482FF 实底（不做任何渐变），字形描边向白色混（AA）
+			// 纯色 #3482FF 实底（不做任何渐变），字形描边向白色混（AA）
 			base := miuixBlue
 			c := base
 			if stroke > 0 {
@@ -212,26 +210,38 @@ func encodePNG(spec iconSpec) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// faviconSVG 生成 favicon.svg：**透明底 + #3482FF 的 shield 素盾描边本体**
-//（2026-10-20 作者拍板，去掉蓝渐变 squircle 底）。stroke-width=2 与页面内
-// lucide .ico 图标同款语义，缩放交给 transform；矢量直接用 lucide 原始 path data。
-func faviconSVG(size float64, paths []string) (string, error) {
-	var all []seg
-	for _, d := range paths {
-		got, err := flatten(d)
-		if err != nil {
-			return "", err
+// siteIconSVG 生成站点 favicon.svg：几何与 diary.horatio.cn 的 App 图标完全同口径
+// （2026-11-27 作者拍板）——108×108 视口、超椭圆底内缩 8%（8.64）、字形放在居中的
+// 64×64 lucide 方框（translate(22 22) scale(64/24)）、描边宽 2（24 视口内）。
+// 颜色仍是 Auth 的纯色品牌蓝 #3482FF + 白盾，不带渐变。
+func siteIconSVG(label string, paths []string) (string, error) {
+	const size = 108.0
+	const inset = 0.08
+	const box = 64.0
+	half := size / 2
+	r := half - inset*size
+
+	var sq strings.Builder
+	const pts = 128
+	for i := 0; i < pts; i++ {
+		theta := 2 * math.Pi * float64(i) / pts
+		u := math.Copysign(math.Pow(math.Abs(math.Cos(theta)), 2/squircleN), math.Cos(theta))
+		v := math.Copysign(math.Pow(math.Abs(math.Sin(theta)), 2/squircleN), math.Sin(theta))
+		if i > 0 {
+			sq.WriteString("L")
 		}
-		all = append(all, got...)
+		fmt.Fprintf(&sq, "%.3f %.3f ", half+u*r, half+v*r)
 	}
-	s, tx, ty := transformFor(size, 0.6, all)
-	// stroke-width 用**字形空间**的值（渲染后 = 画布 5%，与 lucide「stroke 2 / 24 视野框
-	// ＝ 字形框的 8.3%」同权重——两边都是按字形框归一化的，所以数值不同、观感一致）。
+	sq.WriteString("Z")
+
+	scale := box / 24.0
+	off := (size - box) / 2
 	var b strings.Builder
-	fmt.Fprintf(&b, `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %g %g" width="%g" height="%g" role="img" aria-label="Auth">
-<title>Auth</title>
-<g transform="translate(%.3f %.3f) scale(%.5f)" fill="none" stroke="#%02X%02X%02X" stroke-width="%.3f" stroke-linecap="round" stroke-linejoin="round">
-`, size, size, size, size, tx, ty, s, miuixBlue.R, miuixBlue.G, miuixBlue.B, strokePxFor(int(size))/s)
+	fmt.Fprintf(&b, `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %g %g" width="%g" height="%g" role="img" aria-label="%s">
+<title>%s</title>
+<path d="M%s" fill="#3482FF"/>
+<g transform="translate(%g %g) scale(%.6f)" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+`, size, size, size, size, label, label, strings.TrimSpace(sq.String()), off, off, scale)
 	for _, d := range paths {
 		fmt.Fprintf(&b, "<path d=\"%s\"/>\n", d)
 	}
@@ -268,7 +278,7 @@ func brandSVG(size float64, label string, paths []string) (string, error) {
 	}
 	sq.WriteString("Z")
 
-	s, tx, ty := transformFor(size, 0.76, all)
+	s, tx, ty := transformFor(iconSpec{size: int(size), boxFrac: 0.76}, all)
 	var b strings.Builder
 	fmt.Fprintf(&b, `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %g %g" width="%g" height="%g" role="img" aria-label="%s">
 <title>%s</title>
@@ -283,17 +293,19 @@ func brandSVG(size float64, label string, paths []string) (string, error) {
 }
 
 // encodeICO 打一个 32bpp BMP 条目式 ICO（16/32/48 三档）。位图条目比 PNG-in-ICO
-// 兼容面大（老 Windows 的缩略图与某些浏览器只认位图条目）。**透明底**靠两层表达：
+// 兼容面大（老 Windows 的缩略图与某些浏览器只认位图条目）。蓝底超椭圆之外仍是透明：
 // 32bpp 的 alpha 通道（Vista+ 采纳）+ AND 掩码按 alpha 置位——只看掩码的老客户端
-// 也能把背景读成透明，而不是垫一块黑。
-func encodeICO(sizes []int, boxFrac float64, paths []string) ([]byte, error) {
+// 也能把圆角外读成透明，而不是垫一块黑。
+func encodeICO(sizes []int, base iconSpec) ([]byte, error) {
 	type entry struct {
-		size   int
-		bmp    []byte
+		size int
+		bmp  []byte
 	}
 	var entries []entry
 	for _, sz := range sizes {
-		img, err := renderIcon(iconSpec{size: sz, boxFrac: boxFrac, paths: paths, transparentBlue: true})
+		spec := base
+		spec.size = sz
+		img, err := renderIcon(spec)
 		if err != nil {
 			return nil, err
 		}
@@ -310,9 +322,9 @@ func encodeICO(sizes []int, boxFrac float64, paths []string) ([]byte, error) {
 			w = 0
 		}
 		buf.WriteByte(w)
-		buf.WriteByte(w) // 宽高：0 表示 256
-		buf.WriteByte(0) // 调色板色数
-		buf.WriteByte(0) // 保留
+		buf.WriteByte(w)                                    // 宽高：0 表示 256
+		buf.WriteByte(0)                                    // 调色板色数
+		buf.WriteByte(0)                                    // 保留
 		binary.Write(&buf, binary.LittleEndian, uint16(1))  // planes
 		binary.Write(&buf, binary.LittleEndian, uint16(32)) // bitcount
 		binary.Write(&buf, binary.LittleEndian, uint32(len(e.bmp)))
@@ -349,9 +361,9 @@ func bmpEntry(img *image.NRGBA) []byte {
 			i += 4
 		}
 	}
-	// AND 掩码：位=1 表示透明。透明底图标必须把背景置位——只读掩码的老客户端
-	//（缩略图、某些浏览器）不看 alpha，掩码全 0 会把背景画成一块黑。
-	and := i // i 已指向像素区末尾 = 掩码起点
+	// AND 掩码：位=1 表示透明。超椭圆切角必须置位——只读掩码的老客户端
+	//（缩略图、某些浏览器）不看 alpha，掩码全 0 会把切角画成一块黑。
+	and := i                      // i 已指向像素区末尾 = 掩码起点
 	for y := h - 1; y >= 0; y-- { // 自下而上，与像素行同序
 		for x := 0; x < w; x++ {
 			if img.NRGBAAt(x, y).A < 128 {
