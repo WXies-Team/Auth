@@ -15,10 +15,11 @@ export function SheetContent({
 }: React.ComponentProps<typeof SheetPrimitive.Content> & { side?: 'left' | 'right' | 'bottom' }) {
   return (
     <SheetPrimitive.Portal>
-      <SheetPrimitive.Overlay className="data-[state=open]:animate-in data-[state=closed]:animate-out fixed inset-0 z-50 bg-overlay" />
+      <SheetPrimitive.Overlay className="overlay-motion fixed inset-0 z-50 bg-overlay" />
       <SheetPrimitive.Content
+        data-side={side}
         className={cn(
-          'bg-background data-[state=open]:animate-in data-[state=closed]:animate-out fixed z-50 flex flex-col gap-4 shadow-lg transition ease-in-out',
+          'sheet-motion bg-background fixed z-50 flex flex-col gap-4 shadow-lg',
           side === 'right' && 'inset-y-0 right-0 h-full w-[min(32rem,92vw)] border-l',
           side === 'left' && 'inset-y-0 left-0 h-full w-[min(20rem,85vw)] border-r',
           side === 'bottom' && 'inset-x-0 bottom-0 max-h-[90vh] rounded-t-xl border-t',

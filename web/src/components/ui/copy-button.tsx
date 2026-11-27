@@ -35,7 +35,9 @@ export function CopyButton({
       aria-label={label}
       title={label}
     >
-      {done ? <Check /> : <Copy />}
+      <span key={done ? 'done' : 'idle'} className="icon-swap inline-flex">
+        {done ? <Check /> : <Copy />}
+      </span>
     </Button>
   )
 }

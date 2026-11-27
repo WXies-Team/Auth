@@ -11,6 +11,36 @@
    - light primary #226EEC（Miuix #3482FF 同色相压暗）
    - light error #C73024、dark error #FF7A6B（Miuix #E94634/#F12522 附近取可读值）
    success/warning 是 Miuix 没有的应用语义（只要求浅色下在 10% 底色上仍 ≥4.5）。 */
+/* Noto Sans SC：与短链项目同一字体。优先本机已安装的版本，避免重复下载。 */
+@font-face {
+  font-family: "Noto Sans SC";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: local("Noto Sans SC"), url("https://static.horatio.cn/resource/fonts/noto-sans-sc-chinese-simplified-400-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Noto Sans SC";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: local("Noto Sans SC"), url("https://static.horatio.cn/resource/fonts/noto-sans-sc-chinese-simplified-500-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Noto Sans SC";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: local("Noto Sans SC"), url("https://static.horatio.cn/resource/fonts/noto-sans-sc-chinese-simplified-700-normal.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Noto Sans SC";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: local("Noto Sans SC"), url("https://static.horatio.cn/resource/fonts/noto-sans-sc-chinese-simplified-700-normal.woff2") format("woff2");
+}
+
 :root {
   --radius: 0.625rem;
   --background: #ffffff;
@@ -45,6 +75,16 @@
   --chart-3: #f59e0b;
   --chart-4: #7c6af2;
   --chart-5: #e94634;
+
+  /* 动效 token：与短链项目保持同值。进入用 decelerate，退出用 accelerate。 */
+  --motion-fast: 120ms;
+  --motion-base: 180ms;
+  --motion-slow: 240ms;
+  --motion-page: 220ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-enter: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --ease-exit: cubic-bezier(0.3, 0, 0.8, 0.15);
+  --ease-spring: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .dark {
@@ -119,7 +159,7 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC",
+  --font-sans: "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI",
     "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 }
@@ -190,8 +230,27 @@
   }
 }
 
-/* 路由内容淡入：页面切换时不整块突兀地砸出来（不位移，只淡入）。 */
-@keyframes content-in {
+/* ---------- 统一动效 ----------
+   页面切换走 React <ViewTransition>；浮层走 Radix data-state；交互走下面的小类。
+   只动 opacity / scale / translate，不碰布局属性。 */
+
+@keyframes page-out {
+  to {
+    opacity: 0;
+    translate: 0 2px;
+  }
+}
+@keyframes page-in {
+  from {
+    opacity: 0;
+    translate: 0 4px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+@keyframes vt-fade-in {
   from {
     opacity: 0;
   }
@@ -199,30 +258,244 @@
     opacity: 1;
   }
 }
-main > * {
-  animation: content-in 150ms ease-out;
+@keyframes vt-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
 }
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes overlay-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    scale: 0.96;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+@keyframes dialog-out {
+  from {
+    opacity: 1;
+    scale: 1;
+  }
+  to {
+    opacity: 0;
+    scale: 0.98;
+  }
+}
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    scale: 0.96;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+@keyframes pop-out {
+  from {
+    opacity: 1;
+    scale: 1;
+  }
+  to {
+    opacity: 0;
+    scale: 0.98;
+  }
+}
+@keyframes sheet-in-right {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+@keyframes sheet-out-right {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+@keyframes sheet-in-left {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+@keyframes sheet-out-left {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+@keyframes sheet-in-bottom {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@keyframes sheet-out-bottom {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(100%);
+  }
+}
+@keyframes tab-in {
+  from {
+    opacity: 0;
+    translate: 0 4px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+@keyframes check-in {
+  from {
+    opacity: 0;
+    scale: 0.8;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+@keyframes icon-in {
+  from {
+    opacity: 0;
+    scale: 0.9;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+/* 页面切换：只给内容命名，根节点不额外淡入（主题切换单独用 type=theme）。 */
+::view-transition-old(page-content) {
+  animation: page-out var(--motion-fast) var(--ease-exit) both;
+}
+::view-transition-new(page-content) {
+  animation: page-in var(--motion-base) var(--ease-enter) both;
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+}
+:active-view-transition-type(theme) ::view-transition-old(root) {
+  animation: vt-fade-out 150ms var(--ease-exit) both;
+}
+:active-view-transition-type(theme) ::view-transition-new(root) {
+  animation: vt-fade-in 200ms var(--ease-enter) both;
+}
+
+/* 浮层：Radix 会等 closed 的动画结束再卸载。 */
+.overlay-motion[data-state="open"] {
+  animation: overlay-in var(--motion-base) var(--ease-enter) both;
+}
+.overlay-motion[data-state="closed"] {
+  animation: overlay-out 150ms var(--ease-exit) both;
+}
+.dialog-motion[data-state="open"] {
+  animation: dialog-in 200ms var(--ease-enter) both;
+}
+.dialog-motion[data-state="closed"] {
+  animation: dialog-out 150ms var(--ease-exit) both;
+}
+.menu-motion {
+  transform-origin: var(--radix-dropdown-menu-content-transform-origin);
+}
+.menu-motion[data-state="open"] {
+  animation: pop-in 150ms var(--ease-enter) both;
+}
+.menu-motion[data-state="closed"] {
+  animation: pop-out 100ms var(--ease-exit) both;
+}
+.tooltip-motion {
+  transform-origin: var(--radix-tooltip-content-transform-origin);
+  animation: pop-in var(--motion-fast) var(--ease-enter) both;
+}
+.sheet-motion[data-side="right"][data-state="open"] {
+  animation: sheet-in-right 260ms var(--ease-enter) both;
+}
+.sheet-motion[data-side="right"][data-state="closed"] {
+  animation: sheet-out-right 200ms var(--ease-exit) both;
+}
+.sheet-motion[data-side="left"][data-state="open"] {
+  animation: sheet-in-left 260ms var(--ease-enter) both;
+}
+.sheet-motion[data-side="left"][data-state="closed"] {
+  animation: sheet-out-left 200ms var(--ease-exit) both;
+}
+.sheet-motion[data-side="bottom"][data-state="open"] {
+  animation: sheet-in-bottom 260ms var(--ease-enter) both;
+}
+.sheet-motion[data-side="bottom"][data-state="closed"] {
+  animation: sheet-out-bottom 200ms var(--ease-exit) both;
+}
+
+/* 交互反馈 */
+.press {
+  transition: transform var(--motion-fast) var(--ease-standard);
+}
+.press:active {
+  transform: scale(0.98);
+}
+.tab-enter {
+  animation: tab-in var(--motion-base) var(--ease-enter) both;
+}
+.check-indicator {
+  animation: check-in var(--motion-fast) var(--ease-enter) both;
+}
+.icon-swap {
+  animation: icon-in var(--motion-fast) var(--ease-enter) both;
+}
+.nav-indicator {
+  transition: transform var(--motion-base) var(--ease-standard);
+}
+.page-enter {
+  animation: page-in var(--motion-page) var(--ease-enter) both;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  main > * {
-    animation: none;
+  .press:active {
+    transform: none;
   }
-}
-
-@utility auth-bg {
-  background-image:
-    radial-gradient(60rem 40rem at 50% -20%, color-mix(in oklch, var(--primary) 12%, transparent), transparent 70%),
-    linear-gradient(to bottom, transparent, color-mix(in oklch, var(--background) 92%, var(--foreground) 2%));
-}
-
-@utility scrollbar-none {
-  scrollbar-width: none;
-  &::-webkit-scrollbar {
-    display: none;
+  ::view-transition-old(*),
+  ::view-transition-new(*),
+  ::view-transition-group(*) {
+    animation: none !important;
   }
-}
-
-@utility text-balance {
-  text-wrap: balance;
 }
 
 @keyframes boot-slide {

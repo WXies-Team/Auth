@@ -1,4 +1,5 @@
 import * as React from 'react'
+import { ViewTransition } from 'react'
 import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   Activity,
@@ -78,21 +79,63 @@ function isNavActive(pathname: string, to: string): boolean {
 function NavList({ items, onNavigate }: { items: NavItem[]; onNavigate?: () => void }) {
   const { pathname } = useLocation()
   const { t } = useI18n()
+  const navRef = React.useRef<HTMLElement>(null)
+  const linkRefs = React.useRef(new Map<string, HTMLAnchorElement>())
+  const [bar, setBar] = React.useState<{ y: number; h: number } | null>(null)
+  const [ready, setReady] = React.useState(false)
+
+  // 活动项滑块：只测量一次位置，之后靠 transform 过渡，不触发布局动画。
+  React.useLayoutEffect(() => {
+    const measure = () => {
+      const active = items.find((item) => isNavActive(pathname, item.to))
+      const el = active ? linkRefs.current.get(active.to) : undefined
+      if (!el) {
+        setBar(null)
+        return
+      }
+      setBar((prev) =>
+        prev && prev.y === el.offsetTop && prev.h === el.offsetHeight
+          ? prev
+          : { y: el.offsetTop, h: el.offsetHeight },
+      )
+    }
+    measure()
+    const ro = navRef.current ? new ResizeObserver(measure) : null
+    if (navRef.current) ro?.observe(navRef.current)
+    return () => ro?.disconnect()
+    // items 由当前分区决定；pathname 变化时同一批 items 不变。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname])
+
+  React.useEffect(() => {
+    const id = requestAnimationFrame(() => setReady(true))
+    return () => cancelAnimationFrame(id)
+  }, [])
+
   return (
-    <nav className="space-y-0.5">
+    <nav ref={navRef} className="relative space-y-0.5">
+      {bar && (
+        <span
+          aria-hidden="true"
+          className={cn('bg-sidebar-accent absolute inset-x-0 top-0 rounded-md', ready && 'nav-indicator')}
+          style={{ height: bar.h, transform: `translateY(${bar.y}px)` }}
+        />
+      )}
       {items.map((item) => {
         const active = isNavActive(pathname, item.to)
         return (
           <Link
             key={item.to}
+            ref={(el) => {
+              if (el) linkRefs.current.set(item.to, el)
+              else linkRefs.current.delete(item.to)
+            }}
             to={item.to}
             onClick={onNavigate}
             aria-current={active ? 'page' : undefined}
             className={cn(
-              'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors',
-              active
-                ? 'bg-sidebar-accent text-foreground'
-                : 'text-muted-foreground hover:bg-sidebar-accent hover:text-foreground',
+              'relative z-10 flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors',
+              active ? 'text-foreground' : 'text-muted-foreground hover:bg-sidebar-accent hover:text-foreground',
             )}
           >
             <item.icon className="size-4" />
@@ -193,7 +236,9 @@ function ThemeMenu() {
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" size="icon" aria-label={t('shell.theme')}>
-          {icon}
+          <span key={theme} className="icon-swap inline-flex">
+            {icon}
+          </span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
@@ -305,7 +350,7 @@ function ImpersonationBanner() {
     }
   }
   return (
-    <div className="bg-warning text-warning-foreground sticky top-0 z-40 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 px-3 py-1.5 text-center text-xs font-medium">
+    <div className="page-enter bg-warning text-warning-foreground sticky top-0 z-40 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 px-3 py-1.5 text-center text-xs font-medium">
       <span>
         模拟查看中：{session.email} · 由 {session.impersonatorEmail || '平台管理员'} 发起 · 只读，15 分钟后自动结束
       </span>
@@ -412,7 +457,9 @@ export function AppShell() {
         <Topbar />
         <AdminMfaNotice />
         <main ref={mainRef} tabIndex={-1} className="relative mx-auto w-full max-w-7xl p-4 outline-none sm:p-6">
-          <Outlet />
+          <ViewTransition name="page-content">
+            <Outlet />
+          </ViewTransition>
         </main>
       </div>
       <CommandPalette open={palette} onOpenChange={setPalette} />
@@ -457,7 +504,7 @@ function AdminMfaNotice() {
   if (!session || (session.role !== 'admin' && session.role !== 'super')) return null
   if (session.totpEnabled || session.passkeyCount > 0) return null
   return (
-    <div className="border-b border-warning/30 bg-warning/10">
+    <div className="page-enter border-b border-warning/30 bg-warning/10">
       <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2 text-sm sm:px-6">
         <ShieldAlert className="size-4 shrink-0 text-warning" />
         <p className="min-w-0 flex-1">
@@ -531,7 +578,7 @@ export function AuthLayout({ children }: { children: React.ReactNode }) {
         <img src="/favicon.svg" alt="" className="size-8" />
         <span className="text-lg font-semibold tracking-tight">Auth</span>
       </div>
-      <div className="w-full max-w-sm">{children}</div>
+      <div className="page-enter w-full max-w-sm">{children}</div>
     </div>
   )
 }

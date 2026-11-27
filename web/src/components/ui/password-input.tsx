@@ -15,7 +15,9 @@ export function PasswordInput({ className, ...props }: React.ComponentProps<type
         title={visible ? '隐藏密码' : '显示密码'}
         className="text-muted-foreground hover:text-foreground absolute inset-y-0 right-0 flex w-10 items-center justify-center"
       >
-        {visible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+        <span key={visible ? 'off' : 'on'} className="icon-swap inline-flex">
+          {visible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+        </span>
       </button>
     </div>
   )

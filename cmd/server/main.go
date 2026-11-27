@@ -510,7 +510,7 @@ func contentSecurityPolicyWithFormAction(nonce string, extra ...string) string {
 		}
 	}
 	return "default-src 'self'; " + script + "; style-src 'self' 'unsafe-inline'; " +
-		"img-src 'self' data:; connect-src 'self'; " + formAction + "; " +
+		"img-src 'self' data:; font-src 'self' https://static.horatio.cn; connect-src 'self'; " + formAction + "; " +
 		"frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
 }
 

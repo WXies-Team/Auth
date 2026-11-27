@@ -465,7 +465,7 @@ func TestSecurityHeaders(t *testing.T) {
 	csp := rec.Header().Get("Content-Security-Policy")
 	for _, want := range []string{
 		"default-src 'self'", "script-src 'self'", "style-src 'self' 'unsafe-inline'",
-		"img-src 'self' data:", "connect-src 'self'", "form-action 'self'",
+		"img-src 'self' data:", "font-src 'self' https://static.horatio.cn", "connect-src 'self'", "form-action 'self'",
 		"object-src 'none'", "base-uri 'self'",
 	} {
 		if !strings.Contains(csp, want) {

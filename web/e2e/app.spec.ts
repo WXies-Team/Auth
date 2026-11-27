@@ -262,6 +262,44 @@ test('配置中心用类型化控件，项目级策略在项目访问页', async
   await expect(dialog.getByRole('switch')).toHaveCount(2)
 })
 
+test('浮层与页面有统一动效，reduced-motion 下不位移', async ({ page }) => {
+  await mockApi(page, true)
+  await page.route((url) => url.pathname === '/admin/config', (route) =>
+    route.fulfill({
+      json: [{ key: 'llm_base_url', secret: false, configured: true, value: 'https://llm.example.com/v1/chat/completions' }],
+    }),
+  )
+  await page.goto('/web/admin/config')
+  await expect(page.getByRole('button', { name: '编辑 接口地址' })).toBeVisible()
+
+  const motion = async () =>
+    page.evaluate(() => {
+      const dialog = document.querySelector('[role=dialog]') as HTMLElement | null
+      const overlay = document.querySelector('[data-state=open].overlay-motion') as HTMLElement | null
+      return {
+        dialog: dialog ? getComputedStyle(dialog).animationName : '',
+        overlay: overlay ? getComputedStyle(overlay).animationName : '',
+        duration: dialog ? parseFloat(getComputedStyle(dialog).animationDuration) : 0,
+      }
+    })
+
+  await page.getByRole('button', { name: '编辑 接口地址' }).click()
+  await page.waitForTimeout(30)
+  const normal = await motion()
+  expect(normal.dialog).toContain('dialog-in')
+  expect(normal.overlay).toContain('overlay-in')
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+
+  // reduced-motion：动画保留名称但时长压到瞬时，用户不会看到位移。
+  await page.emulateMedia({ reducedMotion: 'reduce' })
+  await page.getByRole('button', { name: '编辑 接口地址' }).click()
+  await page.waitForTimeout(30)
+  const reduced = await motion()
+  expect(reduced.duration).toBeLessThan(0.01)
+  await page.keyboard.press('Escape')
+})
+
 test('窄屏与宽屏均无横向溢出', async ({ page }) => {
   await mockApi(page, true)
   // 长邮箱 + 长项目凭据是之前把卡片/表格撑出视口的真实输入，回归时保留。
