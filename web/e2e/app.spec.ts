@@ -262,6 +262,21 @@ test('配置中心用类型化控件，项目级策略在项目访问页', async
   await expect(dialog.getByRole('switch')).toHaveCount(2)
 })
 
+test('移动端抽屉选中目标后自动收起', async ({ page }) => {
+  await mockApi(page, true)
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/web/console')
+  await page.getByRole('button', { name: '打开导航' }).click()
+  const drawer = page.getByRole('dialog')
+  await expect(drawer).toBeVisible()
+
+  await drawer.getByRole('link', { name: 'Passkey' }).click()
+  // 模态抽屉必须自己收起：否则页面在抽屉后面已经换了，还会连带触发滚动复位。
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(page).toHaveURL(/\/web\/console\/passkeys$/)
+  await expect(page.getByRole('heading', { name: 'Passkey' })).toBeVisible()
+})
+
 test('浮层与页面有统一动效，reduced-motion 下不位移', async ({ page }) => {
   await mockApi(page, true)
   await page.route((url) => url.pathname === '/admin/config', (route) =>

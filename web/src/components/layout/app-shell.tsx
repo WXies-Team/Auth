@@ -147,9 +147,9 @@ function NavList({ items, onNavigate }: { items: NavItem[]; onNavigate?: () => v
   )
 }
 
-function Brand() {
+function Brand({ onNavigate }: { onNavigate?: () => void }) {
   return (
-    <Link to="/web/console" className="flex items-center gap-2 px-2 py-1">
+    <Link to="/web/console" onClick={onNavigate} className="flex items-center gap-2 px-2 py-1">
       <img src="/favicon.svg" alt="" className="size-7" />
       <span className="text-base font-semibold tracking-tight">Auth</span>
     </Link>
@@ -168,9 +168,9 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
     : userNav
 
   return (
-    <div className="flex h-full flex-col gap-4 p-3">
-      <Brand />
-      <div className="flex-1 overflow-y-auto">
+    <div className="flex h-full flex-col gap-4 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+      <Brand onNavigate={onNavigate} />
+      <div className="flex-1 overflow-y-auto overscroll-contain">
         <p className="text-muted-foreground px-2.5 pb-2 text-xs font-medium">
           {inAdmin ? t('nav.adminSection') : t('nav.consoleSection')}
         </p>
@@ -309,11 +309,14 @@ function Topbar() {
   const location = useLocation()
   const { session } = useAuth()
   const { t } = useI18n()
+  // 模态抽屉选中目标后必须自己收起（Material 3 / 移动端抽屉的通用要求）：
+  // 否则页面在抽屉后面已经换了，滚动复位还会让底下的内容在底栏附近闪一下。
+  const [navOpen, setNavOpen] = React.useState(false)
   const inAdmin = location.pathname.startsWith('/web/admin')
   const title = inAdmin ? t('nav.adminSection') : t('nav.consoleSection')
   return (
     <header className="bg-background/80 sticky top-0 z-30 flex h-14 items-center gap-3 border-b px-4 backdrop-blur-md">
-      <Sheet>
+      <Sheet open={navOpen} onOpenChange={setNavOpen}>
         <SheetTrigger asChild>
           <Button variant="ghost" size="icon" className="min-[900px]:hidden" aria-label="打开导航">
             <Menu />
@@ -321,7 +324,7 @@ function Topbar() {
         </SheetTrigger>
         <SheetContent side="left" className="p-0">
           <SheetTitle className="sr-only">导航</SheetTitle>
-          <SidebarBody />
+          <SidebarBody onNavigate={() => setNavOpen(false)} />
         </SheetContent>
       </Sheet>
       <div className="min-w-0 flex-1">
