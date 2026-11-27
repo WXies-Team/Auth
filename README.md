@@ -70,7 +70,7 @@ Web 端点（**全部新增路径，老端点形状不变**；写操作需 `X-CS
 | `GET /admin/audit` | 审计查询（action / actor / target / 时间区间，倒序分页）；actor 邮箱按 uid 回填完整（历史掩码行只在展示时还原，不改审计行），CSV 同口径 |
 | `GET /admin/projects` | 项目列表：`members`（登录放行名单）+ `admins`（该项目管理员，来自 `admin_scopes`）+ 项目策略（`mfaRequired` / `allowedDomains` / `sessionDays` / `legacyUpgrade`） |
 | `GET /admin/projects/{app}/candidates?query=&limit=&offset=` | 项目成员选择器：按项目鉴权分页列出/筛选已注册用户（uid/email/role，`total` + 每页最多 200），不暴露全站目录 |
-| `GET /admin/config`、`PUT /admin/config/{key}` | 配置中心：只放全局/跨项目项（邮件、钩子、WebAuthn origin、AI 限额、审计保留、注册与风险）；项目级策略在「项目访问」页。secret 只回末 4 位 |
+| `GET /admin/config`、`PUT /admin/config/{key}` | 配置中心：只放全局/跨项目项（LLM 接入、AI 限额、注册与风险、邮件、注销钩子、推送令牌、Android origin、审计保留）；按常规/集成/高级分组，项目级策略在「项目访问」页。secret 只回末 4 位，布尔开关永不按 secret 处理 |
 | `GET /admin/ai-usage?days=30` | AI 用量与四档限额（空表如实为空） |
 | `GET /api/connected-apps`、`DELETE /api/connected-apps/{app}` | 已授权应用与撤销（撤销同时吊销该应用会话） |
 | `GET /api/security-log?limit=&offset=` | 自己的安全活动（actor 或 target 命中本 uid）；他人的邮箱在响应里掩码，自己的事件保留全文 |
@@ -123,7 +123,7 @@ ci/build-server.sh    # 测试 + 打包 dist/server.tar（CI 部署用的同一�
 | `app_config` 表 | `hook_calorie_diary` / `hook_expense_diary` | 各 App 的 `/internal/delete-user` 地址；**键缺失 = 注销时跳过该 App**（只在测试/开发态成立），改库 10 秒内热生效 |
 | `app_config` 表 | `webauthn_opaque_origins`（可选） | 逗号分隔的 `android:apk-key-hash:<签名证书指纹>`；**两个 App 各至少一条**（debug/release 可并行，最多 8 条）。精确串匹配，写错只让对应 App 的原生仪式被拒；格式非法时整批降级为「仅网页端」并记启动日志，不拒启 |
 | `project_policy` 表 | `enforce_legacy_upgrade` | 项目级「旧版客户端强制升级」：开启且账号有 MFA 时，老端点 `/auth/login` 回 401「请升级应用后使用新版登录」；在「项目访问」页维护。历史 `app_config.totp_enforce_apps` 仅作兼容回退，保存项目策略时会摘除该项目 |
-| `app_config` 表 | `ai_rate_per_minute` / `ai_concurrency` / `ai_daily_per_user` / `ai_daily_global` | AI 限额看板读这四键（缺省 20 / 8 / 500 / 5000，与日记侧 quota.go 同名同义） |
+| `app_config` 表 | `ai_rate_per_minute` / `ai_concurrency` / `ai_concurrency_global` / `ai_daily_per_user` / `ai_daily_global` | AI 限额看板与配额闸读这五键（缺省 20 / 8 / 64 / 500 / 5000，与日记侧 quota.go 同名同义；并发是每用户，全局并发另有一档） |
 | `app_config` 表 | `allow_self_register`（可选） | `1` 开放 Web 自助注册，缺省/其它值 = 邀请制 |
 | `app_config` 表 | `password_breach_check`（可选） | `0`/`off` 关闭 HIBP k-Anonymity 泄露库校验；缺省开启（第三方不可用时失败开放） |
 | `app_config` 表 | `risk_new_ip_mfa`（可选） | `0`/`off` 关闭「新 IP 登录即使有可信设备也要求 2FA」；缺省开启（仍会发新地点提醒邮件） |

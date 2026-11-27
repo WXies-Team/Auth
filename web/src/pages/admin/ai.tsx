@@ -150,11 +150,12 @@ export default function AdminAIPage() {
 }
 
 function QuotaDialog({ open, onOpenChange, onDone }: { open: boolean; onOpenChange: (v: boolean) => void; onDone: () => void }) {
-  const [values, setValues] = React.useState({ rate: '', conc: '', user: '', global: '' })
+  const [values, setValues] = React.useState({ rate: '', conc: '', concGlobal: '', user: '', global: '' })
   const [busy, setBusy] = React.useState(false)
   const keys = [
     ['rate', 'ai_rate_per_minute', '每分钟请求'],
-    ['conc', 'ai_concurrency', '并发上限'],
+    ['conc', 'ai_concurrency', '每用户并发'],
+    ['concGlobal', 'ai_concurrency_global', '全站并发'],
     ['user', 'ai_daily_per_user', '每用户每日'],
     ['global', 'ai_daily_global', '全站每日'],
   ] as const

@@ -388,6 +388,37 @@ func TestSecretConfigKeyCoversSMTPPass(t *testing.T) {
 	if isSecretConfigKey("mail_smtp_host") {
 		t.Error("mail_smtp_host 不是凭据，应回全文")
 	}
+	for _, key := range []string{"hook_token", "llm_api_key", "push_admin_token", "mail_client_secret"} {
+		if !isSecretConfigKey(key) {
+			t.Errorf("%s 应按 secret 处理", key)
+		}
+	}
+	// 布尔开关永远不是凭据：password_breach_check 含 "password" 子串，曾被
+	// 子串匹配误判成 secret，配置中心因此读不到 0、开关恒显示默认开。
+	for _, key := range []string{"allow_self_register", "password_breach_check", "risk_new_ip_mfa", "audit_retention_days"} {
+		if isSecretConfigKey(key) {
+			t.Errorf("%s 不是凭据，不该按 secret 掩码", key)
+		}
+	}
+}
+
+// 配置白名单与类型化归一化（不依赖真库）：推送令牌可编辑、全站并发走正整数闸、
+// 布尔键不会被当成凭据。
+func TestConfigKeyWhitelistAndNormalization(t *testing.T) {
+	for _, key := range []string{"push_admin_token", "password_breach_check", "ai_concurrency_global", "llm_api_key"} {
+		if !allowedConfigKey(key) {
+			t.Errorf("%s 应在可编辑白名单内", key)
+		}
+	}
+	if got, err := normalizeConfigValue("ai_concurrency_global", "80"); err != nil || got != "80" {
+		t.Errorf("全站并发 80 应归一化为 80，得到 %q / %v", got, err)
+	}
+	if _, err := normalizeConfigValue("ai_concurrency_global", "0"); err == nil {
+		t.Error("全站并发 0 应被整数区间闸拒绝")
+	}
+	if got, err := normalizeConfigValue("password_breach_check", "off"); err != nil || got != "0" {
+		t.Errorf("布尔开关 off 应归一化为 0，得到 %q / %v", got, err)
+	}
 }
 
 // 配置中心：secret 只回末 4 位、白名单外的键不出现、写入只记 key 不记值。
@@ -404,12 +435,14 @@ func TestAdminConfigMaskingAndWrite(t *testing.T) {
 	}
 	t.Cleanup(func() { _, _ = svc.pool.Exec("DELETE FROM app_config") })
 	seed := map[string]string{
-		"mail_smtp_pass":  secretValue,
-		"mail_smtp_host":  "smtp.qiye.aliyun.com",
-		"hook_token":      "hook-secret-token-value",
-		"llm_model":       "gpt-x",
-		"web_private_key": "should-be-secret", // 前缀不在白名单 → 不该出现
-		"panel_debug":     "0",                // 同上
+		"mail_smtp_pass":        secretValue,
+		"mail_smtp_host":        "smtp.qiye.aliyun.com",
+		"hook_token":            "hook-secret-token-value",
+		"llm_model":             "gpt-x",
+		"push_admin_token":      "push-token-value-1234",
+		"password_breach_check": "0",                // 布尔开关：0 必须能回显成「关闭」，不能被当成 secret
+		"web_private_key":       "should-be-secret", // 前缀不在白名单 → 不该出现
+		"panel_debug":           "0",                // 同上
 	}
 	for k, v := range seed {
 		if _, err := svc.pool.Exec("INSERT INTO app_config (`key`, `value`) VALUES (?,?)", k, v); err != nil {
@@ -432,7 +465,7 @@ func TestAdminConfigMaskingAndWrite(t *testing.T) {
 		}
 	}
 	// secret：configured + 末 4 位，Value 必须为空
-	for _, key := range []string{secretKey, "hook_token"} {
+	for _, key := range []string{secretKey, "hook_token", "push_admin_token"} {
 		it, ok := byKey[key]
 		if !ok {
 			t.Fatalf("缺 secret 键 %s", key)
@@ -447,6 +480,10 @@ func TestAdminConfigMaskingAndWrite(t *testing.T) {
 	// 非 secret：回全文
 	if it := byKey["mail_smtp_host"]; it.Value != "smtp.qiye.aliyun.com" || it.Secret {
 		t.Errorf("非 secret 应回全文: %+v", it)
+	}
+	// 布尔开关即使值为 0 也必须回显明文（「设为关却恒开」的回归点）
+	if it := byKey["password_breach_check"]; it.Secret || !it.Configured || it.Value != "0" {
+		t.Errorf("布尔开关应回显 0 且不按 secret 处理: %+v", it)
 	}
 	// 白盒：整个响应序列化后不得出现任何 secret 原值
 	raw, err := json.Marshal(items)
@@ -673,6 +710,13 @@ func TestAdminSetConfigValidation(t *testing.T) {
 	// 合法正整数照写
 	if err := svc.AdminSetConfig(actor, "ai_rate_per_minute", "30"); err != nil {
 		t.Errorf("正整数应写入成功: %v", err)
+	}
+	// 全站并发与每用户并发同一道正整数闸（默认 64，漏了校验会写进脏值）
+	if err := svc.AdminSetConfig(actor, "ai_concurrency_global", "80"); err != nil {
+		t.Errorf("全站并发正整数应写入成功: %v", err)
+	}
+	if code, _ := httpMsg(svc.AdminSetConfig(actor, "ai_concurrency_global", "0")); code != 400 {
+		t.Errorf("全站并发 0 应 400，得到 %d", code)
 	}
 	// 空串 = 删键的语义保留（ai_* 键的清除按钮仍可用）
 	if err := svc.AdminSetConfig(actor, "ai_rate_per_minute", ""); err != nil {

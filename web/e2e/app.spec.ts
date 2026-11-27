@@ -159,6 +159,9 @@ test('配置中心用类型化控件，项目级策略在项目访问页', async
         { key: 'llm_base_url', secret: false, configured: true, value: 'https://llm.example.com/v1/chat/completions' },
         { key: 'llm_model', secret: false, configured: true, value: 'gpt-x' },
         { key: 'llm_api_key', secret: true, configured: true, value: '', hint: 'abcd' },
+        { key: 'password_breach_check', secret: false, configured: true, value: '0' },
+        { key: 'ai_concurrency_global', secret: false, configured: true, value: '80' },
+        { key: 'push_admin_token', secret: true, configured: true, value: '', hint: '9xyz' },
       ],
     }),
   )
@@ -183,10 +186,23 @@ test('配置中心用类型化控件，项目级策略在项目访问页', async
   )
 
   await page.goto('/web/admin/config')
-  // 未配置的开关显示实际默认值，避免「未配置 = 关闭」的误解。
-  await expect(page.getByText('未配置 · 默认关闭', { exact: true })).toBeVisible()
+  // 配置按频率分三档：常规 / 集成 / 高级。
+  for (const section of ['常规', '集成', '高级']) {
+    await expect(page.getByRole('heading', { name: section, exact: true })).toBeVisible()
+  }
+  // 未配置的开关显示实际默认值，并用「默认值」徽标与显式设置区分。
+  await expect(page.getByText('默认关闭', { exact: true })).toBeVisible()
+  await expect(page.getByText('默认值', { exact: true }).first()).toBeVisible()
   // 项目级开关已从全局配置中心移除，避免与项目访问页重复。
   await expect(page.getByText('强制 2FA 项目')).toHaveCount(0)
+  // 显式关闭的布尔开关必须如实显示「已关闭」，不能因名字含 password 被当凭据掩码。
+  await expect(page.getByText('已关闭', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '编辑 密码泄露库校验' }).click()
+  await expect(page.getByRole('dialog').getByRole('switch')).not.toBeChecked()
+  await page.keyboard.press('Escape')
+  // 全站并发与推送令牌都是可运营的键，不能只在库里改。
+  await expect(page.getByText('全站并发', { exact: true })).toBeVisible()
+  await expect(page.getByText('推送管理令牌', { exact: true })).toBeVisible()
 
   await page.getByRole('button', { name: '编辑 审计保留天数' }).click()
   const num = page.getByRole('dialog').locator('#cfg-value')
@@ -203,7 +219,7 @@ test('配置中心用类型化控件，项目级策略在项目访问页', async
   await expect(page.getByText('LLM 大模型')).toBeVisible()
   await expect(page.getByText('接口地址', { exact: true })).toBeVisible()
   await expect(page.getByText('gpt-x')).toBeVisible()
-  await expect(page.getByText('已配置 · abcd')).toBeVisible()
+  await expect(page.getByText('末 4 位 abcd', { exact: true })).toBeVisible()
 
   let savedLLM: string | null = null
   await page.route((url) => url.pathname === '/admin/config/llm_base_url', async (route) => {

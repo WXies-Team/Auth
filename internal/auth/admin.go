@@ -975,26 +975,33 @@ func (s *Service) AdminRevokeUserSessions(actor Caller, targetUID int64) (err er
 // 库里的 fcm_* 旧键不再出现在配置中心，也不可再编辑。
 var adminConfigPrefixes = []string{"mail_", "hook_", "llm_", "ai_", "audit_"}
 
-// isSecretConfigKey 判定「只显示末 4 位」的键：名字里带凭据语义的一律算。
-// "pass" 覆盖 mail_smtp_pass 这类缩写（SMTP 密码在后台配置中心只回末 4 位）。
-// 判不出来宁可当 secret（多遮一次不亏，漏遮一次是泄密）。
+// isSecretConfigKey 判定「只显示末 4 位」的键。
+//
+// 只认**后缀**（_secret / _token / _pass / _password / _key / _apikey / _credential），
+// 不做子串匹配：`password_breach_check` 是开关、值只有 0/1，按子串会被误判成凭据，
+// 于是后台既不回显值（永远显示默认开）、也把它当 secret 掩码——「设为关却恒开」
+// 就是这么来的。开关键另外显式排除，语义上永远不是凭据。
 func isSecretConfigKey(key string) bool {
+	if configBoolKeys[key] {
+		return false
+	}
 	lower := strings.ToLower(key)
-	for _, marker := range []string{"secret", "token", "password", "pass", "_key", "apikey", "credential"} {
-		if strings.Contains(lower, marker) {
+	for _, suffix := range []string{"_secret", "_token", "_pass", "_password", "_key", "_apikey", "_credential"} {
+		if strings.HasSuffix(lower, suffix) {
 			return true
 		}
 	}
 	return false
 }
 
-// adminConfigExactKeys 是前缀之外的白名单精确键（安全开关类）。
+// adminConfigExactKeys 是前缀之外的白名单精确键（安全开关类 + 推送令牌）。
 var adminConfigExactKeys = map[string]bool{
 	"allow_self_register":     true,
 	"password_breach_check":   true,
 	"risk_new_ip_mfa":         true,
 	"audit_retention_days":    true,
 	"webauthn_opaque_origins": true,
+	"push_admin_token":        true,
 }
 
 func allowedConfigKey(key string) bool {
@@ -1128,12 +1135,13 @@ var (
 		"risk_new_ip_mfa":       true,
 	}
 	configNumberRanges = map[string][2]int{
-		"mail_smtp_port":       {1, 65535},
-		"ai_rate_per_minute":   {1, 1000000},
-		"ai_concurrency":       {1, 1000},
-		"ai_daily_per_user":    {1, 100000000},
-		"ai_daily_global":      {1, 100000000},
-		"audit_retention_days": {7, 365},
+		"mail_smtp_port":        {1, 65535},
+		"ai_rate_per_minute":    {1, 1000000},
+		"ai_concurrency":        {1, 1000},
+		"ai_concurrency_global": {1, 1000},
+		"ai_daily_per_user":     {1, 100000000},
+		"ai_daily_global":       {1, 100000000},
+		"audit_retention_days":  {7, 365},
 	}
 )
 
