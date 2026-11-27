@@ -97,7 +97,7 @@ export default function AdminAuditPage() {
 
       <Card>
         <CardContent className="space-y-3 p-4">
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
             <Select aria-label="动作筛选" value={action} onChange={(e) => { setAction(e.target.value); setPage(1) }}>
               <option value="">全部动作</option>
               {ACTIONS.map((a) => <option key={a} value={a}>{a}</option>)}
@@ -142,7 +142,9 @@ export default function AdminAuditPage() {
           ) : rows.length === 0 ? (
             <EmptyState icon={ScrollText} title="没有匹配的审计记录" description="调整筛选条件或时间范围后重试。" />
           ) : (
-            <Table>
+            <>
+              <div className="hidden lg:block">
+                <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>时间</TableHead>
@@ -185,7 +187,48 @@ export default function AdminAuditPage() {
                   </React.Fragment>
                 ))}
               </TableBody>
-            </Table>
+                </Table>
+              </div>
+
+              <ul className="divide-y lg:hidden">
+                {rows.map((r) => (
+                  <li key={r.id}>
+                    <button
+                      type="button"
+                      className="w-full px-4 py-3 text-left"
+                      aria-expanded={open === r.id}
+                      onClick={() => setOpen(open === r.id ? null : r.id)}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="min-w-0 font-mono text-xs [overflow-wrap:anywhere]">{r.action}</span>
+                        {r.result === 'ok' ? (
+                          <Badge variant="success" className="shrink-0">成功</Badge>
+                        ) : (
+                          <Badge variant="destructive" className="shrink-0">失败</Badge>
+                        )}
+                      </div>
+                      <p className="text-muted-foreground mt-1 text-xs">{dateTime(r.ts)}</p>
+                      <p className="text-muted-foreground text-xs [overflow-wrap:anywhere]">
+                        {r.actorEmail || (r.actorUid ? `uid ${r.actorUid}` : '系统')}
+                        {r.targetUid ? ` → uid ${r.targetUid}` : ''} · {r.ip || '—'}
+                      </p>
+                    </button>
+                    {open === r.id && (
+                      <div className="bg-muted/40 space-y-1 px-4 py-2 text-xs">
+                        <p className="[overflow-wrap:anywhere]"><span className="text-muted-foreground">UA：</span>{r.userAgent || '—'}</p>
+                        {r.detail && Object.keys(r.detail).length > 0 && (
+                          <div className="flex flex-wrap gap-2">
+                            {Object.entries(r.detail).map(([k, v]) => (
+                              <Badge key={k} variant="outline">{k}: {v}</Badge>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
 
           {data && data.total > PAGE && (

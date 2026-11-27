@@ -52,12 +52,12 @@ export default function AdminAIPage() {
       />
 
       {showSkeleton ? (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-24" />)}
         </div>
       ) : (
         <>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard label="今日调用" value={data?.today ?? 0} hint={delta === 0 ? '与昨日持平' : `较昨日 ${delta > 0 ? '+' : ''}${delta}`} icon={ChartColumn} />
             <StatCard
               label="全站剩余"
@@ -108,7 +108,9 @@ export default function AdminAIPage() {
               {(data?.users ?? []).length === 0 ? (
                 <p className="text-muted-foreground p-6 text-sm">所选区间内暂无用量记录。</p>
               ) : (
-                <Table>
+                <>
+                  <div className="hidden lg:block">
+                    <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>用户</TableHead>
@@ -137,7 +139,27 @@ export default function AdminAIPage() {
                       </TableRow>
                     ))}
                   </TableBody>
-                </Table>
+                    </Table>
+                  </div>
+
+                  <ul className="divide-y lg:hidden">
+                    {data!.users.map((u) => (
+                      <li key={u.uid} className="px-4 py-3">
+                        <p className="text-sm font-medium [overflow-wrap:anywhere]">{u.email}</p>
+                        <p className="text-muted-foreground mt-0.5 text-xs">
+                          uid {u.uid} · 今日 {u.today} 次 · 区间 {u.range} 次 · 占比 {(u.share * 100).toFixed(1)}%
+                        </p>
+                        <div className="mt-1.5 space-y-1">
+                          <Progress
+                            value={u.limitToday ? Math.min(100, (u.today / u.limitToday) * 100) : 0}
+                            aria-label={`${u.email} 今日限额`}
+                          />
+                          <p className="text-muted-foreground text-xs">{u.today} / {u.limitToday}</p>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </>
               )}
             </CardContent>
           </Card>
@@ -187,7 +209,7 @@ function QuotaDialog({ open, onOpenChange, onDone }: { open: boolean; onOpenChan
           <DialogTitle>编辑 AI 限额</DialogTitle>
           <DialogDescription>留空表示不修改。正整数，保存后 ≤10 秒生效。</DialogDescription>
         </DialogHeader>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {keys.map(([k, , label]) => (
             <div key={k} className="space-y-1.5">
               <Label>{label}</Label>

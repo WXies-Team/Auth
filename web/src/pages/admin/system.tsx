@@ -44,14 +44,14 @@ export default function AdminSystemPage() {
         <Skeleton className="h-40 w-full" />
       ) : data ? (
         <>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard label="账号" value={data.counts.users} icon={Users} />
             <StatCard label="活跃会话" value={data.counts.sessions} icon={Monitor} />
             <StatCard label="Passkey" value={data.counts.passkeys} icon={Fingerprint} />
             <StatCard label="两步验证" value={data.counts.totp} icon={CheckCircle2} />
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <Card>
               <CardHeader>
                 <CardTitle>运行状态</CardTitle>

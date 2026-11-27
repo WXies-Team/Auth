@@ -193,7 +193,7 @@ export default function AdminUserDetailPage() {
         }
       />
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>身份与状态</CardTitle>
@@ -204,16 +204,16 @@ export default function AdminUserDetailPage() {
                 <AvatarImage src={data.avatarImage ? `data:image/jpeg;base64,${data.avatarImage}` : undefined} alt="" />
                 <AvatarFallback>{initials(data.nickname || data.email)}</AvatarFallback>
               </Avatar>
-              <div>
-                <p className="font-medium">{data.nickname || data.email.split('@')[0]}</p>
-                <p className="text-muted-foreground text-sm">{data.email}</p>
+              <div className="min-w-0">
+                <p className="font-medium [overflow-wrap:anywhere]">{data.nickname || data.email.split('@')[0]}</p>
+                <p className="text-muted-foreground text-sm [overflow-wrap:anywhere]">{data.email}</p>
               </div>
               <div className="flex-1" />
               {data.isRoot && <Badge>根管理员</Badge>}
               {data.ban ? <Badge variant="destructive">已封禁</Badge> : <Badge variant="success">正常</Badge>}
             </div>
             <Separator />
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label>角色</Label>
                 {data.role === 'admin' ? (

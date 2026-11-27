@@ -99,7 +99,7 @@ export function ConsentCard({
                   完成后会回到 <span className="font-mono">{data.redirectHost}</span>，那不是本站域名。确认这个域名是你信任的。
                 </AlertDescription>
               </Alert>
-              <div className="grid gap-2 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <Button variant="outline" onClick={() => submitDecision(data.tx, 'deny')}>
                   拒绝并返回
                 </Button>

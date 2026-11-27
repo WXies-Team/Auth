@@ -144,8 +144,9 @@ test('用户列表可搜索并打开详情入口', async ({ page }) => {
   await mockApi(page)
   await page.goto('/web/admin')
   await expect(page.getByRole('heading', { name: '用户' })).toBeVisible()
-  await expect(page.getByText('hs@horatio.cn')).toBeVisible()
-  await expect(page.getByRole('link', { name: '详情' })).toBeVisible()
+  // 窄屏卡片列表与桌面表格同时在 DOM 里（CSS 控制显隐），断言要限定在表格内。
+  await expect(page.locator('table').getByText('hs@horatio.cn')).toBeVisible()
+  await expect(page.locator('table').getByRole('link', { name: '详情' })).toBeVisible()
   await noSeriousA11y(page)
 })
 
@@ -259,6 +260,57 @@ test('配置中心用类型化控件，项目级策略在项目访问页', async
   await expect(dialog.getByRole('switch', { name: /要求两步验证/ })).toBeChecked()
   await expect(dialog.getByRole('switch', { name: /旧版客户端强制升级/ })).not.toBeChecked()
   await expect(dialog.getByRole('switch')).toHaveCount(2)
+})
+
+test('窄屏与宽屏均无横向溢出', async ({ page }) => {
+  await mockApi(page, true)
+  // 长邮箱 + 长项目凭据是之前把卡片/表格撑出视口的真实输入，回归时保留。
+  await page.route('**/web/session', (route) =>
+    route.fulfill({ json: { ...session, email: 'very.long.account.name@horatio.cn' } }),
+  )
+  await page.route((url) => url.pathname === '/admin/config', (route) =>
+    route.fulfill({
+      json: [
+        { key: 'llm_base_url', secret: false, configured: true, value: 'https://opencode.ai/inference/go/openai/v1/chat/completions' },
+        { key: 'llm_api_key', secret: true, configured: true, value: '', hint: '7f3a' },
+      ],
+    }),
+  )
+  await page.route((url) => url.pathname === '/admin/projects', (route) =>
+    route.fulfill({
+      json: {
+        projects: [
+          {
+            app: 'CalorieDiary',
+            name: '热量日记',
+            restricted: true,
+            mfaRequired: false,
+            allowedDomains: ['very-long-subdomain.example.com'],
+            sessionDays: 0,
+            legacyUpgrade: false,
+            members: [{ uid: 2, email: 'member.with.long.email@example.com' }],
+            admins: [],
+            clientId: 'client-abcdefghijklmnopqrstuvwxyz',
+            redirectUris: null,
+          },
+        ],
+      },
+    }),
+  )
+  await page.route((url) => url.pathname === '/admin/audit', (route) => route.fulfill({ json: { items: [], total: 0 } }))
+
+  const routes = ['/web/console', '/web/console/account', '/web/admin', '/web/admin/access', '/web/admin/config', '/web/admin/audit']
+  for (const width of [320, 390, 768, 1280, 1920]) {
+    await page.setViewportSize({ width, height: 900 })
+    for (const route of routes) {
+      await page.goto(route)
+      await expect(page.getByRole('main')).toBeVisible()
+      const overflow = await page.evaluate(
+        () => Math.max(document.documentElement.scrollWidth, document.body.scrollWidth) - document.documentElement.clientWidth,
+      )
+      expect(overflow, `${route} @${width}px 横向溢出 ${overflow}px`).toBeLessThanOrEqual(1)
+    }
+  }
 })
 
 test('骨架屏立即可见且最少展示 300ms，加载完成不闪', async ({ page }) => {

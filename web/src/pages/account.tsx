@@ -139,7 +139,7 @@ export default function AccountPage() {
             </div>
           </div>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <Label htmlFor="nickname">昵称</Label>
               <Input
@@ -328,7 +328,7 @@ function ChangePasswordForm() {
             </div>
           </div>
         )}
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label htmlFor="new-pw">新密码</Label>
             <PasswordInput id="new-pw" autoComplete="new-password" value={newPw} onChange={(e) => setNewPw(e.target.value)} />
@@ -379,7 +379,7 @@ function ChangeEmailForm() {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label htmlFor="new-email">新邮箱</Label>
           <Input id="new-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />

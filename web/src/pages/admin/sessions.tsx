@@ -82,7 +82,7 @@ export default function AdminSessionsPage() {
         }
       />
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="会话" value={data?.total ?? '—'} icon={Monitor} />
         <StatCard label="用户" value={data?.totalUsers ?? '—'} icon={Users} />
         <StatCard label="项目" value={data?.apps?.length ?? '—'} icon={AppWindow} />
@@ -148,7 +148,9 @@ export default function AdminSessionsPage() {
           ) : rows.length === 0 ? (
             <EmptyState icon={Monitor} title="没有匹配的会话" description="调整筛选条件后重试。" />
           ) : (
-            <Table>
+            <>
+              <div className="hidden lg:block">
+                <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>用户</TableHead>
@@ -181,7 +183,35 @@ export default function AdminSessionsPage() {
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
+                </Table>
+              </div>
+
+              <ul className="divide-y lg:hidden">
+                {rows.map((s) => (
+                  <li key={s.id} className="px-4 py-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium [overflow-wrap:anywhere]">{s.nickname || s.email}</p>
+                        <p className="text-muted-foreground text-xs">uid {s.uid} · {appLabel(s.app)}</p>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive shrink-0"
+                        onClick={() => setTarget(s)}
+                      >
+                        吊销
+                      </Button>
+                    </div>
+                    <p className="mt-1 text-sm [overflow-wrap:anywhere]">{s.device || '未知'}</p>
+                    <p className="text-muted-foreground mt-0.5 font-mono text-xs [overflow-wrap:anywhere]">
+                      {s.ip} · {s.ipRegion || '—'}
+                    </p>
+                    <p className="text-muted-foreground text-xs">最近活跃 {relativeTime(s.lastSeenAt)}</p>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
 
           {data && data.total > PAGE && (

@@ -294,7 +294,7 @@ export default function AdminConfigPage() {
             <h2 className="text-sm font-medium">{section.title}</h2>
             <p className="text-muted-foreground text-xs">{section.desc}</p>
           </div>
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             {GROUPS.filter((g) => g.section === section.id).map((g) => (
               <Card key={g.title}>
                 <CardHeader>

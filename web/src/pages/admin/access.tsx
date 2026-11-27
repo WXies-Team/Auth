@@ -90,7 +90,7 @@ export default function AdminAccessPage() {
       <PageHeader title="项目访问" description="控制每个项目谁能登录、谁是项目管理员，以及 OAuth 回跳地址。" />
 
       {isLoading ? (
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {[0, 1, 2, 3].map((i) => (
             <Skeleton key={i} className="h-56 w-full" />
           ))}
@@ -100,7 +100,7 @@ export default function AdminAccessPage() {
           <EmptyState icon={Lock} title="当前没有可管理的项目" description="你被授权的项目会出现在这里。" />
         </Card>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {projects.map((p) => (
             <Card key={p.app}>
               <CardHeader>

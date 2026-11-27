@@ -123,7 +123,7 @@ export default function PasskeysPage() {
                     <Fingerprint className="size-4" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="flex items-center gap-2 text-sm font-medium">
+                    <p className="flex flex-wrap items-center gap-2 text-sm font-medium [overflow-wrap:anywhere]">
                       {row.name}
                       {row.current && <Badge variant="secondary">本机</Badge>}
                       {row.backupState ? (

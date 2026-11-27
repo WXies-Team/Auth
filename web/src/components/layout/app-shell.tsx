@@ -411,7 +411,7 @@ export function AppShell() {
       <div className="min-[900px]:pl-60">
         <Topbar />
         <AdminMfaNotice />
-        <main ref={mainRef} tabIndex={-1} className="relative mx-auto w-full max-w-6xl p-4 outline-none sm:p-6">
+        <main ref={mainRef} tabIndex={-1} className="relative mx-auto w-full max-w-7xl p-4 outline-none sm:p-6">
           <Outlet />
         </main>
       </div>
@@ -458,7 +458,7 @@ function AdminMfaNotice() {
   if (session.totpEnabled || session.passkeyCount > 0) return null
   return (
     <div className="border-b border-warning/30 bg-warning/10">
-      <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2 text-sm sm:px-6">
+      <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2 text-sm sm:px-6">
         <ShieldAlert className="size-4 shrink-0 text-warning" />
         <p className="min-w-0 flex-1">
           你是{session.role === 'super' ? '平台管理员' : '项目管理员'}，但尚未绑定两步验证：

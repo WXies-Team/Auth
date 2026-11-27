@@ -114,7 +114,7 @@ export default function ActivityPage() {
                       {label(row.action)}
                       {row.result !== 'ok' && <Badge variant="destructive">失败</Badge>}
                     </p>
-                    <p className="text-muted-foreground text-xs">
+                    <p className="text-muted-foreground text-xs [overflow-wrap:anywhere]">
                       {dateTime(row.ts)} · {relativeTime(row.ts)}
                       {row.ip ? ` · ${row.ip}` : ''}
                     </p>

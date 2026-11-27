@@ -24,7 +24,7 @@ export function Pagination({ page, pageSize, total, onPage, className }: Props) 
       <p className="text-muted-foreground text-xs">
         共 {total} 条 · 第 {current} / {pages} 页
       </p>
-      <div className="flex items-center gap-1">
+      <div className="flex flex-wrap items-center gap-1">
         <Button variant="outline" size="icon" disabled={current <= 1} onClick={() => onPage(current - 1)} aria-label="上一页">
           <ChevronLeft />
         </Button>

@@ -266,7 +266,9 @@ export default function AdminUsersPage() {
               description="调整搜索关键词，或点击「邀请用户」创建第一个账号。"
             />
           ) : (
-            <Table>
+            <>
+              <div className="hidden lg:block">
+                <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-10">
@@ -335,7 +337,64 @@ export default function AdminUsersPage() {
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
+                </Table>
+              </div>
+
+              <ul className="divide-y lg:hidden">
+                <li className="flex items-center gap-3 px-4 py-2">
+                  <Checkbox
+                    checked={allChecked}
+                    onCheckedChange={(v) => {
+                      if (v === true) setSelected(new Set(rows.map((r) => r.uid)))
+                      else setSelected(new Set())
+                    }}
+                    aria-label="全选"
+                  />
+                  <span className="text-muted-foreground text-xs">全选</span>
+                  <span className="text-muted-foreground ml-auto text-xs">共 {rows.length} 人</span>
+                </li>
+                {rows.map((u) => (
+                  <li key={u.uid} className="flex gap-3 px-4 py-3">
+                    <Checkbox
+                      className="mt-1"
+                      checked={selected.has(u.uid)}
+                      onCheckedChange={(v) => toggle(u.uid, v === true)}
+                      aria-label={`选择 ${u.email}`}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <Link
+                          to={`/web/admin/users/${u.uid}`}
+                          className="min-w-0 font-medium [overflow-wrap:anywhere] hover:underline"
+                        >
+                          {u.email}
+                          {u.isRoot && <Badge variant="secondary" className="ml-1.5">根</Badge>}
+                        </Link>
+                        <Link
+                          to={`/web/admin/users/${u.uid}`}
+                          className="text-muted-foreground shrink-0 text-xs underline-offset-4 hover:underline"
+                        >
+                          详情
+                        </Link>
+                      </div>
+                      <p className="text-muted-foreground mt-0.5 text-xs">
+                        uid {u.uid}
+                        {u.nickname ? ` · ${u.nickname}` : ''} · 注册 {dateOnly(u.createdAt)}
+                      </p>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        <Badge variant={u.role === 'super' ? 'default' : u.role === 'admin' ? 'secondary' : 'outline'}>
+                          {roleLabel(u.role)}
+                        </Badge>
+                        {u.ban ? <Badge variant="destructive">封禁</Badge> : <span className="text-muted-foreground text-xs">正常</span>}
+                        <span className="text-muted-foreground text-xs">
+                          {u.totpEnabled ? '2FA' : '无 2FA'} · {u.passkeyCount} 把 Passkey
+                        </span>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
 
           {data && data.total > PAGE && (
@@ -362,7 +421,9 @@ export default function AdminUsersPage() {
               ) : (invites.data?.invites ?? []).length === 0 ? (
                 <p className="text-muted-foreground py-4 text-sm">没有邀请记录。</p>
               ) : (
-                <Table>
+                <>
+                  <div className="hidden lg:block">
+                    <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>邮箱</TableHead>
@@ -425,7 +486,63 @@ export default function AdminUsersPage() {
                       </TableRow>
                     ))}
                   </TableBody>
-                </Table>
+                    </Table>
+                  </div>
+
+                  <ul className="divide-y lg:hidden">
+                    {invites.data!.invites.map((inv) => (
+                      <li key={inv.id} className="px-1 py-3">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="min-w-0 text-sm [overflow-wrap:anywhere]">{inv.email}</p>
+                          <Badge
+                            className="shrink-0"
+                            variant={
+                              inv.state === 'pending'
+                                ? 'warning'
+                                : inv.state === 'accepted'
+                                  ? 'success'
+                                  : 'outline'
+                            }
+                          >
+                            {inviteState(inv.state)}
+                          </Badge>
+                        </div>
+                        <p className="text-muted-foreground mt-0.5 text-xs">
+                          {inv.app || '账号级'} · 过期 {dateOnly(inv.expiresAt)}
+                        </p>
+                        {inv.state === 'pending' && (
+                          <div className="mt-1 flex gap-1">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() =>
+                                void api
+                                  .post(`/admin/users/invite/${inv.id}/resend`, {})
+                                  .then(() => { toast.success('已重发'); return invites.refetch() })
+                                  .catch((e) => toast.error(e.message))
+                              }
+                            >
+                              重发
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-destructive"
+                              onClick={() =>
+                                void api
+                                  .post(`/admin/users/invite/${inv.id}/revoke`, {})
+                                  .then(() => { toast.success('已撤销'); return invites.refetch() })
+                                  .catch((e) => toast.error(e.message))
+                              }
+                            >
+                              撤销
+                            </Button>
+                          </div>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </>
               )}
             </div>
           )}

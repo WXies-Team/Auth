@@ -76,7 +76,7 @@ export default function ConsolePage() {
         }
       />
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>账号安全</CardTitle>
@@ -171,7 +171,7 @@ export default function ConsolePage() {
         </Card>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Link to="/web/console/passkeys" className="group">
           <Card className="hover:border-primary/40 h-full transition-colors">
             <CardHeader>
