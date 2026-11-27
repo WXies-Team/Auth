@@ -197,9 +197,18 @@ test('配置中心用类型化控件，项目级策略在项目访问页', async
   await expect(page.getByText('强制 2FA 项目')).toHaveCount(0)
   // 显式关闭的布尔开关必须如实显示「已关闭」，不能因名字含 password 被当凭据掩码。
   await expect(page.getByText('已关闭', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: '编辑 密码泄露库校验' }).click()
-  await expect(page.getByRole('dialog').getByRole('switch')).not.toBeChecked()
-  await page.keyboard.press('Escape')
+  // 布尔项直接拨开关（没有编辑弹窗）：先把关闭的开关拨开，确认写的是 1。
+  const breachSwitch = page.getByRole('switch', { name: '密码泄露库校验开关' })
+  await expect(breachSwitch).not.toBeChecked()
+  let savedBool: string | null = null
+  await page.route((url) => url.pathname === '/admin/config/password_breach_check', async (route) => {
+    if (route.request().method() === 'PUT') {
+      savedBool = (route.request().postDataJSON() as { value: string }).value
+    }
+    await route.fulfill({ json: { ok: true, hotWithinSeconds: 10 } })
+  })
+  await breachSwitch.click()
+  await expect.poll(() => savedBool).toBe('1')
   // 全站并发与推送令牌都是可运营的键，不能只在库里改。
   await expect(page.getByText('全站并发', { exact: true })).toBeVisible()
   await expect(page.getByText('推送管理令牌', { exact: true })).toBeVisible()
@@ -211,9 +220,10 @@ test('配置中心用类型化控件，项目级策略在项目访问页', async
   await expect(num).toHaveAttribute('max', '365')
   await page.keyboard.press('Escape')
 
-  await page.getByRole('button', { name: '编辑 开放自助注册' }).click()
-  await expect(page.getByRole('dialog').getByRole('switch')).toBeVisible()
-  await page.keyboard.press('Escape')
+  // 未设置的布尔项同样直接出开关，按默认值展示（默认关闭）。
+  await expect(page.getByRole('switch', { name: '开放自助注册开关' })).not.toBeChecked()
+  // 布尔项不应再有编辑按钮。
+  await expect(page.getByRole('button', { name: '编辑 开放自助注册' })).toHaveCount(0)
 
   // LLM 大模型三键必须回到配置中心：地址 / 模型 / 密钥（密钥只回末 4 位）。
   await expect(page.getByText('LLM 大模型')).toBeVisible()

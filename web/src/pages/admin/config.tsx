@@ -191,6 +191,7 @@ export default function AdminConfigPage() {
   const [edit, setEdit] = React.useState<ConfigItem | null>(null)
   const [value, setValue] = React.useState('')
   const [busy, setBusy] = React.useState(false)
+  const [savingKey, setSavingKey] = React.useState<string | null>(null)
   const [clearItem, setClearItem] = React.useState<ConfigItem | null>(null)
 
   const byKey = new Map((data ?? []).map((i) => [i.key, i]))
@@ -229,14 +230,39 @@ export default function AdminConfigPage() {
     }
   }
 
+  // 布尔项只有开/关：直接拨开关就写库，不再套一层编辑弹窗。
+  async function setBool(item: ConfigItem, on: boolean) {
+    const label = LABELS[item.key] ?? item.key
+    setSavingKey(item.key)
+    try {
+      await api.put(`/admin/config/${item.key}`, { value: on ? '1' : '0' })
+      toast.success(`${label}已${on ? '开启' : '关闭'}，≤10 秒生效`)
+      await qc.invalidateQueries({ queryKey: ['admin-config'] })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '保存失败')
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
+  async function restoreDefault(item: ConfigItem, meta: FieldMeta) {
+    const label = LABELS[item.key] ?? item.key
+    setSavingKey(item.key)
+    try {
+      await api.put(`/admin/config/${item.key}`, { value: '' })
+      toast.success(`${label}已恢复默认${meta.defaultOn ? '开启' : '关闭'}，≤10 秒生效`)
+      await qc.invalidateQueries({ queryKey: ['admin-config'] })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '恢复默认失败')
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
   function openEdit(item: ConfigItem) {
     const meta = fieldOf(item.key)
     setEdit(item)
-    if (meta.kind === 'bool') {
-      // 布尔按**生效值**打开：未设置时就是默认值，保存后写入显式值。
-      const on = item.configured ? item.value === '1' : !!meta.defaultOn
-      setValue(on ? '1' : '0')
-    } else if (item.secret) {
+    if (item.secret) {
       setValue('')
     } else if (meta.kind === 'lines') {
       // 库里是逗号串，编辑框按「每行一条」展示，保存时原样交回（服务端归一化）。
@@ -307,14 +333,36 @@ export default function AdminConfigPage() {
                         ) : (
                           <Badge variant="outline"><XCircle className="size-3" /> 未设置</Badge>
                         )}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label={`编辑 ${LABELS[key] ?? key}`}
-                          onClick={() => openEdit(item)}
-                        >
-                          <Pencil />
-                        </Button>
+                        {meta.kind === 'bool' ? (
+                          <div className="flex items-center gap-1.5">
+                            {item.configured && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-muted-foreground h-7 px-2 text-xs"
+                                disabled={savingKey === key}
+                                onClick={() => void restoreDefault(item, meta)}
+                              >
+                                恢复默认
+                              </Button>
+                            )}
+                            <Switch
+                              aria-label={`${LABELS[key] ?? key}开关`}
+                              checked={item.configured ? item.value === '1' : !!meta.defaultOn}
+                              disabled={savingKey === key}
+                              onCheckedChange={(v) => void setBool(item, v)}
+                            />
+                          </div>
+                        ) : (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label={`编辑 ${LABELS[key] ?? key}`}
+                            onClick={() => openEdit(item)}
+                          >
+                            <Pencil />
+                          </Button>
+                        )}
                       </div>
                     )
                   })}
@@ -330,28 +378,14 @@ export default function AdminConfigPage() {
           <DialogHeader>
             <DialogTitle>编辑「{edit ? LABELS[edit.key] ?? edit.key : ''}」</DialogTitle>
             <DialogDescription>
-              {edit?.secret && editMeta?.kind !== 'bool'
+              {edit?.secret
                 ? '凭据不回显原值；留空表示不修改，填写新值会整体替换。'
                 : '保存后 ≤10 秒生效。'}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
             <Label htmlFor="cfg-value">值</Label>
-            {editMeta?.kind === 'bool' ? (
-              <div className="flex items-center justify-between gap-4 rounded-md border px-3 py-2.5">
-                <div className="space-y-0.5">
-                  <p className="text-sm font-medium">
-                    {value === '' ? (editMeta.defaultOn ? '默认开启' : '默认关闭') : value === '1' ? '已开启' : '已关闭'}
-                  </p>
-                  <p className="text-muted-foreground text-xs">{editMeta.help}</p>
-                </div>
-                <Switch
-                  aria-label={`${edit ? LABELS[edit.key] ?? edit.key : ''}开关`}
-                  checked={value === '' ? !!editMeta.defaultOn : value === '1'}
-                  onCheckedChange={(v) => setValue(v ? '1' : '0')}
-                />
-              </div>
-            ) : editMeta?.kind === 'number' ? (
+            {editMeta?.kind === 'number' ? (
               <Input
                 id="cfg-value"
                 type="number"
@@ -383,9 +417,6 @@ export default function AdminConfigPage() {
                 placeholder={edit?.secret ? '留空则不修改' : (editMeta?.placeholder ?? '输入新值')}
               />
             )}
-            {editMeta?.kind === 'bool' && !edit?.configured && (
-              <p className="text-muted-foreground text-xs">当前按默认值运行；保存后会写入显式设置。</p>
-            )}
             {editMeta?.help && editMeta.kind !== 'bool' && (
               <p className="text-muted-foreground text-xs">{editMeta.help}</p>
             )}
@@ -405,7 +436,7 @@ export default function AdminConfigPage() {
                 onClick={() => setClearItem(edit)}
                 disabled={busy}
               >
-                <Trash2 /> {editMeta?.kind === 'bool' ? '恢复默认' : '清除设置'}
+                <Trash2 /> 清除设置
               </Button>
             ) : (
               <span />
@@ -471,26 +502,17 @@ export default function AdminConfigPage() {
       <ConfirmDialog
         open={!!clearItem}
         onOpenChange={(v) => !v && setClearItem(null)}
-        title={
-          clearItem && fieldOf(clearItem.key).kind === 'bool'
-            ? `恢复「${LABELS[clearItem.key] ?? clearItem.key}」的默认值？`
-            : `清除「${clearItem ? LABELS[clearItem.key] ?? clearItem.key : ''}」？`
-        }
-        description={
-          clearItem && fieldOf(clearItem.key).kind === 'bool'
-            ? `会删除显式设置，回到默认${fieldOf(clearItem.key).defaultOn ? '开启' : '关闭'}。`
-            : '会从 app_config 删除该键；依赖它的功能会立即回到未设置状态。'
-        }
-        confirmLabel={clearItem && fieldOf(clearItem.key).kind === 'bool' ? '恢复默认' : '清除'}
+        title={`清除「${clearItem ? LABELS[clearItem.key] ?? clearItem.key : ''}」？`}
+        description="会从 app_config 删除该键；依赖它的功能会立即回到未设置状态。"
+        confirmLabel="清除"
         destructive
         busy={busy}
         onConfirm={async () => {
           if (!clearItem) return
-          const isBool = fieldOf(clearItem.key).kind === 'bool'
           setBusy(true)
           try {
             await api.put(`/admin/config/${clearItem.key}`, { value: '' })
-            toast.success(isBool ? '已恢复默认' : '已清除')
+            toast.success('已清除')
             setClearItem(null)
             setEdit(null)
             await qc.invalidateQueries({ queryKey: ['admin-config'] })
