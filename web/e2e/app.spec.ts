@@ -156,6 +156,9 @@ test('配置中心用类型化控件，项目级策略在项目访问页', async
       json: [
         { key: 'allow_self_register', secret: false, configured: false, value: '', hint: '' },
         { key: 'audit_retention_days', secret: false, configured: true, value: '90' },
+        { key: 'llm_base_url', secret: false, configured: true, value: 'https://llm.example.com/v1/chat/completions' },
+        { key: 'llm_model', secret: false, configured: true, value: 'gpt-x' },
+        { key: 'llm_api_key', secret: true, configured: true, value: '', hint: 'abcd' },
       ],
     }),
   )
@@ -195,6 +198,32 @@ test('配置中心用类型化控件，项目级策略在项目访问页', async
   await page.getByRole('button', { name: '编辑 开放自助注册' }).click()
   await expect(page.getByRole('dialog').getByRole('switch')).toBeVisible()
   await page.keyboard.press('Escape')
+
+  // LLM 大模型三键必须回到配置中心：地址 / 模型 / 密钥（密钥只回末 4 位）。
+  await expect(page.getByText('LLM 大模型')).toBeVisible()
+  await expect(page.getByText('接口地址', { exact: true })).toBeVisible()
+  await expect(page.getByText('gpt-x')).toBeVisible()
+  await expect(page.getByText('已配置 · abcd')).toBeVisible()
+
+  let savedLLM: string | null = null
+  await page.route((url) => url.pathname === '/admin/config/llm_base_url', async (route) => {
+    if (route.request().method() === 'PUT') {
+      savedLLM = (route.request().postDataJSON() as { value: string }).value
+    }
+    await route.fulfill({ json: {} })
+  })
+  await page.getByRole('button', { name: '编辑 接口地址' }).click()
+  const urlInput = page.getByRole('dialog').locator('#cfg-value')
+  await expect(urlInput).toHaveValue('https://llm.example.com/v1/chat/completions')
+  await urlInput.fill('ftp://llm.example.com/v1')
+  await page.getByRole('dialog').getByRole('button', { name: '保存' }).click()
+  // 非 http(s) 就地拦下，不发请求也不关弹窗。
+  expect(savedLLM).toBeNull()
+  await expect(page.getByRole('dialog')).toBeVisible()
+  await urlInput.fill('https://llm.example.com/v1')
+  await page.getByRole('dialog').getByRole('button', { name: '保存' }).click()
+  await expect.poll(() => savedLLM).toBe('https://llm.example.com/v1')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
 
   // 项目策略（要求 MFA / 旧客户端升级）归项目访问页，一个项目一组开关。
   await page.goto('/web/admin/access')

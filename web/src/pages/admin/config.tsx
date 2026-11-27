@@ -34,6 +34,11 @@ const GROUPS: { title: string; desc: string; keys: string[] }[] = [
     keys: ['webauthn_opaque_origins'],
   },
   {
+    title: 'LLM 大模型',
+    desc: '两个日记 App 的模型接入；改完 ≤10 秒生效，由 /internal/config 下发。',
+    keys: ['llm_base_url', 'llm_model', 'llm_api_key'],
+  },
+  {
     title: 'AI 限额',
     desc: '看板与限额闸共用的四档值。',
     keys: ['ai_rate_per_minute', 'ai_concurrency', 'ai_daily_per_user', 'ai_daily_global'],
@@ -87,6 +92,13 @@ const FIELDS: Record<string, FieldMeta> = {
     help: '两个 App 的原生签名指纹，精确匹配；格式错误会让对应 App 的 Passkey 仪式被拒。',
   },
   audit_retention_days: { kind: 'number', min: 7, max: 365 },
+  llm_base_url: {
+    kind: 'text',
+    placeholder: 'https://…/v1/chat/completions',
+    help: '可填完整端点（含 /chat/completions）或 Base URL（…/v1），两个日记服务都兼容。',
+  },
+  llm_model: { kind: 'text', placeholder: '上游模型 ID，如 gpt-5.1' },
+  llm_api_key: { kind: 'text', placeholder: '上游 API Key' },
   ai_rate_per_minute: { kind: 'number', min: 1, max: 1000000 },
   ai_concurrency: { kind: 'number', min: 1, max: 1000 },
   ai_daily_per_user: { kind: 'number', min: 1, max: 100000000 },
@@ -120,6 +132,9 @@ const LABELS: Record<string, string> = {
   hook_calorie_diary: '热量日记注销地址',
   hook_expense_diary: '开支日记注销地址',
   webauthn_opaque_origins: 'Android origin',
+  llm_base_url: '接口地址',
+  llm_model: '模型名',
+  llm_api_key: 'API 密钥',
   ai_rate_per_minute: '每分钟请求',
   ai_concurrency: '并发上限',
   ai_daily_per_user: '每用户每日',
@@ -145,9 +160,25 @@ export default function AdminConfigPage() {
   const byKey = new Map((data ?? []).map((i) => [i.key, i]))
   const editMeta = edit ? fieldOf(edit.key) : null
 
+  // 允许 Base URL 或完整端点，但必须能解析成 http(s) 链接——写错协议下游只会报
+  //「AI 不可用」，排查要从这里开始。清空走「清空配置」，不在此处放行空串。
+  function validLLMBaseURL(v: string) {
+    if (!v) return true
+    try {
+      const u = new URL(v)
+      return u.protocol === 'http:' || u.protocol === 'https:'
+    } catch {
+      return false
+    }
+  }
+
   async function save() {
     if (!edit) return
     const payload = value.trim()
+    if (edit.key === 'llm_base_url' && !validLLMBaseURL(payload)) {
+      toast.error('接口地址必须是 http(s) 链接，例如 https://opencode.ai/inference/go/openai/v1/chat/completions')
+      return
+    }
     setBusy(true)
     try {
       await api.put(`/admin/config/${edit.key}`, { value: payload })
@@ -216,7 +247,10 @@ export default function AdminConfigPage() {
                         {LABELS[key] ?? key}
                         {item.secret && <KeyRound className="text-muted-foreground size-3.5" />}
                       </p>
-                      <p className="text-muted-foreground truncate text-xs">
+                      <p
+                        className="text-muted-foreground truncate text-xs"
+                        title={!item.secret && item.configured ? item.value : undefined}
+                      >
                         {item.secret ? (item.configured ? `已配置 · ${item.hint || '••••'}` : '未配置') : fieldSummary(item, meta)}
                       </p>
                     </div>
