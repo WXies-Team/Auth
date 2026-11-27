@@ -152,7 +152,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
             >
               <ShieldCheck className="size-4" /> {t('nav.adminConsole')}
               {!session?.totpEnabled && (session?.passkeyCount ?? 0) === 0 && (
-                <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
+                <span className="rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-medium text-warning">
                   待绑定 MFA
                 </span>
               )}
@@ -305,7 +305,7 @@ function ImpersonationBanner() {
     }
   }
   return (
-    <div className="sticky top-0 z-40 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 bg-amber-500 px-3 py-1.5 text-center text-xs font-medium text-amber-950">
+    <div className="bg-warning text-warning-foreground sticky top-0 z-40 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 px-3 py-1.5 text-center text-xs font-medium">
       <span>
         模拟查看中：{session.email} · 由 {session.impersonatorEmail || '平台管理员'} 发起 · 只读，15 分钟后自动结束
       </span>
@@ -313,7 +313,7 @@ function ImpersonationBanner() {
         type="button"
         onClick={() => void stop()}
         disabled={busy}
-        className="rounded border border-amber-900/40 px-2 py-0.5 font-semibold hover:bg-amber-400 disabled:opacity-60"
+        className="border-warning-foreground/40 hover:bg-warning-foreground/15 rounded border px-2 py-0.5 font-semibold disabled:opacity-60"
       >
         {busy ? '退出中…' : '退出模拟'}
       </button>
@@ -457,9 +457,9 @@ function AdminMfaNotice() {
   if (!session || (session.role !== 'admin' && session.role !== 'super')) return null
   if (session.totpEnabled || session.passkeyCount > 0) return null
   return (
-    <div className="border-b border-amber-500/30 bg-amber-500/10">
+    <div className="border-b border-warning/30 bg-warning/10">
       <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2 text-sm sm:px-6">
-        <ShieldAlert className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+        <ShieldAlert className="size-4 shrink-0 text-warning" />
         <p className="min-w-0 flex-1">
           你是{session.role === 'super' ? '平台管理员' : '项目管理员'}，但尚未绑定两步验证：
           <span className="font-medium">管理后台暂不可用</span>，绑定后立即恢复。

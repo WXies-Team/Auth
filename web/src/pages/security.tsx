@@ -235,7 +235,7 @@ export default function SecurityPage() {
               </div>
               <Progress value={total ? (left / total) * 100 : 0} aria-label="恢复码剩余" />
               {left === 0 && (
-                <p className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+                <p className="flex items-center gap-1.5 text-xs text-warning">
                   <TriangleAlert className="size-3.5" /> 恢复码已用尽，建议立即重新生成。
                 </p>
               )}

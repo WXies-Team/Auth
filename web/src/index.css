@@ -2,71 +2,84 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* 调色板对齐 Miuix（v0.9.5-beta03 / Colors.kt 的 lightColorScheme、darkColorScheme）。
+   角色名沿用本站 Tailwind 语义：
+   background=background · card=surfaceContainer · sidebar=surface · muted/accent=secondaryContainer
+   border=dividerLine · input=outline · primary=primary · destructive=error · overlay=windowDimming
+
+   两处按 AA 调整（Miuix 原值白字仅 3.6~4.2:1，本站 e2e 有 axe color-contrast 门禁）：
+   - light primary #226EEC（Miuix #3482FF 同色相压暗）
+   - light error #C73024、dark error #FF7A6B（Miuix #E94634/#F12522 附近取可读值）
+   success/warning 是 Miuix 没有的应用语义（只要求浅色下在 10% 底色上仍 ≥4.5）。 */
 :root {
   --radius: 0.625rem;
-  --background: oklch(0.995 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: #2563eb;
+  --background: #ffffff;
+  --foreground: #000000;
+  --card: #ffffff;
+  --card-foreground: #000000;
+  --popover: #ffffff;
+  --popover-foreground: #000000;
+  --primary: #226eec;
   --primary-foreground: #ffffff;
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.968 0 0);
-  --muted-foreground: oklch(0.49 0 0);
-  --accent: oklch(0.968 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: #e94634;
+  --secondary: #f0f0f0;
+  --secondary-foreground: #303030;
+  --muted: #f0f0f0;
+  --muted-foreground: #666666;
+  --accent: #f0f0f0;
+  --accent-foreground: #303030;
+  --destructive: #c73024;
   --destructive-foreground: #ffffff;
-  --success: #15803d;
-  --warning: #b45309;
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: #2563eb;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-accent: oklch(0.968 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --chart-1: #3482ff;
-  --chart-2: #22c55e;
+  --success: #147436;
+  --warning: #a64b08;
+  --warning-foreground: #ffffff;
+  --border: #e0e0e0;
+  --input: #d9d9d9;
+  --ring: #226eec;
+  --sidebar: #f7f7f7;
+  --sidebar-foreground: #000000;
+  --sidebar-accent: #f0f0f0;
+  --sidebar-border: #e0e0e0;
+  --overlay: rgb(0 0 0 / 0.3);
+  --chart-1: #226eec;
+  --chart-2: #2bb673;
   --chart-3: #f59e0b;
-  --chart-4: #a855f7;
-  --chart-5: #ef4444;
+  --chart-4: #7c6af2;
+  --chart-5: #e94634;
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: #3b82f6;
+  --background: #242424;
+  --foreground: #e9e9e9;
+  --card: #242424;
+  --card-foreground: #e9e9e9;
+  --popover: #2d2d2d;
+  --popover-foreground: #e9e9e9;
+  --primary: #277af7;
   --primary-foreground: #08111f;
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: #f0523f;
-  --destructive-foreground: #ffffff;
+  --secondary: #434343;
+  --secondary-foreground: #d9d9d9;
+  --muted: #2d2d2d;
+  --muted-foreground: #919191;
+  --accent: #333333;
+  --accent-foreground: #e9e9e9;
+  --destructive: #ff7a6b;
+  --destructive-foreground: #180300;
   --success: #4ade80;
   --warning: #fbbf24;
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: #3b82f6;
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --chart-1: #5b9bff;
+  --warning-foreground: #201400;
+  --border: #393939;
+  --input: #404040;
+  --ring: #277af7;
+  --sidebar: #242424;
+  --sidebar-foreground: #e9e9e9;
+  --sidebar-accent: #333333;
+  --sidebar-border: #393939;
+  --overlay: rgb(0 0 0 / 0.6);
+  --chart-1: #277af7;
   --chart-2: #4ade80;
   --chart-3: #fbbf24;
   --chart-4: #c084fc;
-  --chart-5: #f87171;
+  --chart-5: #ff7a6b;
 }
 
 @theme inline {
@@ -88,6 +101,7 @@
   --color-destructive-foreground: var(--destructive-foreground);
   --color-success: var(--success);
   --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -95,6 +109,7 @@
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-accent: var(--sidebar-accent);
   --color-sidebar-border: var(--sidebar-border);
+  --color-overlay: var(--overlay);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);

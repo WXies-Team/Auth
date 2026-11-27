@@ -104,7 +104,7 @@ export default function ActivityPage() {
                   <div
                     className={
                       'mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full ' +
-                      (row.result === 'ok' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-destructive/10 text-destructive')
+                      (row.result === 'ok' ? 'bg-success/10 text-success' : 'bg-destructive/10 text-destructive')
                     }
                   >
                     {row.result === 'ok' ? <CheckCircle2 className="size-4" /> : <XCircle className="size-4" />}

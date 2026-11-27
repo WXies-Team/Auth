@@ -86,7 +86,7 @@ export function ConsentCard({
                 <ul className="space-y-1.5 text-sm">
                   {(data.scopes?.length ? data.scopes : ['读取你的账号标识（uid）', '读取你的邮箱地址']).map((s) => (
                     <li key={s} className="flex items-start gap-2">
-                      <CheckCircle2 className="mt-0.5 size-4 text-emerald-600" />
+                      <CheckCircle2 className="mt-0.5 size-4 text-success" />
                       <span>{s}</span>
                     </li>
                   ))}
