@@ -88,7 +88,7 @@ export default function DeleteCancelPage() {
               <Alert variant="warning">
                 <ShieldAlert className="size-4" />
                 <AlertDescription>
-                  撤销后账号与两个日记 App 的数据都会保留；7 天宽限期过后就不能再撤销了。
+                  撤销后账号与各应用中的数据都会保留；7 天宽限期过后就不能再撤销了。
                 </AlertDescription>
               </Alert>
               <Button className="w-full" onClick={cancel} disabled={busy}>

@@ -74,7 +74,7 @@ export default function AdminSessionsPage() {
     <div className="space-y-4">
       <PageHeader
         title="会话总览"
-        description="全站活跃会话。按项目、邮箱、uid 或 IP 检索。"
+        description="查看全站活跃会话，可按项目、邮箱、uid 或 IP 检索。"
         actions={
           <Button variant="outline" size="sm" onClick={() => void refetch()} disabled={isFetching}>
             <RefreshCw className={isFetching ? 'animate-spin' : ''} /> 刷新

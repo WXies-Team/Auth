@@ -80,7 +80,7 @@ export default function AdminAuditPage() {
     <div className="space-y-4">
       <PageHeader
         title="审计日志"
-        description="登录、授权、改密、管理与批量操作的不可变记录，保留 90 天。"
+        description="查看登录、授权、改密与管理操作的不可变记录，默认保留 90 天。"
         actions={
           <>
             <Button variant="outline" size="sm" onClick={() => void refetch()} disabled={isFetching}>

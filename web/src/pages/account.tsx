@@ -100,7 +100,7 @@ export default function AccountPage() {
       <Card>
         <CardHeader>
           <CardTitle>个人资料</CardTitle>
-          <CardDescription>昵称和头像会显示在控制台与日记 App 里。</CardDescription>
+          <CardDescription>昵称和头像会显示在控制台与已接入的应用中。</CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
           <div className="flex flex-wrap items-center gap-4">
@@ -246,7 +246,7 @@ export default function AccountPage() {
         <CardHeader>
           <CardTitle className="text-destructive">注销账号</CardTitle>
           <CardDescription>
-            提交后进入 7 天宽限期，期间可用邮件里的链接撤销；到期后资料与两个日记 App 的业务数据会一起删除。
+            提交后进入 7 天宽限期，期间可用邮件里的链接撤销；到期后账号资料与各应用中的业务数据会一起删除。
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -447,7 +447,7 @@ function DeleteAccount({ email, onDone }: { email: string; onDone: () => void })
           <DialogHeader>
             <DialogTitle>永久注销账号？</DialogTitle>
             <DialogDescription>
-              提交后进入 7 天宽限期，期间所有设备会退出登录；到期后账号与两个日记 App 的业务数据会被删除。
+              提交后进入 7 天宽限期，期间所有设备会退出登录；到期后账号与各应用中的业务数据会被删除。
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">

@@ -83,7 +83,7 @@ export default function ActivityPage() {
     <div className="space-y-4">
       <PageHeader
         title="安全活动"
-        description="最近的登录、改密、凭证变更与会话操作。发现不认识的活动时，立即改密并退出其它设备。"
+        description="查看最近的登录、改密、凭证变更与会话操作；发现不认识的活动时立即改密并退出其它设备。"
         actions={
           <Button variant="outline" size="sm" asChild>
             <a href="/web/console/sessions">管理登录设备</a>

@@ -59,7 +59,7 @@ export default function SessionsPage() {
     <div className="space-y-4">
       <PageHeader
         title="登录会话"
-        description="这些设备当前可以访问你的账号。发现陌生设备时立即退出。"
+        description="管理当前登录的设备；发现陌生设备时立即退出。"
         actions={
           <>
             <Button variant="outline" size="sm" onClick={() => void refetch()} disabled={isFetching}>

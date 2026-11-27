@@ -32,7 +32,7 @@ export default function AdminSystemPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="系统状态" description="版本、数据库、邮件与 WebAuthn 配置自检；每 30 秒刷新。" />
+      <PageHeader title="系统状态" description="查看版本、数据库、邮件与 WebAuthn 配置自检，每 30 秒刷新。" />
 
       {error && (
         <Alert variant="destructive">

@@ -45,7 +45,7 @@ export default function ConnectionsPage() {
     <div className="space-y-4">
       <PageHeader
         title="已授权应用"
-        description="这些应用可以用你的账号登录。撤销后，应用里已有的登录会话会在下次校验时失效。"
+        description="管理可以用你的账号登录的应用；撤销后，其登录会话会在下次校验时失效。"
       />
 
       <Card>

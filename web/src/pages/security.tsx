@@ -137,7 +137,7 @@ export default function SecurityPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="两步验证" description="在密码之外再加一道动态验证码，防止密码泄露后被直接登录。" />
+      <PageHeader title="两步验证" description="在密码之外增加一次性验证码，降低密码泄露后的登录风险。" />
 
       {error && (
         <Alert variant="destructive">

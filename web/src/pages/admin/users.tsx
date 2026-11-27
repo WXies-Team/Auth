@@ -136,7 +136,7 @@ export default function AdminUsersPage() {
     <div className="space-y-4">
       <PageHeader
         title="用户"
-        description="账号目录、角色、封禁与邀请。"
+        description="管理账号、角色与封禁，或邀请新成员。"
         actions={
           <Button onClick={() => setInviteOpen(true)}>
             <MailPlus /> 邀请用户

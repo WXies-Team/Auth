@@ -36,7 +36,7 @@ export default function AdminAIPage() {
     <div className="space-y-4">
       <PageHeader
         title="AI 用量"
-        description="按用户聚合的调用次数与限额；空表如实为空。"
+        description="查看各用户的 AI 调用次数与限额；没有调用时保持为空。"
         actions={
           <>
             <Select aria-label="时间范围" className="w-32" value={days} onChange={(e) => setDays(e.target.value)}>

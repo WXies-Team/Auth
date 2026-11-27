@@ -20,27 +20,27 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 const GROUPS: { title: string; desc: string; keys: string[] }[] = [
   {
     title: '邮件发信',
-    desc: '四键齐全才会真正发信；改库 10 秒内热生效。',
+    desc: '四键齐全后才会真正发信，保存后 ≤10 秒生效。',
     keys: ['mail_smtp_host', 'mail_smtp_port', 'mail_smtp_user', 'mail_smtp_pass'],
   },
   {
     title: '注销钩子',
-    desc: '与两个日记服务共享的 Bearer 与各自注销地址。',
+    desc: '与各接入应用共享的 Bearer 令牌与各自的注销地址。',
     keys: ['hook_token', 'hook_calorie_diary', 'hook_expense_diary'],
   },
   {
     title: 'Passkey / 两步验证',
-    desc: 'Android 原生 origin 与强制两步验证的项目名单。',
+    desc: '各接入 App 的 Android 原生签名指纹（Passkey）。',
     keys: ['webauthn_opaque_origins'],
   },
   {
     title: 'LLM 大模型',
-    desc: '两个日记 App 的模型接入；改完 ≤10 秒生效，由 /internal/config 下发。',
+    desc: '统一配置各接入应用的模型地址、模型与密钥；保存后 ≤10 秒生效。',
     keys: ['llm_base_url', 'llm_model', 'llm_api_key'],
   },
   {
     title: 'AI 限额',
-    desc: '看板与限额闸共用的四档值。',
+    desc: 'AI 用量看板与限流共用的四档值。',
     keys: ['ai_rate_per_minute', 'ai_concurrency', 'ai_daily_per_user', 'ai_daily_global'],
   },
   {
@@ -50,7 +50,7 @@ const GROUPS: { title: string; desc: string; keys: string[] }[] = [
   },
   {
     title: '注册与风险控制',
-    desc: '自助注册默认关闭；泄露库校验与「新 IP 强制 2FA」默认开启（填 0 关闭）。',
+    desc: '自助注册默认关闭；泄露库校验与「新 IP 强制 2FA」默认开启。',
     keys: ['allow_self_register', 'password_breach_check', 'risk_new_ip_mfa'],
   },
 ]
@@ -89,13 +89,13 @@ const FIELDS: Record<string, FieldMeta> = {
     kind: 'lines',
     rows: 4,
     placeholder: 'android:apk-key-hash:…（每行一条，最多 8 条）',
-    help: '两个 App 的原生签名指纹，精确匹配；格式错误会让对应 App 的 Passkey 仪式被拒。',
+    help: '各接入 App 的原生签名指纹，精确匹配；格式错误会让对应 App 的 Passkey 仪式被拒。',
   },
   audit_retention_days: { kind: 'number', min: 7, max: 365 },
   llm_base_url: {
     kind: 'text',
     placeholder: 'https://…/v1/chat/completions',
-    help: '可填完整端点（含 /chat/completions）或 Base URL（…/v1），两个日记服务都兼容。',
+    help: '可填完整端点（含 /chat/completions）或 Base URL（…/v1），下游服务都兼容。',
   },
   llm_model: { kind: 'text', placeholder: '上游模型 ID，如 gpt-5.1' },
   llm_api_key: { kind: 'text', placeholder: '上游 API Key' },
@@ -214,7 +214,7 @@ export default function AdminConfigPage() {
     <div className="space-y-4">
       <PageHeader
         title="配置中心"
-        description="白名单键；开关、数字、多行列表用对应控件，secret 只回末 4 位。项目级策略在「项目访问」页。"
+        description="统一管理部署级配置：邮件、注销钩子、模型接入与限额。项目级策略在「项目访问」页。"
         actions={
           <Button variant="outline" size="sm" onClick={() => setTestOpen(true)}>
             <Mail /> 发送测试邮件
