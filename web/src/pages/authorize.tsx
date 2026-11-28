@@ -116,7 +116,7 @@ export function ConsentCard({
   error: Error | null
   next: string
 }) {
-  const showSkeleton = useLoadingSkeleton(isLoading)
+  const showSkeleton = useLoadingSkeleton(isLoading, 300, 200)
   const { session, logout } = useAuth()
   const { data: profile } = useProfile()
   const [switching, setSwitching] = React.useState(false)
@@ -134,6 +134,8 @@ export function ConsentCard({
     }
   }
 
+  // 200ms 内回来的请求（同机接口的常态）不画骨架：卡片一次成型，不会先短后长。
+  const pending = isLoading && !showSkeleton
   const appName = data?.appName || data?.app
   const back = appReturn(next.includes('?') ? next.slice(next.indexOf('?') + 1) : '')
   const errInfo = error instanceof ApiError ? error : null
@@ -153,11 +155,24 @@ export function ConsentCard({
   const denied = errInfo?.status === 403 || errInfo?.reason === 'policy'
   const needsLogin = errInfo?.status === 401
 
+  if (pending) {
+    return <AuthLayout wide>{null}</AuthLayout>
+  }
+
   return (
     <AuthLayout wide>
       <Card>
         <CardHeader>
-          {appName ? (
+          {showSkeleton ? (
+            // 加载态与真实头部同构：44px 图标 + 两行文字，数据到了不会换高度。
+            <div className="flex items-center gap-3">
+              <Skeleton className="size-11 shrink-0 rounded-xl" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <Skeleton className="h-5 w-32" />
+                <Skeleton className="h-4 w-40" />
+              </div>
+            </div>
+          ) : appName ? (
             <div className="flex items-center gap-3">
               <AppBadge icon={data?.icon} name={appName} />
               <div className="min-w-0">
@@ -184,10 +199,23 @@ export function ConsentCard({
         </CardHeader>
         <CardContent className="space-y-4">
           {showSkeleton ? (
-            <div className="space-y-2">
-              <Skeleton className="h-14 w-full" />
-              <Skeleton className="h-9 w-full" />
-              <Skeleton className="h-9 w-full" />
+            // 与真实内容逐块对齐（账号行 / 权限 / 域名提示 / 按钮 / 底部说明），
+            // 否则卡片会先短后长，整屏居中再跳一次。
+            <div aria-busy="true" className="space-y-4">
+              <Skeleton className="h-[54px] w-full rounded-lg" />
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-4 w-44" />
+                <Skeleton className="h-4 w-40" />
+                <Skeleton className="h-3 w-56" />
+              </div>
+              <Skeleton className="h-[92px] w-full rounded-lg" />
+              {/* 按钮窄屏是两条通栏（40px），桌面并排（36px），骨架跟着同一套尺寸走。 */}
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <Skeleton className="h-10 w-full sm:h-9 sm:w-20" />
+                <Skeleton className="h-10 w-full sm:h-9 sm:w-24" />
+              </div>
+              <Skeleton className="mx-auto h-6 w-52 sm:h-3 sm:w-56" />
             </div>
           ) : error ? (
             needsLogin ? (

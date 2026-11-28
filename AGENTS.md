@@ -34,6 +34,7 @@ Before finishing: `JWT_SECRET` and `TOTP_ENC_KEY` must each be ≥32 bytes or th
 - On account deletion, call each diary hook and honor the 7-day grace (see sister-repos); a failing hook returns 503 and aborts.
 - 间距只用 4/8/12/16/24/32：卡片内边距 16（`sm` 起 24）、页面区块间距 24、表格单元格 `px-4 py-3`、列表行 `px-4 py-4 sm:px-6`；字号只有 12/14/16/18/20/24，正文 14/20；窄屏控件高 40、抽屉导航行 44。
 - OAuth 文案：应用名一律裸写（不加「」）；返回按钮写应用名（`返回 奇奇岛护照`），拿不到应用名才退到域名、再没有就 `返回 Auth 控制台`；名称与域名并列时写成 `名称（域名）`（域名只在授权说明里出现）。
+- 公开页（登录/注册/邀请/同意屏）品牌位固定在上三分之一，不做整列居中；整页级卡片用「200ms 后出骨架」，列表/表单页用即时骨架并与真实行高对齐，避免卡片先短后长闪一下。
 - 动效只有一套 token（`web/src/index.css` 的 `--motion-*` / `--ease-*`）；页面切换只做入场，不做新旧交叉淡入；窄屏（<640px）弹窗是从底部滑入的弹层。改数值时短链项目同步（它按同一份取值）。
 
 ### Ask first

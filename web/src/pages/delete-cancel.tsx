@@ -67,7 +67,10 @@ export default function DeleteCancelPage() {
               </Button>
             </div>
           ) : infoSkeleton ? (
-            <Skeleton className="h-16 w-full" />
+            <div aria-busy="true" className="space-y-4">
+              <Skeleton className="h-20 w-full rounded-md" />
+              <Skeleton className="h-9 w-full" />
+            </div>
           ) : info.error ? (
             <div className="space-y-3">
               <Alert variant="destructive">

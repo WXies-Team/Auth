@@ -614,8 +614,10 @@ export function RequireSuper() {
 }
 
 export function AuthLayout({ children, wide = false }: { children: React.ReactNode; wide?: boolean }) {
+  // 品牌位固定在视口上三分之一：卡片加载完时长高只往下长，品牌不会跟着上下跳。
+  // （原来整列居中，卡片从骨架变全量时整页会重新居中一次，就是「闪一下」的来源。）
   return (
-    <div className="auth-bg flex min-h-dvh flex-col items-center justify-center p-4">
+    <div className="auth-bg flex min-h-dvh flex-col items-center p-4 pt-[max(2.5rem,12vh)]">
       <div className="mb-6 flex items-center gap-2">
         <img src="/favicon.svg" alt="" className="size-8" />
         <span className="text-lg font-semibold tracking-tight">Auth</span>

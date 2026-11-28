@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { OtpInput } from '@/components/ui/otp-input'
 import { Progress } from '@/components/ui/progress'
-import { ListSkeleton } from '@/components/ui/skeleton'
+import { ListSkeleton, Skeleton } from '@/components/ui/skeleton'
 import { useLoadingSkeleton } from '@/lib/use-loading'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { CopyButton } from '@/components/ui/copy-button'
@@ -132,7 +132,7 @@ export default function SecurityPage() {
   }
 
   if (showSkeleton) {
-    return <div className="h-40 animate-pulse rounded-xl bg-muted" aria-hidden="true" />
+    return <Skeleton className="h-40 w-full" />
   }
 
   return (

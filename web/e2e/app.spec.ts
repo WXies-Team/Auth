@@ -297,7 +297,7 @@ test('授权同意页显示应用图标与当前账号，可切换账号', async
   await page.goto('/oauth/authorize?client_id=demo&response_type=code&state=x&challenge=y')
   // 应用图标用各项目自己的 favicon 站内副本，不再用首字占位。
   await expect(page.locator('img[src="/brand/Shortener-favicon.svg"]')).toBeVisible()
-  await expect(page.getByText('屑涵短链')).toBeVisible()
+  await expect(page.getByText('屑涵短链').first()).toBeVisible()
   await expect(page.getByText(session.email)).toBeVisible()
 
   await page.getByRole('button', { name: /切换账号/ }).click()
@@ -491,19 +491,19 @@ test('窄屏与宽屏均无横向溢出', async ({ page }) => {
   }
 })
 
-test('骨架屏立即可见且最少展示 300ms，加载完成不闪', async ({ page }) => {
+test('骨架屏最少展示 300ms，加载完成不闪', async ({ page }) => {
   // 不走 mockApi 的共享 /api/sessions 路由，确保这里的延迟一定生效。
   await page.route('**/web/session', (r) => r.fulfill({ json: session }))
   await page.route('**/api/profile', (r) => r.fulfill({ json: profile }))
   await page.route('**/api/totp', (r) => r.fulfill({ json: { enabled: true } }))
   await page.route('**/api/passkeys', (r) => r.fulfill({ json: [] }))
   await page.route('**/api/sessions', async (r) => {
-    // 600ms 让骨架窗口足够宽：300ms 的最小展示窗口在并行/慢机器上太容易被错过。
+    // 600ms 的请求保证骨架窗口够宽，并行/慢机器上也能稳定观察到。
     await new Promise((x) => setTimeout(x, 600))
     await r.fulfill({ json: sessions })
   })
   await page.goto('/web/console')
-  // 立即可见：点进页面就有占位反馈，而不是先白屏。
+  // 骨架出现后至少展示 300ms：600ms 的请求期间不消失，避免「闪一下就没了」。
   const skeleton = page.locator('main .skeleton').first()
   await expect(skeleton).toBeAttached()
   await expect(skeleton.evaluate((el) => getComputedStyle(el).opacity)).resolves.not.toBe('0')

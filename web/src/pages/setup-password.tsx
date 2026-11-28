@@ -55,7 +55,16 @@ export default function SetupPasswordPage() {
         <CardHeader>
           <CardTitle className="text-xl">设置新密码</CardTitle>
           <CardDescription>
-            {info.data ? `为 ${info.data.email} 设置新密码，完成后回到登录页。` : '设置新密码后回到登录页。'}
+            {infoSkeleton ? (
+              <span className="block space-y-2">
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-4 w-1/2" />
+              </span>
+            ) : info.data ? (
+              `为 ${info.data.email} 设置新密码，完成后回到登录页。`
+            ) : (
+              '设置新密码后回到登录页。'
+            )}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -64,9 +73,15 @@ export default function SetupPasswordPage() {
               <AlertDescription>链接缺少凭证，请从邮件重新打开。</AlertDescription>
             </Alert>
           ) : infoSkeleton ? (
-            <div className="space-y-2">
+            <div aria-busy="true" className="space-y-4">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="space-y-2">
+                  <Skeleton className="h-4 w-16" />
+                  <Skeleton className="h-10 w-full" />
+                </div>
+              ))}
               <Skeleton className="h-9 w-full" />
-              <Skeleton className="h-9 w-full" />
+              <Skeleton className="mx-auto h-3 w-2/3" />
             </div>
           ) : info.error ? (
             <div className="space-y-3">

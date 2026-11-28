@@ -59,7 +59,12 @@ export default function InvitePage() {
         <CardHeader>
           <CardTitle className="text-xl">接受邀请</CardTitle>
           <CardDescription>
-            {info.data ? (
+            {infoSkeleton ? (
+              <span className="block space-y-2">
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-4 w-1/2" />
+              </span>
+            ) : info.data ? (
               <>
                 为 <span className="text-foreground font-medium">{info.data.email}</span> 设置密码
                 {info.data.appName ? `，开通 ${info.data.appName} 的访问权限。` : '。'}
@@ -75,9 +80,16 @@ export default function InvitePage() {
               <AlertDescription>邀请链接缺少凭证，请从邮件重新打开。</AlertDescription>
             </Alert>
           ) : infoSkeleton ? (
-            <div className="space-y-2">
+            // 与真实表单同构（4 个字段组 + 按钮 + 说明），高度对得上，加载完不跳。
+            <div aria-busy="true" className="space-y-4">
+              {[0, 1, 2, 3].map((i) => (
+                <div key={i} className="space-y-2">
+                  <Skeleton className="h-4 w-16" />
+                  <Skeleton className="h-10 w-full" />
+                </div>
+              ))}
               <Skeleton className="h-9 w-full" />
-              <Skeleton className="h-9 w-full" />
+              <Skeleton className="mx-auto h-3 w-2/3" />
             </div>
           ) : info.error ? (
             <div className="space-y-3">
