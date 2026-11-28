@@ -69,7 +69,7 @@ func oauthAuthorize(svc *auth.Service) http.HandlerFunc {
 			Scope:               q.Get("scope"),
 		})
 		if err != nil {
-			renderOAuthError(w, r, err, "无法发起授权")
+			renderOAuthError(w, r, err, "无法发起授权", auth.OAuthTxInfo{})
 			return
 		}
 		if wc, ok := oauthWebCaller(svc, r); ok {
@@ -131,7 +131,7 @@ func oauthConfirm(svc *auth.Service) http.HandlerFunc {
 		}
 		redirect, err := svc.OAuthDecide(wc.UID, tx, decision, webSessMeta(r))
 		if err != nil {
-			renderOAuthError(w, r, err, "无法完成授权")
+			renderOAuthError(w, r, err, "无法完成授权", auth.OAuthTxInfo{})
 			return
 		}
 		// 表单 POST 的 302 也受 form-action 约束：放行本条 tx 的回跳 origin，
@@ -211,9 +211,11 @@ func wantsJSON(r *http.Request) bool {
 // renderOAuthConfirm 把授权事务摊给 SPA；直开浏览器时回 index.html，
 // 表单回跳的 CSP 仍按本事务的 redirect_uri 精确放行。
 func renderOAuthConfirm(svc *auth.Service, w http.ResponseWriter, r *http.Request, tx string, uid int64) {
+	// 拒绝也要能说清「是哪个应用」：错误回执里带上事务里的应用身份。
+	info := svc.OAuthTxInfo(tx)
 	view, err := svc.OAuthAuthorizeView(tx, uid)
 	if err != nil {
-		renderOAuthError(w, r, err, "无法继续授权")
+		renderOAuthError(w, r, err, "无法继续授权", info)
 		return
 	}
 	if wantsJSON(r) {
@@ -235,14 +237,19 @@ func renderOAuthConfirm(svc *auth.Service, w http.ResponseWriter, r *http.Reques
 
 // renderOAuthError 在 SPA 里回 JSON；直开浏览器回 index.html 并带业务状态码，
 // 由前端再取一次 JSON 显示同一句「出错 + 下一步」。
-func renderOAuthError(w http.ResponseWriter, r *http.Request, err error, title string) {
+func renderOAuthError(w http.ResponseWriter, r *http.Request, err error, title string, info auth.OAuthTxInfo) {
 	status := http.StatusBadRequest
 	var he *auth.HTTPError
 	if errors.As(err, &he) {
 		status = he.Code
 	}
 	if wantsJSON(r) {
-		writeError(w, status, errText(err))
+		writeJSON(w, status, struct {
+			Message      string `json:"message"`
+			App          string `json:"app,omitempty"`
+			AppName      string `json:"appName,omitempty"`
+			RedirectHost string `json:"redirectHost,omitempty"`
+		}{errText(err), info.App, info.AppName, info.RedirectHost})
 		return
 	}
 	serveSPAStatus(w, status)

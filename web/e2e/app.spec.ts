@@ -314,7 +314,11 @@ test('授权失败时返回应用而不是 Auth 登录页', async ({ page }) => 
   await page.route('**/api/profile', (route) => route.fulfill({ json: profile }))
   await page.route(
     (url) => url.pathname === '/oauth/authorize' && url.searchParams.get('format') === 'json',
-    (route) => route.fulfill({ status: 400, json: { message: '登录请求已过期，请重新发起授权' } }),
+    (route) =>
+      route.fulfill({
+        status: 400,
+        json: { message: '登录请求已过期，请重新发起授权', app: 'Shortener', appName: '屑涵短链', redirectHost: 'tio.fyi' },
+      }),
   )
   await page.goto(
     '/oauth/authorize?client_id=demo&response_type=code&state=x&challenge=y&redirect_uri=' +
@@ -322,7 +326,7 @@ test('授权失败时返回应用而不是 Auth 登录页', async ({ page }) => 
   )
   await expect(page.getByText('登录请求已过期，请重新发起授权')).toBeVisible()
   // 失败后不能回 Auth 登录页（tx 已失效，回去是死路），要回发起授权的应用。
-  const back = page.getByRole('link', { name: /返回 tio\.fyi/ })
+  const back = page.getByRole('link', { name: /返回 屑涵短链 重新发起/ })
   await expect(back).toHaveAttribute('href', 'https://tio.fyi')
 })
 
@@ -334,7 +338,13 @@ test('无权限登录显示专用说明，可换账号或回应用', async ({ pa
     (route) =>
       route.fulfill({
         status: 403,
-        json: { message: '奇奇岛护照项目仅限受邀用户登录，如需访问请联系管理员', reason: 'policy' },
+        json: {
+          message: '奇奇岛护照项目仅限受邀用户登录，如需访问请联系管理员',
+          reason: 'policy',
+          app: 'EPassportForMikey',
+          appName: '奇奇岛护照',
+          redirectHost: 'passport.horatio.cn',
+        },
       }),
   )
 
@@ -347,7 +357,8 @@ test('无权限登录显示专用说明，可换账号或回应用', async ({ pa
   await expect(page.getByText('仅限受邀用户登录')).toBeVisible()
   await expect(page.getByText(session.email)).toBeVisible()
   await expect(page.getByRole('button', { name: /换个账号登录/ })).toBeVisible()
-  await expect(page.getByRole('link', { name: /返回 passport\.horatio\.cn/ })).toHaveAttribute(
+  // 返回按钮写应用名，不是裸域名。
+  await expect(page.getByRole('link', { name: /返回 奇奇岛护照/ })).toHaveAttribute(
     'href',
     'https://passport.horatio.cn',
   )

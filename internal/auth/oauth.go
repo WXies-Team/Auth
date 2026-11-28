@@ -161,6 +161,28 @@ func (s *Service) OAuthAuthorizeView(tx string, uid int64) (*OAuthView, error) {
 	}, nil
 }
 
+// OAuthTxInfo 是错误页需要的应用身份：事务里的 app、品牌展示名与回跳主机。
+// tx 过期/不存在时全空——调用方按「未知应用」处理（错误页只给「返回控制台」）。
+type OAuthTxInfo struct {
+	App          string
+	AppName      string
+	RedirectHost string
+}
+
+// OAuthTxInfo 读出事务的应用身份（不绑定用户、不消耗 tx）。
+func (s *Service) OAuthTxInfo(tx string) OAuthTxInfo {
+	s.oauthStore.sweep()
+	e := s.oauthStore.tx(tx)
+	if e == nil {
+		return OAuthTxInfo{}
+	}
+	host := ""
+	if u, err := url.Parse(e.RedirectURI); err == nil {
+		host = u.Host
+	}
+	return OAuthTxInfo{App: e.App, AppName: appName(e.App), RedirectHost: host}
+}
+
 // OAuthDecide 执行确认页的决定：allow → 发授权码、deny → access_denied 回跳。
 // 两者都消耗 tx（单次）；tx 必须已绑定到本 uid（防登录甲确认乙的事务）。
 // deny 复查在这里再过一次（确认期间被封禁的窗口）。回执是完整的回跳 URL，

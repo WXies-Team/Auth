@@ -1,4 +1,11 @@
-export type ApiErrorBody = { message: string; reason?: string }
+export type ApiErrorBody = {
+  message: string
+  reason?: string
+  /** OAuth 错误页带的应身份（拒绝时也要能说清是哪个应用） */
+  app?: string
+  appName?: string
+  redirectHost?: string
+}
 
 export type WebSession = {
   uid: number

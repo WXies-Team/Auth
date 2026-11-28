@@ -3,10 +3,22 @@ import type { ApiErrorBody } from './types'
 export class ApiError extends Error {
   status: number
   reason?: string
-  constructor(message: string, status: number, reason?: string) {
+  /** OAuth 错误回执里的应用身份（其它接口为空） */
+  app?: string
+  appName?: string
+  redirectHost?: string
+  constructor(
+    message: string,
+    status: number,
+    reason?: string,
+    extra?: { app?: string; appName?: string; redirectHost?: string },
+  ) {
     super(message)
     this.status = status
     this.reason = reason
+    this.app = extra?.app
+    this.appName = extra?.appName
+    this.redirectHost = extra?.redirectHost
   }
 }
 
@@ -59,10 +71,16 @@ async function request<T>(path: string, opts: Options = {}, retried = false): Pr
   if (!res.ok) {
     let message = res.status === 429 ? '操作过于频繁，请稍后再试' : `请求失败（${res.status}）`
     let reason: string | undefined
+    let app: string | undefined
+    let appName: string | undefined
+    let redirectHost: string | undefined
     try {
       const data = (await res.json()) as ApiErrorBody
       if (data.message) message = data.message
       reason = data.reason
+      app = data.app
+      appName = data.appName
+      redirectHost = data.redirectHost
     } catch {
       // 非 JSON 错误体，保留兜底文案
     }
@@ -84,7 +102,7 @@ async function request<T>(path: string, opts: Options = {}, retried = false): Pr
         }
       }
     }
-    throw new ApiError(message, res.status, reason)
+    throw new ApiError(message, res.status, reason, { app, appName, redirectHost })
   }
 
   if (res.status === 204) return undefined as T

@@ -136,6 +136,13 @@ export function ConsentCard({
 
   const appName = data?.appName || data?.app
   const back = appReturn(next.includes('?') ? next.slice(next.indexOf('?') + 1) : '')
+  const errInfo = error instanceof ApiError ? error : null
+  // 错误回执带上了事务里的应用身份：拒绝页也按「应用名」返回，而不是裸域名。
+  const errName = errInfo?.appName || errInfo?.app || ''
+  const errHost = errInfo?.redirectHost || back?.host || ''
+  const errOrigin = back?.origin ?? (errInfo?.redirectHost ? `https://${errInfo.redirectHost}` : null)
+  // 返回按钮一律用应用名；没有应用名（无效客户端等）才退到域名，再没有就回控制台。
+  const backLabel = errName || errHost
   // 账号头像沿用控制台那一套：有图用图，没图用昵称首字 + 主题色。
   const email = data?.email || session?.email || ''
   const avatarName = profile?.nickname?.trim() || email.split('@')[0] || ''
@@ -143,8 +150,8 @@ export function ConsentCard({
   const avatarImage = avatarDataUrl(profile?.avatarImage)
   // 403 = 被门禁挡住（封禁 / 项目白名单 / 策略），不是表单或网络错误：
   // 单独一套「无权限」说明，而不是把红色报错塞在授权卡片里。
-  const denied = error instanceof ApiError && (error.status === 403 || error.reason === 'policy')
-  const needsLogin = error instanceof ApiError && error.status === 401
+  const denied = errInfo?.status === 403 || errInfo?.reason === 'policy'
+  const needsLogin = errInfo?.status === 401
 
   return (
     <AuthLayout wide>
@@ -198,9 +205,9 @@ export function ConsentCard({
                 <p className="bg-muted/50 rounded-md border px-3 py-2.5 text-sm">{error.message}</p>
                 <AccountRow email={email} name={avatarName} avatarImage={avatarImage} color={avatarColor} />
                 <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                  {back ? (
+                  {errOrigin ? (
                     <Button variant="outline" asChild>
-                      <a href={back.origin}>返回 {back.host}</a>
+                      <a href={errOrigin}>返回 {backLabel}</a>
                     </Button>
                   ) : (
                     <Button variant="outline" asChild>
@@ -222,9 +229,9 @@ export function ConsentCard({
                   <ShieldAlert className="size-4" />
                   <AlertDescription>{error.message}</AlertDescription>
                 </Alert>
-                {back ? (
+                {errOrigin ? (
                   <Button asChild className="w-full">
-                    <a href={back.origin}>返回 {back.host} 重新发起</a>
+                    <a href={errOrigin}>返回 {backLabel} 重新发起</a>
                   </Button>
                 ) : (
                   <Button variant="outline" className="w-full" asChild>
