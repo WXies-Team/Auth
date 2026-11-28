@@ -76,15 +76,17 @@
   --chart-4: #7c6af2;
   --chart-5: #e94634;
 
-  /* 动效 token：与短链项目保持同值。进入用 decelerate，退出用 accelerate。 */
+  /* 动效 token：与短链项目保持同值。
+     fast=交互反馈、base=菜单/开关、slow=弹窗/抽屉、page=页面区块；
+     enter 快起慢停，exit 加速离场，standard 用于原地移动/颜色。 */
   --motion-fast: 120ms;
-  --motion-base: 180ms;
-  --motion-slow: 240ms;
-  --motion-page: 220ms;
-  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
-  --ease-enter: cubic-bezier(0.05, 0.7, 0.1, 1);
-  --ease-exit: cubic-bezier(0.3, 0, 0.8, 0.15);
-  --ease-spring: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --motion-base: 200ms;
+  --motion-slow: 300ms;
+  --motion-page: 260ms;
+  --ease-standard: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-enter: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-exit: cubic-bezier(0.55, 0, 1, 0.45);
+  --ease-spring: cubic-bezier(0.42, 1.35, 0.21, 1);
 }
 
 .dark {
@@ -210,74 +212,40 @@
   text-wrap: balance;
 }
 
-/* 骨架屏：立即可见（无闪烁延迟），最少展示由页面侧的 useLoadingSkeleton 控制；
-   动画只在 opacity 上做呼吸，不碰尺寸/布局。 */
-@keyframes skeleton-pulse {
-  0%,
-  100% {
-    opacity: 0.55;
+/* ---------- 统一动效 ----------
+   取值参照公开的动效规范（Atlassian / Carbon / M3 Expressive / Memorisely）：
+   - 交互 120ms，浮层 180~300ms，页面 260ms；同一类元素退出比进入快约 30%
+   - 进入用 ease-out（快起、慢停），退出用 ease-in（加速离场，表示不会自己回来）
+   - 只动 opacity / transform / 颜色，不碰宽高与其它布局属性
+   - 页面内容按区块错峰进入（40ms 一档，最多 4 档），整屏总时长控制在 500ms 内
+
+   模式表：fade+rise = 页面区块 / 卡片；scale+fade = 菜单、弹窗；slide = 抽屉、
+   移动端底部弹层。同一模式在两个站点必须同参。 */
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
   }
-  50% {
+  to {
     opacity: 1;
   }
 }
-.skeleton {
-  animation: skeleton-pulse 1.6s ease-in-out infinite;
-}
-@media (prefers-reduced-motion: reduce) {
-  .skeleton {
-    animation: none;
+@keyframes fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
   }
 }
-
-/* ---------- 统一动效 ----------
-   页面切换走 React <ViewTransition>；浮层走 Radix data-state；交互走下面的小类。
-   只动 opacity / scale / translate，不碰布局属性。 */
-
-@keyframes page-in {
+@keyframes rise-in {
   from {
     opacity: 0;
-    translate: 0 4px;
+    translate: 0 6px;
   }
   to {
     opacity: 1;
     translate: 0 0;
-  }
-}
-@keyframes overlay-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-@keyframes overlay-out {
-  from {
-    opacity: 1;
-  }
-  to {
-    opacity: 0;
-  }
-}
-@keyframes dialog-in {
-  from {
-    opacity: 0;
-    scale: 0.96;
-  }
-  to {
-    opacity: 1;
-    scale: 1;
-  }
-}
-@keyframes dialog-out {
-  from {
-    opacity: 1;
-    scale: 1;
-  }
-  to {
-    opacity: 0;
-    scale: 0.98;
   }
 }
 @keyframes pop-in {
@@ -291,6 +259,26 @@
   }
 }
 @keyframes pop-out {
+  from {
+    opacity: 1;
+    scale: 1;
+  }
+  to {
+    opacity: 0;
+    scale: 0.98;
+  }
+}
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    scale: 0.96;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+@keyframes dialog-out {
   from {
     opacity: 1;
     scale: 1;
@@ -348,20 +336,10 @@
     transform: translateY(100%);
   }
 }
-@keyframes tab-in {
-  from {
-    opacity: 0;
-    translate: 0 4px;
-  }
-  to {
-    opacity: 1;
-    translate: 0 0;
-  }
-}
 @keyframes check-in {
   from {
     opacity: 0;
-    scale: 0.8;
+    scale: 0.6;
   }
   to {
     opacity: 1;
@@ -379,62 +357,87 @@
   }
 }
 
-/* 页面切换只做入场（page-enter）：不做新旧内容交叉淡入，避免两页文字叠在一起。 */
+/* 页面：只做入场。旧页面立即卸载，新页面整体淡入上移，任何时刻只有一页。 */
+.page-enter {
+  animation: rise-in var(--motion-page) var(--ease-enter) both;
+}
 
 /* 浮层：Radix 会等 closed 的动画结束再卸载。 */
 .overlay-motion[data-state="open"] {
-  animation: overlay-in var(--motion-base) var(--ease-enter) both;
+  animation: fade-in var(--motion-slow) var(--ease-enter) both;
 }
 .overlay-motion[data-state="closed"] {
-  animation: overlay-out 150ms var(--ease-exit) both;
+  animation: fade-out 180ms var(--ease-exit) both;
 }
 .dialog-motion[data-state="open"] {
-  animation: dialog-in 200ms var(--ease-enter) both;
+  animation: dialog-in var(--motion-slow) var(--ease-enter) both;
 }
 .dialog-motion[data-state="closed"] {
-  animation: dialog-out 150ms var(--ease-exit) both;
+  animation: dialog-out 180ms var(--ease-exit) both;
 }
 .menu-motion {
   transform-origin: var(--radix-dropdown-menu-content-transform-origin);
 }
 .menu-motion[data-state="open"] {
-  animation: pop-in 150ms var(--ease-enter) both;
+  animation: pop-in var(--motion-base) var(--ease-enter) both;
 }
 .menu-motion[data-state="closed"] {
-  animation: pop-out 100ms var(--ease-exit) both;
+  animation: pop-out 120ms var(--ease-exit) both;
 }
 .tooltip-motion {
   transform-origin: var(--radix-tooltip-content-transform-origin);
-  animation: pop-in var(--motion-fast) var(--ease-enter) both;
+  animation: pop-in 150ms var(--ease-enter) both;
 }
 .sheet-motion[data-side="right"][data-state="open"] {
-  animation: sheet-in-right 260ms var(--ease-enter) both;
+  animation: sheet-in-right 320ms var(--ease-enter) both;
 }
 .sheet-motion[data-side="right"][data-state="closed"] {
-  animation: sheet-out-right 200ms var(--ease-exit) both;
+  animation: sheet-out-right 220ms var(--ease-exit) both;
 }
 .sheet-motion[data-side="left"][data-state="open"] {
-  animation: sheet-in-left 260ms var(--ease-enter) both;
+  animation: sheet-in-left 320ms var(--ease-enter) both;
 }
 .sheet-motion[data-side="left"][data-state="closed"] {
-  animation: sheet-out-left 200ms var(--ease-exit) both;
+  animation: sheet-out-left 220ms var(--ease-exit) both;
 }
 .sheet-motion[data-side="bottom"][data-state="open"] {
-  animation: sheet-in-bottom 260ms var(--ease-enter) both;
+  animation: sheet-in-bottom 320ms var(--ease-enter) both;
 }
 .sheet-motion[data-side="bottom"][data-state="closed"] {
-  animation: sheet-out-bottom 200ms var(--ease-exit) both;
+  animation: sheet-out-bottom 220ms var(--ease-exit) both;
 }
 
-/* 交互反馈 */
+/* 窄屏：弹窗改成从底部滑入的弹层（桌面仍是居中缩放），两站同一行为。 */
+@media (max-width: 639px) {
+  .dialog-motion {
+    inset: auto 0 0;
+    width: 100%;
+    max-width: none;
+    max-height: 92dvh;
+    translate: none;
+    border-radius: calc(var(--radius) + 4px) calc(var(--radius) + 4px) 0 0;
+    padding-bottom: calc(1.5rem + env(safe-area-inset-bottom));
+  }
+  .dialog-motion[data-state="open"] {
+    animation: sheet-in-bottom 320ms var(--ease-enter) both;
+  }
+  .dialog-motion[data-state="closed"] {
+    animation: sheet-out-bottom 220ms var(--ease-exit) both;
+  }
+}
+
+/* 交互反馈：按下即时缩一点，图标跟着指尖动；活动滑块用带一点回弹的曲线。 */
 .press {
   transition: transform var(--motion-fast) var(--ease-standard);
 }
 .press:active {
-  transform: scale(0.98);
+  transform: scale(0.97);
+}
+.nav-indicator {
+  transition: transform 300ms var(--ease-spring);
 }
 .tab-enter {
-  animation: tab-in var(--motion-base) var(--ease-enter) both;
+  animation: rise-in var(--motion-base) var(--ease-enter) both;
 }
 .check-indicator {
   animation: check-in var(--motion-fast) var(--ease-enter) both;
@@ -442,16 +445,46 @@
 .icon-swap {
   animation: icon-in var(--motion-fast) var(--ease-enter) both;
 }
-.nav-indicator {
-  transition: transform var(--motion-base) var(--ease-standard);
+
+/* 骨架：一条扫过去的高光，比整体呼吸更容易读成“正在加载”。 */
+@keyframes skeleton-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
 }
-.page-enter {
-  animation: page-in var(--motion-page) var(--ease-enter) both;
+.skeleton {
+  position: relative;
+  overflow: hidden;
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklch, var(--foreground) 7%, transparent),
+    transparent
+  );
+  transform: translateX(-100%);
+  animation: skeleton-sweep 1.4s var(--ease-standard) infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .press:active {
     transform: none;
+  }
+  .page-enter,
+  .tab-enter,
+  .check-indicator,
+  .icon-swap {
+    animation: none;
+  }
+  .skeleton::after {
+    animation: none;
   }
 }
 

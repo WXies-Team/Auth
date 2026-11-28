@@ -142,6 +142,7 @@ function NavList({ items, onSelect }: { items: NavItem[]; onSelect?: (to: string
             aria-current={active ? 'page' : undefined}
             className={cn(
               'relative z-10 flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors',
+              '[&_svg]:transition-transform [&_svg]:duration-150 [&:active_svg]:scale-90',
               active ? 'text-foreground' : 'text-muted-foreground hover:bg-sidebar-accent hover:text-foreground',
             )}
           >

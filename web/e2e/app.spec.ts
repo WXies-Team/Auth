@@ -302,7 +302,7 @@ test('浮层与页面有统一动效，reduced-motion 下不位移', async ({ pa
   await page.waitForTimeout(30)
   const normal = await motion()
   expect(normal.dialog).toContain('dialog-in')
-  expect(normal.overlay).toContain('overlay-in')
+  expect(normal.overlay).toContain('fade-in')
   await page.keyboard.press('Escape')
   await expect(page.getByRole('dialog')).toHaveCount(0)
 
@@ -312,6 +312,29 @@ test('浮层与页面有统一动效，reduced-motion 下不位移', async ({ pa
   await page.waitForTimeout(30)
   const reduced = await motion()
   expect(reduced.duration).toBeLessThan(0.01)
+  await page.keyboard.press('Escape')
+
+  // 窄屏弹窗改成从底部滑入的弹层：贴底、满宽、动画名是 sheet-in-bottom。
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByRole('button', { name: '编辑 接口地址' }).click()
+  await page.waitForTimeout(30)
+  expect(await page.evaluate(() => getComputedStyle(document.querySelector('[role=dialog]') as HTMLElement).animationName)).toContain('sheet-in-bottom')
+  // 等滑入结束再量几何：动画途中量到的是仍在屏幕外的位置。
+  await page.waitForTimeout(400)
+  const sheet = await page.evaluate(() => {
+    const dialog = document.querySelector('[role=dialog]') as HTMLElement
+    const rect = dialog.getBoundingClientRect()
+    return {
+      anim: getComputedStyle(dialog).animationName,
+      bottom: Math.round(rect.bottom),
+      width: Math.round(rect.width),
+      viewport: innerWidth,
+      height: innerHeight,
+    }
+  })
+  expect(sheet.bottom).toBe(sheet.height)
+  expect(sheet.width).toBe(sheet.viewport)
   await page.keyboard.press('Escape')
 })
 
