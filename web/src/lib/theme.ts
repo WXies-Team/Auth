@@ -5,7 +5,6 @@ export type Theme = 'light' | 'dark' | 'system'
 const KEY = 'auth-theme'
 const listeners = new Set<() => void>()
 let current: Theme = readStored()
-let booted = false
 
 function readStored(): Theme {
   const stored = localStorage.getItem(KEY)
@@ -35,25 +34,11 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
   emit()
 })
 
-type ViewTransitionDocument = Document & {
-  activeViewTransition?: unknown
-  startViewTransition?: (options: { update: () => void; types: string[] }) => unknown
-}
-
 export function setTheme(next: Theme) {
   localStorage.setItem(KEY, next)
-  const commit = () => {
-    current = next
-    apply(next)
-    emit()
-  }
-  const doc = document as ViewTransitionDocument
-  // 首屏不播放；已有 React/Router 的过渡在跑时让路，避免两个 ViewTransition 互相打断。
-  if (booted && doc.startViewTransition && !matchMedia('(prefers-reduced-motion: reduce)').matches && !doc.activeViewTransition) {
-    doc.startViewTransition({ update: commit, types: ['theme'] })
-  } else {
-    commit()
-  }
+  current = next
+  apply(next)
+  emit()
 }
 
 export function useTheme() {
@@ -69,8 +54,3 @@ export function useTheme() {
 
   return { theme, setTheme }
 }
-
-// 首个订阅建立后，后续切换才播放过渡。
-queueMicrotask(() => {
-  booted = true
-})

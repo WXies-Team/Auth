@@ -21,7 +21,7 @@ export function SheetContent({
         className={cn(
           'sheet-motion bg-background fixed z-50 flex flex-col gap-4 shadow-lg',
           side === 'right' && 'inset-y-0 right-0 h-full w-[min(32rem,92vw)] border-l',
-          side === 'left' && 'inset-y-0 left-0 h-full w-[min(20rem,85vw)] border-r',
+          side === 'left' && 'inset-y-0 left-0 h-full w-[min(17.5rem,85vw)] border-r',
           side === 'bottom' && 'inset-x-0 bottom-0 max-h-[90vh] rounded-t-xl border-t',
           className,
         )}

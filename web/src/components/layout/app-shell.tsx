@@ -1,5 +1,4 @@
 import * as React from 'react'
-import { ViewTransition } from 'react'
 import { Link, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   Activity,
@@ -76,7 +75,7 @@ function isNavActive(pathname: string, to: string): boolean {
   return pathname === to || pathname.startsWith(to + '/')
 }
 
-function NavList({ items, onNavigate }: { items: NavItem[]; onNavigate?: () => void }) {
+function NavList({ items, onSelect }: { items: NavItem[]; onSelect?: (to: string) => void }) {
   const { pathname } = useLocation()
   const { t } = useI18n()
   const navRef = React.useRef<HTMLElement>(null)
@@ -131,7 +130,15 @@ function NavList({ items, onNavigate }: { items: NavItem[]; onNavigate?: () => v
               else linkRefs.current.delete(item.to)
             }}
             to={item.to}
-            onClick={onNavigate}
+            onClick={
+              onSelect
+                ? (event) => {
+                    // 抽屉里：点目标即收起抽屉（导航仍同步发生）。
+                    event.preventDefault()
+                    onSelect(item.to)
+                  }
+                : undefined
+            }
             aria-current={active ? 'page' : undefined}
             className={cn(
               'relative z-10 flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors',
@@ -147,16 +154,27 @@ function NavList({ items, onNavigate }: { items: NavItem[]; onNavigate?: () => v
   )
 }
 
-function Brand({ onNavigate }: { onNavigate?: () => void }) {
+function Brand({ onSelect }: { onSelect?: (to: string) => void }) {
   return (
-    <Link to="/web/console" onClick={onNavigate} className="flex items-center gap-2 px-2 py-1">
+    <Link
+      to="/web/console"
+      onClick={
+        onSelect
+          ? (event) => {
+              event.preventDefault()
+              onSelect('/web/console')
+            }
+          : undefined
+      }
+      className="flex items-center gap-2 px-2 py-1"
+    >
       <img src="/favicon.svg" alt="" className="size-7" />
       <span className="text-base font-semibold tracking-tight">Auth</span>
     </Link>
   )
 }
 
-function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
+function SidebarBody({ onSelect }: { onSelect?: (to: string) => void }) {
   const { session } = useAuth()
   const { t } = useI18n()
   const location = useLocation()
@@ -169,19 +187,26 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
 
   return (
     <div className="flex h-full flex-col gap-4 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
-      <Brand onNavigate={onNavigate} />
+      <Brand onSelect={onSelect} />
       <div className="flex-1 overflow-y-auto overscroll-contain">
         <p className="text-muted-foreground px-2.5 pb-2 text-xs font-medium">
           {inAdmin ? t('nav.adminSection') : t('nav.consoleSection')}
         </p>
-        <NavList items={items} onNavigate={onNavigate} />
+        <NavList items={items} onSelect={onSelect} />
       </div>
       <div className="space-y-2">
         <Separator />
         {inAdmin ? (
           <Link
             to="/web/console"
-            onClick={onNavigate}
+            onClick={
+              onSelect
+                ? (event) => {
+                    event.preventDefault()
+                    onSelect('/web/console')
+                  }
+                : undefined
+            }
             className="text-muted-foreground hover:bg-sidebar-accent hover:text-foreground flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium"
           >
             <LayoutDashboard className="size-4" /> {t('nav.backConsole')}
@@ -190,7 +215,14 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
           isAdmin && (
             <Link
               to={session?.role === 'super' ? '/web/admin' : '/web/admin/sessions'}
-              onClick={onNavigate}
+              onClick={
+                onSelect
+                  ? (event) => {
+                      event.preventDefault()
+                      onSelect(session?.role === 'super' ? '/web/admin' : '/web/admin/sessions')
+                    }
+                  : undefined
+              }
               className="text-muted-foreground hover:bg-sidebar-accent hover:text-foreground flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium"
             >
               <ShieldCheck className="size-4" /> {t('nav.adminConsole')}
@@ -310,8 +342,13 @@ function Topbar() {
   const { session } = useAuth()
   const { t } = useI18n()
   // 模态抽屉选中目标后必须自己收起（Material 3 / 移动端抽屉的通用要求）：
-  // 否则页面在抽屉后面已经换了，滚动复位还会让底下的内容在底栏附近闪一下。
+  // 否则页面已经在抽屉后面换了，抽屉还盖在那儿。
   const [navOpen, setNavOpen] = React.useState(false)
+  const navigate = useNavigate()
+  const navigateFromDrawer = (to: string) => {
+    setNavOpen(false)
+    navigate(to)
+  }
   const inAdmin = location.pathname.startsWith('/web/admin')
   const title = inAdmin ? t('nav.adminSection') : t('nav.consoleSection')
   return (
@@ -324,7 +361,7 @@ function Topbar() {
         </SheetTrigger>
         <SheetContent side="left" className="p-0">
           <SheetTitle className="sr-only">导航</SheetTitle>
-          <SidebarBody onNavigate={() => setNavOpen(false)} />
+          <SidebarBody onSelect={navigateFromDrawer} />
         </SheetContent>
       </Sheet>
       <div className="min-w-0 flex-1">
@@ -460,9 +497,10 @@ export function AppShell() {
         <Topbar />
         <AdminMfaNotice />
         <main ref={mainRef} tabIndex={-1} className="relative mx-auto w-full max-w-7xl p-4 outline-none sm:p-6">
-          <ViewTransition name="page-content">
+          {/* 只让新页面入场，不做新旧交叉淡入：两页内容同时半透明会叠字。 */}
+          <div key={pathname} className="page-enter">
             <Outlet />
-          </ViewTransition>
+          </div>
         </main>
       </div>
       <CommandPalette open={palette} onOpenChange={setPalette} />
