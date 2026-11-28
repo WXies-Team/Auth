@@ -622,8 +622,12 @@ export function AuthLayout({ children, wide = false }: { children: React.ReactNo
         <img src="/favicon.svg" alt="" className="size-8" />
         <span className="text-lg font-semibold tracking-tight">Auth</span>
       </div>
-      {/* 同意屏内容更多，桌面放宽到 28rem；登录/注册仍用 24rem。 */}
-      <div className={cn('page-enter w-full', wide ? 'max-w-md' : 'max-w-sm')}>{children}</div>
+      {/* 同意屏内容更多，桌面放宽到 28rem；登录/注册仍用 24rem。
+          内容为空的加载态不挂载动画壳：卡片一到就跟着它一起上浮，
+          而不是壳先播完、卡片再「直接闪出来」。 */}
+      <div className={cn('w-full', wide ? 'max-w-md' : 'max-w-sm')}>
+        {children ? <div className="page-enter">{children}</div> : null}
+      </div>
     </div>
   )
 }
