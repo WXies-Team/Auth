@@ -614,19 +614,21 @@ export function RequireSuper() {
 }
 
 export function AuthLayout({ children, wide = false }: { children: React.ReactNode; wide?: boolean }) {
-  // 品牌位固定在视口上三分之一：卡片加载完时长高只往下长，品牌不会跟着上下跳。
-  // （原来整列居中，卡片从骨架变全量时整页会重新居中一次，就是「闪一下」的来源。）
+  // 登录/注册/邀请/同意屏/错误页统一版式：品牌顶上、卡片在剩余空间里垂直居中。
+  // 品牌不参与居中，卡片高度变化只影响自己，品牌不会跟着上下跳。
   return (
-    <div className="auth-bg flex min-h-dvh flex-col items-center p-4 pt-[max(2.5rem,12vh)]">
-      <div className="mb-6 flex items-center gap-2">
+    <div className="auth-bg flex min-h-dvh flex-col items-center px-4 pt-[max(2rem,env(safe-area-inset-top))] pb-4">
+      <div className="flex items-center gap-2 py-4">
         <img src="/favicon.svg" alt="" className="size-8" />
         <span className="text-lg font-semibold tracking-tight">Auth</span>
       </div>
       {/* 同意屏内容更多，桌面放宽到 28rem；登录/注册仍用 24rem。
           内容为空的加载态不挂载动画壳：卡片一到就跟着它一起上浮，
           而不是壳先播完、卡片再「直接闪出来」。 */}
-      <div className={cn('w-full', wide ? 'max-w-md' : 'max-w-sm')}>
-        {children ? <div className="page-enter">{children}</div> : null}
+      <div className="flex w-full flex-1 flex-col">
+        <div className={cn('m-auto w-full', wide ? 'max-w-md' : 'max-w-sm')}>
+          {children ? <div className="page-enter">{children}</div> : null}
+        </div>
       </div>
     </div>
   )
