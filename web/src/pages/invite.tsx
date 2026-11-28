@@ -62,7 +62,7 @@ export default function InvitePage() {
             {info.data ? (
               <>
                 为 <span className="text-foreground font-medium">{info.data.email}</span> 设置密码
-                {info.data.appName ? `，开通「${info.data.appName}」的访问权限。` : '。'}
+                {info.data.appName ? `，开通 ${info.data.appName} 的访问权限。` : '。'}
               </>
             ) : (
               '设置密码后即可登录。'

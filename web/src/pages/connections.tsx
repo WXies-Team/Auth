@@ -93,7 +93,7 @@ export default function ConnectionsPage() {
       <ConfirmDialog
         open={!!target}
         onOpenChange={(v) => !v && setTarget(null)}
-        title={`撤销「${target ? target.name || appLabel(target.app) : ''}」的授权？`}
+        title={`撤销 ${target ? target.name || appLabel(target.app) : ''} 的授权？`}
         description="该应用将无法再用你的账号登录，直到你重新授权。"
         confirmLabel="撤销"
         destructive
