@@ -613,14 +613,15 @@ export function RequireSuper() {
   return <Outlet />
 }
 
-export function AuthLayout({ children }: { children: React.ReactNode }) {
+export function AuthLayout({ children, wide = false }: { children: React.ReactNode; wide?: boolean }) {
   return (
     <div className="auth-bg flex min-h-dvh flex-col items-center justify-center p-4">
       <div className="mb-6 flex items-center gap-2">
         <img src="/favicon.svg" alt="" className="size-8" />
         <span className="text-lg font-semibold tracking-tight">Auth</span>
       </div>
-      <div className="page-enter w-full max-w-sm">{children}</div>
+      {/* 同意屏内容更多，桌面放宽到 28rem；登录/注册仍用 24rem。 */}
+      <div className={cn('page-enter w-full', wide ? 'max-w-md' : 'max-w-sm')}>{children}</div>
     </div>
   )
 }
