@@ -70,6 +70,41 @@ function AppBadge({ icon, name }: { icon?: string; name: string }) {
   )
 }
 
+function AccountRow({
+  email,
+  name,
+  avatarImage,
+  color,
+  onSwitch,
+  switching = false,
+}: {
+  email: string
+  name: string
+  avatarImage?: string
+  color: string
+  onSwitch?: () => void
+  switching?: boolean
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-lg border px-3 py-2.5">
+      <Avatar className="size-8">
+        <AvatarImage src={avatarImage} alt="" />
+        <AvatarFallback style={{ background: color, color: '#fff' }}>{initials(name)}</AvatarFallback>
+      </Avatar>
+      <div className="min-w-0 flex-1">
+        <p className="text-muted-foreground text-xs">当前账号</p>
+        <p className="truncate text-sm font-medium">{email}</p>
+      </div>
+      {onSwitch && (
+        <Button variant="ghost" size="sm" onClick={onSwitch} disabled={switching}>
+          {switching ? <Loader2 className="animate-spin" /> : <ArrowLeftRight />}
+          切换账号
+        </Button>
+      )}
+    </div>
+  )
+}
+
 export function ConsentCard({
   data,
   isLoading,
@@ -82,27 +117,34 @@ export function ConsentCard({
   next: string
 }) {
   const showSkeleton = useLoadingSkeleton(isLoading)
-  const { logout } = useAuth()
+  const { session, logout } = useAuth()
   const { data: profile } = useProfile()
   const [switching, setSwitching] = React.useState(false)
 
-  // 换账号 = 结束当前会话，再带着同一个 tx 回登录页；登录成功后按 tx 续跑授权，
-  // 同意仍由新登录的人做（tx 只存请求参数，不绑定用户）。
+  // 换账号 = 结束会话后重放当前授权地址：没有会话时服务端会新建 tx 并 302 到登录页，
+  // 登录成功按 tx 续跑；同意仍由新登录的人做（tx 只存请求参数，不绑定用户）。
+  // 这样在「没有访问权限」页（拿不到 tx）也能用同一个动作。
   async function switchAccount() {
-    if (!data || switching) return
+    if (switching) return
     setSwitching(true)
     try {
       await logout()
     } finally {
-      window.location.assign(`/web/login?tx=${encodeURIComponent(data.tx)}`)
+      window.location.assign(next)
     }
   }
 
   const appName = data?.appName || data?.app
   const back = appReturn(next.includes('?') ? next.slice(next.indexOf('?') + 1) : '')
   // 账号头像沿用控制台那一套：有图用图，没图用昵称首字 + 主题色。
-  const avatarName = profile?.nickname?.trim() || data?.email.split('@')[0] || ''
+  const email = data?.email || session?.email || ''
+  const avatarName = profile?.nickname?.trim() || email.split('@')[0] || ''
   const avatarColor = AVATAR_PALETTE[profile?.avatarColor ?? 0] ?? AVATAR_PALETTE[0]
+  const avatarImage = avatarDataUrl(profile?.avatarImage)
+  // 403 = 被门禁挡住（封禁 / 项目白名单 / 策略），不是表单或网络错误：
+  // 单独一套「无权限」说明，而不是把红色报错塞在授权卡片里。
+  const denied = error instanceof ApiError && (error.status === 403 || error.reason === 'policy')
+  const needsLogin = error instanceof ApiError && error.status === 401
 
   return (
     <AuthLayout wide>
@@ -114,6 +156,16 @@ export function ConsentCard({
               <div className="min-w-0">
                 <CardTitle className="text-xl">{appName}</CardTitle>
                 <CardDescription>请求访问你的账号</CardDescription>
+              </div>
+            </div>
+          ) : denied ? (
+            <div className="flex items-center gap-3">
+              <div className="bg-muted text-muted-foreground grid size-11 shrink-0 place-items-center rounded-xl">
+                <ShieldAlert className="size-5" />
+              </div>
+              <div className="min-w-0">
+                <CardTitle className="text-xl">没有访问权限</CardTitle>
+                <CardDescription>当前账号不能登录该应用。</CardDescription>
               </div>
             </div>
           ) : (
@@ -131,43 +183,66 @@ export function ConsentCard({
               <Skeleton className="h-9 w-full" />
             </div>
           ) : error ? (
-            <div className="space-y-3">
-              <Alert variant="destructive">
-                <ShieldAlert className="size-4" />
-                <AlertDescription>{error.message}</AlertDescription>
-              </Alert>
-              {error instanceof ApiError && error.status === 401 ? (
+            needsLogin ? (
+              <div className="space-y-3">
+                <Alert variant="destructive">
+                  <ShieldAlert className="size-4" />
+                  <AlertDescription>{error.message}</AlertDescription>
+                </Alert>
                 <Button asChild className="w-full">
                   <Link to={`/web/login?next=${encodeURIComponent(next)}`}>先登录再继续</Link>
                 </Button>
-              ) : back ? (
-                <Button asChild className="w-full">
-                  <a href={back.origin}>返回 {back.host} 重新发起</a>
-                </Button>
-              ) : (
-                <Button variant="outline" className="w-full" asChild>
-                  <Link to="/web/console">返回 Auth 控制台</Link>
-                </Button>
-              )}
-            </div>
+              </div>
+            ) : denied ? (
+              <div className="space-y-4">
+                <p className="bg-muted/50 rounded-md border px-3 py-2.5 text-sm">{error.message}</p>
+                <AccountRow email={email} name={avatarName} avatarImage={avatarImage} color={avatarColor} />
+                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  {back ? (
+                    <Button variant="outline" asChild>
+                      <a href={back.origin}>返回 {back.host}</a>
+                    </Button>
+                  ) : (
+                    <Button variant="outline" asChild>
+                      <Link to="/web/console">返回 Auth 控制台</Link>
+                    </Button>
+                  )}
+                  <Button onClick={() => void switchAccount()} disabled={switching}>
+                    {switching ? <Loader2 className="animate-spin" /> : <ArrowLeftRight />}
+                    换个账号登录
+                  </Button>
+                </div>
+                <p className="text-muted-foreground text-center text-xs">
+                  权限由管理员分配；换一个已获授权的账号，或联系管理员。
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <Alert variant="destructive">
+                  <ShieldAlert className="size-4" />
+                  <AlertDescription>{error.message}</AlertDescription>
+                </Alert>
+                {back ? (
+                  <Button asChild className="w-full">
+                    <a href={back.origin}>返回 {back.host} 重新发起</a>
+                  </Button>
+                ) : (
+                  <Button variant="outline" className="w-full" asChild>
+                    <Link to="/web/console">返回 Auth 控制台</Link>
+                  </Button>
+                )}
+              </div>
+            )
           ) : data ? (
             <>
-              <div className="flex items-center gap-3 rounded-lg border px-3 py-2.5">
-                <Avatar className="size-8">
-                  <AvatarImage src={avatarDataUrl(profile?.avatarImage)} alt="" />
-                  <AvatarFallback style={{ background: avatarColor, color: '#fff' }}>
-                    {initials(avatarName)}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="min-w-0 flex-1">
-                  <p className="text-muted-foreground text-xs">当前账号</p>
-                  <p className="truncate text-sm font-medium">{data.email}</p>
-                </div>
-                <Button variant="ghost" size="sm" onClick={() => void switchAccount()} disabled={switching}>
-                  {switching ? <Loader2 className="animate-spin" /> : <ArrowLeftRight />}
-                  切换账号
-                </Button>
-              </div>
+              <AccountRow
+                email={email}
+                name={avatarName}
+                avatarImage={avatarImage}
+                color={avatarColor}
+                onSwitch={() => void switchAccount()}
+                switching={switching}
+              />
 
               <div className="space-y-2">
                 <p className="text-sm font-medium">该应用将获得</p>

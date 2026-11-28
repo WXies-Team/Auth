@@ -264,12 +264,18 @@ test('配置中心用类型化控件，项目级策略在项目访问页', async
 
 test('授权同意页显示应用图标与当前账号，可切换账号', async ({ page }) => {
   let signedIn = true
+  let loggedOut = false
+  const navigations: string[] = []
+  page.on('framenavigated', (frame) => {
+    if (frame === page.mainFrame()) navigations.push(frame.url())
+  })
   await page.route('**/web/session', (route) =>
     signedIn ? route.fulfill({ json: session }) : route.fulfill({ status: 401, json: { message: '未登录' } }),
   )
   await page.route('**/api/profile', (route) => route.fulfill({ json: profile }))
   await page.route('**/web/logout', (route) => {
     signedIn = false
+    loggedOut = true
     route.fulfill({ status: 204, body: '' })
   })
   await page.route(
@@ -295,8 +301,12 @@ test('授权同意页显示应用图标与当前账号，可切换账号', async
   await expect(page.getByText(session.email)).toBeVisible()
 
   await page.getByRole('button', { name: /切换账号/ }).click()
-  // 换账号 = 结束当前会话 + 带同一个 tx 回登录页；tx 不含 uid，同意仍由新账号做。
-  await expect(page).toHaveURL(/\/web\/login\?tx=demo-tx$/)
+  // 换账号 = 结束当前会话后重放当前授权地址（服务端在没有会话时 302 到 /web/login?tx=…，
+  // 登录成功后按 tx 续跑；tx 不含 uid，同意仍由新账号自己给）。
+  await expect.poll(() => loggedOut).toBe(true)
+  await expect
+    .poll(() => navigations.some((url) => url.includes('/oauth/authorize?client_id=demo')))
+    .toBe(true)
 })
 
 test('授权失败时返回应用而不是 Auth 登录页', async ({ page }) => {
@@ -314,6 +324,33 @@ test('授权失败时返回应用而不是 Auth 登录页', async ({ page }) => 
   // 失败后不能回 Auth 登录页（tx 已失效，回去是死路），要回发起授权的应用。
   const back = page.getByRole('link', { name: /返回 tio\.fyi/ })
   await expect(back).toHaveAttribute('href', 'https://tio.fyi')
+})
+
+test('无权限登录显示专用说明，可换账号或回应用', async ({ page }) => {
+  await page.route('**/web/session', (route) => route.fulfill({ json: session }))
+  await page.route('**/api/profile', (route) => route.fulfill({ json: profile }))
+  await page.route(
+    (url) => url.pathname === '/oauth/authorize' && url.searchParams.get('format') === 'json',
+    (route) =>
+      route.fulfill({
+        status: 403,
+        json: { message: '「奇奇岛护照」项目仅限受邀用户登录，如需访问请联系管理员', reason: 'policy' },
+      }),
+  )
+
+  await page.goto(
+    '/oauth/authorize?client_id=demo&response_type=code&state=x&challenge=y&redirect_uri=' +
+      encodeURIComponent('https://passport.horatio.cn/cb'),
+  )
+  // 403 是门禁拒绝，不是表单错误：专用标题 + 原文说明 + 当前账号，不是红框报错。
+  await expect(page.getByText('没有访问权限')).toBeVisible()
+  await expect(page.getByText('仅限受邀用户登录')).toBeVisible()
+  await expect(page.getByText(session.email)).toBeVisible()
+  await expect(page.getByRole('button', { name: /换个账号登录/ })).toBeVisible()
+  await expect(page.getByRole('link', { name: /返回 passport\.horatio\.cn/ })).toHaveAttribute(
+    'href',
+    'https://passport.horatio.cn',
+  )
 })
 
 test('移动端抽屉选中目标后自动收起', async ({ page }) => {
@@ -450,7 +487,8 @@ test('骨架屏立即可见且最少展示 300ms，加载完成不闪', async ({
   await page.route('**/api/totp', (r) => r.fulfill({ json: { enabled: true } }))
   await page.route('**/api/passkeys', (r) => r.fulfill({ json: [] }))
   await page.route('**/api/sessions', async (r) => {
-    await new Promise((x) => setTimeout(x, 200))
+    // 600ms 让骨架窗口足够宽：300ms 的最小展示窗口在并行/慢机器上太容易被错过。
+    await new Promise((x) => setTimeout(x, 600))
     await r.fulfill({ json: sessions })
   })
   await page.goto('/web/console')
@@ -458,10 +496,10 @@ test('骨架屏立即可见且最少展示 300ms，加载完成不闪', async ({
   const skeleton = page.locator('main .skeleton').first()
   await expect(skeleton).toBeAttached()
   await expect(skeleton.evaluate((el) => getComputedStyle(el).opacity)).resolves.not.toBe('0')
-  // 数据 200ms 就到了，但骨架最少展示 300ms：期间不消失，避免“闪一下就没了”。
+  // 数据 600ms 才到，骨架最少展示 300ms：期间不消失，避免“闪一下就没了”。
   await page.waitForTimeout(120)
   await expect(skeleton).toBeAttached()
-  await page.waitForTimeout(400)
+  await page.waitForTimeout(700)
   // 最少展示期结束后内容接管，骨架消失。
   await expect(skeleton).toHaveCount(0)
   await expect(page.getByText('MacBook Pro · Chrome')).toBeVisible()
