@@ -299,6 +299,23 @@ test('授权同意页显示应用图标与当前账号，可切换账号', async
   await expect(page).toHaveURL(/\/web\/login\?tx=demo-tx$/)
 })
 
+test('授权失败时返回应用而不是 Auth 登录页', async ({ page }) => {
+  await page.route('**/web/session', (route) => route.fulfill({ json: session }))
+  await page.route('**/api/profile', (route) => route.fulfill({ json: profile }))
+  await page.route(
+    (url) => url.pathname === '/oauth/authorize' && url.searchParams.get('format') === 'json',
+    (route) => route.fulfill({ status: 400, json: { message: '登录请求已过期，请重新发起授权' } }),
+  )
+  await page.goto(
+    '/oauth/authorize?client_id=demo&response_type=code&state=x&challenge=y&redirect_uri=' +
+      encodeURIComponent('https://tio.fyi/oauth/callback'),
+  )
+  await expect(page.getByText('登录请求已过期，请重新发起授权')).toBeVisible()
+  // 失败后不能回 Auth 登录页（tx 已失效，回去是死路），要回发起授权的应用。
+  const back = page.getByRole('link', { name: /返回 tio\.fyi/ })
+  await expect(back).toHaveAttribute('href', 'https://tio.fyi')
+})
+
 test('移动端抽屉选中目标后自动收起', async ({ page }) => {
   await mockApi(page, true)
   await page.setViewportSize({ width: 390, height: 844 })

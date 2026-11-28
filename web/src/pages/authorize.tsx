@@ -34,6 +34,20 @@ function initial(value: string): string {
   return (value.trim()[0] ?? 'A').toUpperCase()
 }
 
+// 失败时「返回」的去处：授权请求里 redirect_uri 的 origin（只认 http/https）。
+// 拿不到就回 Auth 控制台——回登录页是死路：tx 已失效，重新登录也续不上。
+function appReturn(search: string): { origin: string; host: string } | null {
+  const raw = new URLSearchParams(search).get('redirect_uri')
+  if (!raw) return null
+  try {
+    const u = new URL(raw)
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return null
+    return { origin: u.origin, host: u.host }
+  } catch {
+    return null
+  }
+}
+
 // 应用图标用品牌登记表里的站内图标（/brand/<App>-v1.png），加载失败再退回首字方块。
 function AppBadge({ icon, name }: { icon?: string; name: string }) {
   const [failed, setFailed] = React.useState(false)
@@ -85,6 +99,7 @@ export function ConsentCard({
   }
 
   const appName = data?.appName || data?.app
+  const back = appReturn(next.includes('?') ? next.slice(next.indexOf('?') + 1) : '')
   // 账号头像沿用控制台那一套：有图用图，没图用昵称首字 + 主题色。
   const avatarName = profile?.nickname?.trim() || data?.email.split('@')[0] || ''
   const avatarColor = AVATAR_PALETTE[profile?.avatarColor ?? 0] ?? AVATAR_PALETTE[0]
@@ -125,9 +140,13 @@ export function ConsentCard({
                 <Button asChild className="w-full">
                   <Link to={`/web/login?next=${encodeURIComponent(next)}`}>先登录再继续</Link>
                 </Button>
+              ) : back ? (
+                <Button asChild className="w-full">
+                  <a href={back.origin}>返回 {back.host} 重新发起</a>
+                </Button>
               ) : (
                 <Button variant="outline" className="w-full" asChild>
-                  <Link to="/web/login">返回登录</Link>
+                  <Link to="/web/console">返回 Auth 控制台</Link>
                 </Button>
               )}
             </div>
@@ -211,7 +230,7 @@ export default function AuthorizePage() {
           </CardHeader>
           <CardContent>
             <Button className="w-full" asChild>
-              <Link to="/web/login">返回登录</Link>
+              <Link to="/web/console">返回 Auth 控制台</Link>
             </Button>
           </CardContent>
         </Card>
