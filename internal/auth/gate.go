@@ -151,7 +151,7 @@ func (s *Service) denyIfProjectRestricted(uid int64, app string) error {
 // restrictedMessage 是项目白名单的拒绝文案（带项目名更佳——展示名取品牌注册表，
 // 与 allowedApps 同键对拍，不会漂）。
 func restrictedMessage(app string) string {
-	return "「" + appName(app) + "」项目仅限受邀用户登录，如需访问请联系管理员"
+	return appName(app) + "项目仅限受邀用户登录，如需访问请联系管理员"
 }
 
 // loginGate 是**凭据验证通过之后、发 token 之前**的账号态总闸（顺序钉死）：

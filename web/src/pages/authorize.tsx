@@ -262,8 +262,10 @@ export function ConsentCard({
               <Alert variant="warning">
                 <ShieldAlert className="size-4" />
                 <AlertDescription>
-                  <p>完成后会回到下面的地址（不是本站域名）：</p>
-                  <p className="mt-1 font-mono text-sm font-medium [overflow-wrap:anywhere]">{data.redirectHost}</p>
+                  <p>
+                    完成后会回到 <span className="text-foreground font-medium">{appName}</span>（
+                    <span className="font-mono [overflow-wrap:anywhere]">{data.redirectHost}</span>），它不是本站域名。
+                  </p>
                   <p className="mt-1">请确认这是你信任的应用。</p>
                 </AlertDescription>
               </Alert>

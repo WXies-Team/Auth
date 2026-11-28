@@ -334,7 +334,7 @@ test('无权限登录显示专用说明，可换账号或回应用', async ({ pa
     (route) =>
       route.fulfill({
         status: 403,
-        json: { message: '「奇奇岛护照」项目仅限受邀用户登录，如需访问请联系管理员', reason: 'policy' },
+        json: { message: '奇奇岛护照项目仅限受邀用户登录，如需访问请联系管理员', reason: 'policy' },
       }),
   )
 
