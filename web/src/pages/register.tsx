@@ -104,7 +104,7 @@ export default function RegisterPage() {
             </Button>
           ) : (
             <form onSubmit={submit} className="space-y-3">
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <Label htmlFor="reg-email">邮箱</Label>
                 <Input
                   id="reg-email"
@@ -115,7 +115,7 @@ export default function RegisterPage() {
                   onChange={(e) => setEmail(e.target.value)}
                 />
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <Label htmlFor="reg-code">验证码</Label>
                 <div className="flex gap-2">
                   <OtpInput id="reg-code" value={code} onChange={setCode} className="flex-1" />
@@ -124,7 +124,7 @@ export default function RegisterPage() {
                   </Button>
                 </div>
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <Label htmlFor="reg-pw">密码</Label>
                 <PasswordInput
                   id="reg-pw"
@@ -134,7 +134,7 @@ export default function RegisterPage() {
                   onChange={(e) => setPassword(e.target.value)}
                 />
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <Label htmlFor="reg-pw2">确认密码</Label>
                 <PasswordInput
                   id="reg-pw2"

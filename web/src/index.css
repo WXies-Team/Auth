@@ -416,7 +416,8 @@
     max-height: 92dvh;
     translate: none;
     border-radius: calc(var(--radius) + 4px) calc(var(--radius) + 4px) 0 0;
-    padding-bottom: calc(1.5rem + env(safe-area-inset-bottom));
+    padding: 16px;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
   }
   .dialog-motion[data-state="open"] {
     animation: sheet-in-bottom 320ms var(--ease-enter) both;

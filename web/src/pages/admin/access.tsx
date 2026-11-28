@@ -86,11 +86,11 @@ export default function AdminAccessPage() {
   const projects = data?.projects ?? []
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <PageHeader title="项目访问" description="控制每个项目谁能登录、谁是项目管理员，以及 OAuth 回跳地址。" />
 
       {isLoading ? (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
           {[0, 1, 2, 3].map((i) => (
             <Skeleton key={i} className="h-56 w-full" />
           ))}
@@ -100,7 +100,7 @@ export default function AdminAccessPage() {
           <EmptyState icon={Lock} title="当前没有可管理的项目" description="你被授权的项目会出现在这里。" />
         </Card>
       ) : (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
           {projects.map((p) => (
             <Card key={p.app}>
               <CardHeader>
@@ -124,7 +124,7 @@ export default function AdminAccessPage() {
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <p className="flex items-center gap-1.5 text-sm font-medium">
+                  <p className="flex items-center gap-2 text-sm font-medium">
                     <Users className="size-4" /> 成员 {p.members.length}
                   </p>
                   <Button variant="outline" size="sm" onClick={() => setMemberProject(p)}>
@@ -170,7 +170,7 @@ export default function AdminAccessPage() {
                   {p.admins.length === 0 ? (
                     <p className="text-muted-foreground text-sm">暂无。项目管理员可管理该项目的成员与会话。</p>
                   ) : (
-                    <div className="flex flex-wrap gap-1.5">
+                    <div className="flex flex-wrap gap-2">
                       {p.admins.map((a) => (
                         <span key={a.uid} className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs">
                           {a.email}
@@ -193,7 +193,7 @@ export default function AdminAccessPage() {
                 <Separator />
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="flex items-center gap-1.5 text-sm font-medium">
+                    <p className="flex items-center gap-2 text-sm font-medium">
                       <ShieldCheck className="size-4" /> 访问策略
                     </p>
                     <p className="text-muted-foreground text-xs">
@@ -505,7 +505,7 @@ function PolicyDialog({
             </span>
             <Switch checked={legacyUpgrade} onCheckedChange={setLegacyUpgrade} />
           </label>
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <Label>允许的邮箱域名（每行一个，留空 = 不限）</Label>
             <Textarea
               value={domains}
@@ -515,7 +515,7 @@ function PolicyDialog({
             />
             <p className="text-muted-foreground text-xs">子域自动放行（a.example.com 命中 example.com）。</p>
           </div>
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <Label>会话绝对天数（0 = 默认 90，最多 90）</Label>
             <Input
               type="number"
@@ -581,14 +581,14 @@ function OAuthDialog({
           <DialogDescription>回跳地址逐行填写，必须精确匹配（不做通配）。</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <Label>client_id</Label>
             <div className="flex gap-1">
               <Input aria-label="client_id" value={clientId} readOnly />
               {clientId && <CopyButton value={clientId} />}
             </div>
           </div>
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <Label>回跳地址（每行一个）</Label>
             <textarea
               aria-label="回跳地址"
@@ -603,7 +603,7 @@ function OAuthDialog({
             同时轮换 client_secret（旧 secret 立即失效）
           </label>
           {secret && (
-            <div className="space-y-1.5 rounded-md border border-warning/30 bg-warning/5 p-3">
+            <div className="space-y-2 rounded-md border border-warning/30 bg-warning/5 p-3">
               <p className="text-xs font-medium text-warning">新 secret 只显示这一次</p>
               <div className="flex items-center gap-1">
                 <code className="min-w-0 flex-1 truncate font-mono text-xs">{secret}</code>

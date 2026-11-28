@@ -96,19 +96,19 @@ export default function InvitePage() {
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
               )}
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <Label htmlFor="invite-email">邮箱</Label>
                 <Input id="invite-email" value={info.data?.email ?? ''} readOnly disabled />
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <Label htmlFor="invite-pw">设置密码</Label>
                 <PasswordInput id="invite-pw" autoFocus autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <Label htmlFor="invite-pw2">确认密码</Label>
                 <PasswordInput id="invite-pw2" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <Label htmlFor="invite-nick">昵称（可选）</Label>
                 <Input id="invite-nick" value={nickname} maxLength={64} onChange={(e) => setNickname(e.target.value)} />
               </div>

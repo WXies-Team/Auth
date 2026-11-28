@@ -33,7 +33,7 @@ export default function AdminAIPage() {
   const chart = (data?.days ?? []).map((d) => ({ ...d, label: d.date.slice(5) }))
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <PageHeader
         title="AI 用量"
         description="查看各用户的 AI 调用次数与限额；没有调用时保持为空。"
@@ -52,12 +52,12 @@ export default function AdminAIPage() {
       />
 
       {showSkeleton ? (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
           {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-24" />)}
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
             <StatCard label="今日调用" value={data?.today ?? 0} hint={delta === 0 ? '与昨日持平' : `较昨日 ${delta > 0 ? '+' : ''}${delta}`} icon={ChartColumn} />
             <StatCard
               label="全站剩余"
@@ -209,9 +209,9 @@ function QuotaDialog({ open, onOpenChange, onDone }: { open: boolean; onOpenChan
           <DialogTitle>编辑 AI 限额</DialogTitle>
           <DialogDescription>留空表示不修改。正整数，保存后 ≤10 秒生效。</DialogDescription>
         </DialogHeader>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
           {keys.map(([k, , label]) => (
-            <div key={k} className="space-y-1.5">
+            <div key={k} className="space-y-2">
               <Label>{label}</Label>
               <Input
                 inputMode="numeric"

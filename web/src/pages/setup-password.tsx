@@ -85,15 +85,15 @@ export default function SetupPasswordPage() {
                   <AlertDescription>{error}</AlertDescription>
                 </Alert>
               )}
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <Label htmlFor="setup-email">邮箱</Label>
                 <Input id="setup-email" value={info.data?.email ?? ''} readOnly disabled />
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <Label htmlFor="setup-pw">新密码</Label>
                 <PasswordInput id="setup-pw" autoFocus autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <Label htmlFor="setup-pw2">确认新密码</Label>
                 <PasswordInput id="setup-pw2" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
               </div>

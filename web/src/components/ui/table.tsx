@@ -29,14 +29,14 @@ export function TableRow({ className, ...props }: React.ComponentProps<'tr'>) {
 export function TableHead({ className, ...props }: React.ComponentProps<'th'>) {
   return (
     <th
-      className={cn('text-muted-foreground h-9 px-3 text-left align-middle text-xs font-medium whitespace-nowrap', className)}
+      className={cn('text-muted-foreground h-10 px-4 text-left align-middle text-xs font-medium whitespace-nowrap', className)}
       {...props}
     />
   )
 }
 
 export function TableCell({ className, ...props }: React.ComponentProps<'td'>) {
-  return <td className={cn('px-3 py-3 align-middle', className)} {...props} />
+  return <td className={cn('px-4 py-3 align-middle', className)} {...props} />
 }
 
 export function TableCaption({ className, ...props }: React.ComponentProps<'caption'>) {

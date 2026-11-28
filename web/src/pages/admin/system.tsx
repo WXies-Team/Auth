@@ -31,7 +31,7 @@ export default function AdminSystemPage() {
   })
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <PageHeader title="系统状态" description="查看版本、数据库、邮件与 WebAuthn 配置自检，每 30 秒刷新。" />
 
       {error && (
@@ -44,7 +44,7 @@ export default function AdminSystemPage() {
         <Skeleton className="h-40 w-full" />
       ) : data ? (
         <>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
             <StatCard label="账号" value={data.counts.users} icon={Users} />
             <StatCard label="活跃会话" value={data.counts.sessions} icon={Monitor} />
             <StatCard label="Passkey" value={data.counts.passkeys} icon={Fingerprint} />

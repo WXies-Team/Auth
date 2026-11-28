@@ -50,7 +50,7 @@ export function DialogContent({
 }
 
 export function DialogHeader({ className, ...props }: React.ComponentProps<'div'>) {
-  return <div className={cn('flex flex-col gap-1.5 text-left', className)} {...props} />
+  return <div className={cn('flex flex-col gap-2 text-left', className)} {...props} />
 }
 
 export function DialogFooter({ className, ...props }: React.ComponentProps<'div'>) {

@@ -56,7 +56,7 @@ export default function SessionsPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <PageHeader
         title="登录会话"
         description="管理当前登录的设备；发现陌生设备时立即退出。"
@@ -87,7 +87,7 @@ export default function SessionsPage() {
           ) : (
             <ul className="divide-y">
               {rows.map((row) => (
-                <li key={row.id} className="flex flex-wrap items-start gap-3 p-4">
+                <li key={row.id} className="flex flex-wrap items-start gap-3 px-4 py-4 sm:px-6">
                   <div className="bg-muted flex size-9 shrink-0 items-center justify-center rounded-md">
                     <MonitorSmartphone className="size-4" />
                   </div>

@@ -77,7 +77,7 @@ export default function AdminAuditPage() {
   const showSkeleton = useLoadingSkeleton(isLoading)
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <PageHeader
         title="审计日志"
         description="查看登录、授权、改密与管理操作的不可变记录，默认保留 90 天。"
@@ -96,7 +96,7 @@ export default function AdminAuditPage() {
       />
 
       <Card>
-        <CardContent className="space-y-3 p-4">
+        <CardContent className="space-y-3 px-4 py-4 sm:px-6">
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
             <Select aria-label="动作筛选" value={action} onChange={(e) => { setAction(e.target.value); setPage(1) }}>
               <option value="">全部动作</option>

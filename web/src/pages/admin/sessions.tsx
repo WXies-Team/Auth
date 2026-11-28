@@ -71,7 +71,7 @@ export default function AdminSessionsPage() {
   const showSkeleton = useLoadingSkeleton(isLoading)
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <PageHeader
         title="会话总览"
         description="查看全站活跃会话，可按项目、邮箱、uid 或 IP 检索。"
@@ -82,7 +82,7 @@ export default function AdminSessionsPage() {
         }
       />
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <StatCard label="会话" value={data?.total ?? '—'} icon={Monitor} />
         <StatCard label="用户" value={data?.totalUsers ?? '—'} icon={Users} />
         <StatCard label="项目" value={data?.apps?.length ?? '—'} icon={AppWindow} />
@@ -94,13 +94,13 @@ export default function AdminSessionsPage() {
       </div>
 
       <Card>
-        <CardContent className="space-y-3 p-4">
+        <CardContent className="space-y-3 px-4 py-4 sm:px-6">
           <div className="flex flex-wrap gap-2">
             <div className="relative min-w-48 flex-1">
-              <Search className="text-muted-foreground absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
+              <Search className="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2" />
               <Input
                 aria-label="按邮箱片段或 uid 搜索"
-                className="pl-8"
+                className="pl-9"
                 placeholder="按邮箱片段或 uid 搜索"
                 value={query}
                 onChange={(e) => { setQuery(e.target.value); setPage(1) }}

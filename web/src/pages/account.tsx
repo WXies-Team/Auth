@@ -94,7 +94,7 @@ export default function AccountPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <PageHeader title="账号" description="管理资料、登录凭据、邮箱与账号注销。" />
 
       <Card>
@@ -102,7 +102,7 @@ export default function AccountPage() {
           <CardTitle>个人资料</CardTitle>
           <CardDescription>昵称和头像会显示在控制台与已接入的应用中。</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-5">
+        <CardContent className="space-y-6">
           <div className="flex flex-wrap items-center gap-4">
             <Avatar className="size-16">
               <AvatarImage src={avatarDataUrl(image)} alt="" />
@@ -139,8 +139,8 @@ export default function AccountPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
+          <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
               <Label htmlFor="nickname">昵称</Label>
               <Input
                 id="nickname"
@@ -150,7 +150,7 @@ export default function AccountPage() {
                 placeholder="留空则显示邮箱前缀"
               />
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <Label>头像底色</Label>
               <div className="flex flex-wrap gap-2">
                 {PALETTE.map((hex, i) => (
@@ -309,12 +309,12 @@ function ChangePasswordForm() {
           </Alert>
         )}
         {mode === 'old' ? (
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <Label htmlFor="old-pw">当前密码</Label>
             <PasswordInput id="old-pw" autoComplete="current-password" value={oldPw} onChange={(e) => setOldPw(e.target.value)} />
           </div>
         ) : (
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <Label htmlFor="pw-code">邮箱验证码</Label>
             <div className="flex gap-2">
               <Input id="pw-code" value={code} onChange={(e) => setCode(e.target.value)} className="flex-1" />
@@ -328,12 +328,12 @@ function ChangePasswordForm() {
             </div>
           </div>
         )}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div className="space-y-1.5">
+        <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
             <Label htmlFor="new-pw">新密码</Label>
             <PasswordInput id="new-pw" autoComplete="new-password" value={newPw} onChange={(e) => setNewPw(e.target.value)} />
           </div>
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <Label htmlFor="new-pw2">确认新密码</Label>
             <PasswordInput id="new-pw2" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
           </div>
@@ -379,12 +379,12 @@ function ChangeEmailForm() {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div className="space-y-1.5">
+      <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-2">
+        <div className="space-y-2">
           <Label htmlFor="new-email">新邮箱</Label>
           <Input id="new-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
         </div>
-        <div className="space-y-1.5">
+        <div className="space-y-2">
           <Label htmlFor="email-code">验证码</Label>
           <div className="flex gap-2">
             <Input id="email-code" value={code} onChange={(e) => setCode(e.target.value)} className="flex-1" required />
@@ -404,7 +404,7 @@ function ChangeEmailForm() {
           </div>
         </div>
       </div>
-      <div className="space-y-1.5">
+      <div className="space-y-2">
         <Label htmlFor="email-pw">当前密码</Label>
         <PasswordInput id="email-pw" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required />
       </div>
@@ -456,7 +456,7 @@ function DeleteAccount({ email, onDone }: { email: string; onDone: () => void })
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <Label htmlFor="del-code">邮箱验证码</Label>
               <div className="flex gap-2">
                 <Input id="del-code" value={code} onChange={(e) => setCode(e.target.value)} className="flex-1" />
@@ -474,7 +474,7 @@ function DeleteAccount({ email, onDone }: { email: string; onDone: () => void })
                 </Button>
               </div>
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <Label htmlFor="del-phrase">输入「注销」确认</Label>
               <Input id="del-phrase" value={phrase} onChange={(e) => setPhrase(e.target.value)} placeholder="注销" />
             </div>

@@ -144,7 +144,7 @@ export default function AdminUserDetailPage() {
 
   if (isLoading || !data) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-6">
         <Skeleton className="h-9 w-40" />
         <Skeleton className="h-40 w-full" />
       </div>
@@ -214,7 +214,7 @@ export default function AdminUserDetailPage() {
             </div>
             <Separator />
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <Label>角色</Label>
                 {data.role === 'admin' ? (
                   <>
@@ -257,7 +257,7 @@ export default function AdminUserDetailPage() {
                   </>
                 )}
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <Label>登录方式</Label>
                 <div className="flex flex-wrap gap-2 text-sm">
                   <Badge variant={data.hasPassword ? 'secondary' : 'outline'}>
@@ -334,7 +334,7 @@ export default function AdminUserDetailPage() {
                 <p className="text-muted-foreground p-6 text-sm">没有活跃会话。</p>
               ) : (
                 data.sessions.map((s) => (
-                  <div key={s.id} className="flex flex-wrap items-center gap-3 p-4">
+                  <div key={s.id} className="flex flex-wrap items-center gap-3 px-4 py-4 sm:px-6">
                     <MonitorSmartphone className="text-muted-foreground size-4" />
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium">{s.device || '未知设备'}</p>
@@ -360,7 +360,7 @@ export default function AdminUserDetailPage() {
                 <p className="text-muted-foreground p-6 text-sm">没有 Passkey。</p>
               ) : (
                 data.passkeys.map((p: Passkey) => (
-                  <div key={p.id} className="flex items-center gap-3 p-4">
+                  <div key={p.id} className="flex items-center gap-3 px-4 py-4 sm:px-6">
                     <Fingerprint className="text-muted-foreground size-4" />
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium">{p.name}</p>
@@ -384,7 +384,7 @@ export default function AdminUserDetailPage() {
                 <p className="text-muted-foreground p-6 text-sm">没有相关安全事件。</p>
               ) : (
                 audit.data!.items.map((row) => (
-                  <div key={row.id} className="flex flex-wrap items-start gap-3 p-4">
+                  <div key={row.id} className="flex flex-wrap items-start gap-3 px-4 py-4 sm:px-6">
                     <ShieldCheck className="text-muted-foreground mt-0.5 size-4" />
                     <div className="min-w-0 flex-1">
                       <p className="text-sm">
@@ -556,7 +556,7 @@ function ResetPasswordDialog({
           <DialogDescription>临时密码只显示一次；选择通知时会同时发邮件。</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <Label>方式</Label>
             <Select aria-label="重置方式" value={mode} onChange={(e) => setMode(e.target.value as 'generate' | 'manual')}>
               <option value="generate">随机生成</option>
@@ -564,7 +564,7 @@ function ResetPasswordDialog({
             </Select>
           </div>
           {mode === 'manual' && (
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <Label>新密码</Label>
               <Input aria-label="新密码" value={password} onChange={(e) => setPassword(e.target.value)} />
             </div>
@@ -575,7 +575,7 @@ function ResetPasswordDialog({
           <label className="flex items-center gap-2 text-sm">
             <Checkbox checked={notify} onCheckedChange={(v) => setNotify(v === true)} /> 邮件通知用户
           </label>
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <Label>原因（可选）</Label>
             <Input aria-label="重置原因" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="写进审计与通知邮件" />
           </div>
@@ -628,11 +628,11 @@ function ChangeEmailDialog({
           <DialogDescription>新邮箱必须未被占用；新旧邮箱都会收到通知。</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <Label>新邮箱</Label>
             <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
           </div>
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <Label>原因（可选）</Label>
             <Input value={reason} onChange={(e) => setReason(e.target.value)} />
           </div>
@@ -689,7 +689,7 @@ function BanDialog({
           <DialogDescription>封禁后该账号无法登录，已有会话会被吊销。</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <Label>范围</Label>
             <Select aria-label="封禁范围" value={app} onChange={(e) => setApp(e.target.value)}>
               <option value="*">全站</option>
@@ -698,11 +698,11 @@ function BanDialog({
               ))}
             </Select>
           </div>
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <Label>解除时间（留空 = 永久）</Label>
             <Input type="datetime-local" value={until} onChange={(e) => setUntil(e.target.value)} />
           </div>
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <Label>原因</Label>
             <Input value={reason} onChange={(e) => setReason(e.target.value)} />
           </div>

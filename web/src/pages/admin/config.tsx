@@ -277,7 +277,7 @@ export default function AdminConfigPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <PageHeader
         title="配置中心"
         description="统一管理部署级配置：邮件、注销钩子、模型接入与限额。项目级策略在「项目访问」页。"
@@ -294,7 +294,7 @@ export default function AdminConfigPage() {
             <h2 className="text-sm font-medium">{section.title}</h2>
             <p className="text-muted-foreground text-xs">{section.desc}</p>
           </div>
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
             {GROUPS.filter((g) => g.section === section.id).map((g) => (
               <Card key={g.title}>
                 <CardHeader>
@@ -334,7 +334,7 @@ export default function AdminConfigPage() {
                           <Badge variant="outline"><XCircle className="size-3" /> 未设置</Badge>
                         )}
                         {meta.kind === 'bool' ? (
-                          <div className="flex items-center gap-1.5">
+                          <div className="flex items-center gap-2">
                             {item.configured && (
                               <Button
                                 variant="ghost"
@@ -467,7 +467,7 @@ export default function AdminConfigPage() {
             <DialogTitle>发送测试邮件</DialogTitle>
             <DialogDescription>用当前 SMTP 配置发一封最小邮件，验证发信链路。</DialogDescription>
           </DialogHeader>
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <Label htmlFor="test-email">收件邮箱</Label>
             <Input
               id="test-email"

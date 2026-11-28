@@ -19,7 +19,7 @@ export function ListSkeleton({
   return (
     <div aria-hidden="true" className={cn('divide-y', className)}>
       {Array.from({ length: rows }).map((_, i) => (
-        <div key={i} className="flex items-start gap-3 p-4">
+        <div key={i} className="flex items-start gap-3 px-4 py-4 sm:px-6">
           <Skeleton className="size-9 shrink-0 rounded-md" />
           <div className="min-w-0 flex-1 space-y-2 py-0.5">
             <Skeleton className={i % 2 === 0 ? 'h-4 w-2/5' : 'h-4 w-1/3'} />
@@ -49,7 +49,7 @@ export function TableSkeleton({
     <div aria-hidden="true" className="divide-y">
       {/* 与真实表格逐像素对齐：表头 h-9、数据行 h-12、同 px-3，
           换成真表时纵向零位移（骨架→内容的“冒一行”就是这里高度不齐造成的）。 */}
-      <div className="flex h-9 items-center gap-4 px-3">
+      <div className="flex h-10 items-center gap-4 px-4">
         <Skeleton className="size-4 shrink-0 rounded-sm" />
         {Array.from({ length: Math.max(columns - 1, 1) }).map((_, i) => (
           <Skeleton key={i} className="h-3 flex-1" />
@@ -57,7 +57,7 @@ export function TableSkeleton({
       </div>
       {Array.from({ length: rows }).map((_, r) => (
         // 与真实 TableCell 的 py-3 + 两行内容对齐（约 58~60px），骨架→真表零位移。
-        <div key={r} className="flex items-center gap-4 px-3 py-3">
+        <div key={r} className="flex items-center gap-4 px-4 py-3">
           <Skeleton className="size-4 shrink-0 rounded-sm" />
           <Skeleton className={dense ? 'hidden' : 'size-8 shrink-0 rounded-full'} />
           <div className="min-w-0 flex-1 space-y-2">

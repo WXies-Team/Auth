@@ -83,7 +83,7 @@ export default function PasskeysPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <PageHeader
         title="Passkey"
         description="用指纹、面容或安全密钥登录，不需要输入密码。"
@@ -118,7 +118,7 @@ export default function PasskeysPage() {
           ) : (
             <ul className="divide-y">
               {rows.map((row) => (
-                <li key={row.id} className="flex flex-wrap items-center gap-3 p-4">
+                <li key={row.id} className="flex flex-wrap items-center gap-3 px-4 py-4 sm:px-6">
                   <div className="bg-muted flex size-9 shrink-0 items-center justify-center rounded-md">
                     <Fingerprint className="size-4" />
                   </div>
@@ -168,7 +168,7 @@ export default function PasskeysPage() {
           <DialogHeader>
             <DialogTitle>给 Passkey 改名</DialogTitle>
           </DialogHeader>
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <Label htmlFor="pk-name">名称</Label>
             <Input id="pk-name" autoFocus value={name} maxLength={64} onChange={(e) => setName(e.target.value)} />
             <p className="text-muted-foreground text-xs">例如「MacBook 指纹」「iPhone」。</p>

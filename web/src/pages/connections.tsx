@@ -42,7 +42,7 @@ export default function ConnectionsPage() {
   const showSkeleton = useLoadingSkeleton(isLoading)
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <PageHeader
         title="已授权应用"
         description="管理可以用你的账号登录的应用；撤销后，其登录会话会在下次校验时失效。"
@@ -63,7 +63,7 @@ export default function ConnectionsPage() {
           ) : (
             <ul className="divide-y">
               {rows.map((row) => (
-                <li key={row.app} className="flex flex-wrap items-center gap-3 p-4">
+                <li key={row.app} className="flex flex-wrap items-center gap-3 px-4 py-4 sm:px-6">
                   <div className="bg-muted flex size-9 shrink-0 items-center justify-center rounded-md">
                     <AppWindow className="size-4" />
                   </div>

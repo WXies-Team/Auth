@@ -80,7 +80,7 @@ export default function ActivityPage() {
   const showSkeleton = useLoadingSkeleton(isLoading)
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <PageHeader
         title="安全活动"
         description="查看最近的登录、改密、凭证变更与会话操作；发现不认识的活动时立即改密并退出其它设备。"
@@ -100,7 +100,7 @@ export default function ActivityPage() {
           ) : (
             <ul className="divide-y">
               {rows.map((row) => (
-                <li key={row.id} className="flex flex-wrap items-start gap-3 p-4">
+                <li key={row.id} className="flex flex-wrap items-start gap-3 px-4 py-4 sm:px-6">
                   <div
                     className={
                       'mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full ' +

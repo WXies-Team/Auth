@@ -141,7 +141,7 @@ function NavList({ items, onSelect }: { items: NavItem[]; onSelect?: (to: string
             }
             aria-current={active ? 'page' : undefined}
             className={cn(
-              'relative z-10 flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors',
+              'relative z-10 flex items-center gap-2 rounded-md px-2.5 py-2 text-sm font-medium transition-colors',
               '[&_svg]:transition-transform [&_svg]:duration-150 [&:active_svg]:scale-90',
               active ? 'text-foreground' : 'text-muted-foreground hover:bg-sidebar-accent hover:text-foreground',
             )}
@@ -167,7 +167,7 @@ function Brand({ onSelect }: { onSelect?: (to: string) => void }) {
             }
           : undefined
       }
-      className="flex items-center gap-2 px-2 py-1"
+      className="flex items-center gap-2 px-3 py-1"
     >
       <img src="/favicon.svg" alt="" className="size-7" />
       <span className="text-base font-semibold tracking-tight">Auth</span>
@@ -190,7 +190,7 @@ function SidebarBody({ onSelect }: { onSelect?: (to: string) => void }) {
     <div className="flex h-full flex-col gap-4 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
       <Brand onSelect={onSelect} />
       <div className="flex-1 overflow-y-auto overscroll-contain">
-        <p className="text-muted-foreground px-2.5 pb-2 text-xs font-medium">
+        <p className="text-muted-foreground px-3 pb-2 text-xs font-medium">
           {inAdmin ? t('nav.adminSection') : t('nav.consoleSection')}
         </p>
         <NavList items={items} onSelect={onSelect} />
@@ -208,7 +208,7 @@ function SidebarBody({ onSelect }: { onSelect?: (to: string) => void }) {
                   }
                 : undefined
             }
-            className="text-muted-foreground hover:bg-sidebar-accent hover:text-foreground flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium"
+            className="text-muted-foreground hover:bg-sidebar-accent hover:text-foreground flex items-center gap-2 rounded-md px-2.5 py-2 text-sm font-medium"
           >
             <LayoutDashboard className="size-4" /> {t('nav.backConsole')}
           </Link>
@@ -224,11 +224,11 @@ function SidebarBody({ onSelect }: { onSelect?: (to: string) => void }) {
                     }
                   : undefined
               }
-              className="text-muted-foreground hover:bg-sidebar-accent hover:text-foreground flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium"
+              className="text-muted-foreground hover:bg-sidebar-accent hover:text-foreground flex items-center gap-2 rounded-md px-2.5 py-2 text-sm font-medium"
             >
               <ShieldCheck className="size-4" /> {t('nav.adminConsole')}
               {!session?.totpEnabled && (session?.passkeyCount ?? 0) === 0 && (
-                <span className="rounded bg-warning/15 px-1.5 py-0.5 text-[10px] font-medium text-warning">
+                <span className="rounded bg-warning/15 px-1.5 py-0.5 text-xs font-medium text-warning">
                   待绑定 MFA
                 </span>
               )}
@@ -441,7 +441,7 @@ function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (
               }
             }}
           />
-          <kbd className="text-muted-foreground rounded border px-1.5 py-0.5 text-[10px]">Esc</kbd>
+          <kbd className="text-muted-foreground rounded border px-1.5 py-0.5 text-xs">Esc</kbd>
         </div>
         <div className="max-h-72 overflow-y-auto p-1">
           {items.length === 0 ? (

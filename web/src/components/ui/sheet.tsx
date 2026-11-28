@@ -38,7 +38,7 @@ export function SheetContent({
 }
 
 export function SheetHeader({ className, ...props }: React.ComponentProps<'div'>) {
-  return <div className={cn('flex flex-col gap-1.5 p-6 pb-0', className)} {...props} />
+  return <div className={cn('flex flex-col gap-2 p-6 pb-0', className)} {...props} />
 }
 
 export function SheetTitle({ className, ...props }: React.ComponentProps<typeof SheetPrimitive.Title>) {

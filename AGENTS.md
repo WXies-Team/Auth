@@ -32,6 +32,7 @@ Before finishing: `JWT_SECRET` and `TOTP_ENC_KEY` must each be ≥32 bytes or th
 - The `app` field on login/register/send-code is the JWT `aud`, whitelisted to `CalorieDiary`/`ExpenseDiary` via `allowedApps` in `internal/auth/auth.go`; add new apps there and in the downstream services.
 - `/internal/*` is loopback/trusted-network only (403 otherwise); deploy config through `app_config` (10s cache), never hardcoded secrets.
 - On account deletion, call each diary hook and honor the 7-day grace (see sister-repos); a failing hook returns 503 and aborts.
+- 间距只用 4/8/12/16/24/32：卡片内边距 16（`sm` 起 24）、页面区块间距 24、表格单元格 `px-4 py-3`、列表行 `px-4 py-4 sm:px-6`；字号只有 12/14/16/18/20/24，正文 14/20；窄屏控件高 40、抽屉导航行 44。
 - 动效只有一套 token（`web/src/index.css` 的 `--motion-*` / `--ease-*`）；页面切换只做入场，不做新旧交叉淡入；窄屏（<640px）弹窗是从底部滑入的弹层。改数值时短链项目同步（它按同一份取值）。
 
 ### Ask first

@@ -1,5 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
-import { Card, CardContent } from './card'
+import { Card } from './card'
 import { cn } from '@/lib/utils'
 
 export function StatCard({
@@ -15,9 +15,10 @@ export function StatCard({
   icon?: LucideIcon
   className?: string
 }) {
+  // 统计卡自带内边距（16 / 桌面 24），不复用 CardContent 的「无上内边距」默认值。
   return (
-    <Card className={cn('py-4', className)}>
-      <CardContent className="flex items-start justify-between gap-3 px-4">
+    <Card className={cn(className)}>
+      <div className="flex items-start justify-between gap-3 px-4 py-4 sm:px-6">
         <div className="space-y-1">
           <p className="text-muted-foreground text-xs">{label}</p>
           <p className="text-2xl font-semibold tracking-tight tabular-nums">{value}</p>
@@ -28,7 +29,7 @@ export function StatCard({
             <Icon className="size-4" />
           </div>
         )}
-      </CardContent>
+      </div>
     </Card>
   )
 }

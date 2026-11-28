@@ -14,8 +14,8 @@ export function PageHeader({
 }) {
   useDocumentTitle(title)
   return (
-    <div className={cn('flex flex-wrap items-start justify-between gap-3', className)}>
-      <div className="min-w-0 space-y-1">
+    <div className={cn('flex flex-wrap items-start justify-between gap-4', className)}>
+      <div className="min-w-0 space-y-2">
         {/* 标题可能是邮箱这类无空格长串：允许任意断行，避免把页面撑出横向滚动 */}
         <h1 className="text-2xl font-semibold tracking-tight [overflow-wrap:anywhere]">{title}</h1>
         {description && (

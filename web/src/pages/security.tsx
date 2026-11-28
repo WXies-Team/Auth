@@ -136,7 +136,7 @@ export default function SecurityPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <PageHeader title="两步验证" description="在密码之外增加一次性验证码，降低密码泄露后的登录风险。" />
 
       {error && (
@@ -201,7 +201,7 @@ export default function SecurityPage() {
               </div>
             </div>
             <Separator />
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <Label htmlFor="setup-code">输入验证器上的 6 位验证码</Label>
               <OtpInput id="setup-code" value={code} onChange={setCode} maxLength={6} className="max-w-56" />
             </div>
@@ -235,7 +235,7 @@ export default function SecurityPage() {
               </div>
               <Progress value={total ? (left / total) * 100 : 0} aria-label="恢复码剩余" />
               {left === 0 && (
-                <p className="flex items-center gap-1.5 text-xs text-warning">
+                <p className="flex items-center gap-2 text-xs text-warning">
                   <TriangleAlert className="size-3.5" /> 恢复码已用尽，建议立即重新生成。
                 </p>
               )}
@@ -286,7 +286,7 @@ export default function SecurityPage() {
           ) : (
             <ul className="divide-y">
               {(trusted.data ?? []).map((d) => (
-                <li key={d.id} className="flex flex-wrap items-center gap-3 p-4">
+                <li key={d.id} className="flex flex-wrap items-center gap-3 px-4 py-4 sm:px-6">
                   <div className="bg-muted flex size-9 items-center justify-center rounded-md">
                     <ShieldCheck className="size-4" />
                   </div>
@@ -343,7 +343,7 @@ export default function SecurityPage() {
                 : '旧恢复码会立即全部作废，新的一组只在关闭弹窗后显示一次。'}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             <Label htmlFor="action-code">动态验证码或恢复码</Label>
             <Input
               id="action-code"

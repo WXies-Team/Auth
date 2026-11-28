@@ -283,7 +283,7 @@ export default function LoginPage() {
 
           {step === 'totp' && (
             <form onSubmit={submitSecondFactor} className="space-y-3">
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <Label htmlFor="otp">{factor === 'recovery' ? '恢复码' : factor === 'email' ? '邮箱验证码' : '两步验证码'}</Label>
                 <OtpInput
                   id="otp"
@@ -343,11 +343,11 @@ export default function LoginPage() {
 
           {step === 'force-pw' && (
             <form onSubmit={submitForcePassword} className="space-y-3">
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <Label htmlFor="new-pw">新密码</Label>
                 <PasswordInput id="new-pw" autoFocus autoComplete="new-password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <Label htmlFor="new-pw2">确认新密码</Label>
                 <PasswordInput id="new-pw2" autoComplete="new-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
               </div>
@@ -369,11 +369,11 @@ export default function LoginPage() {
 
                 <TabsContent value="password">
                   <form onSubmit={submitPassword} className="space-y-3">
-                    <div className="space-y-1.5">
+                    <div className="space-y-2">
                       <Label htmlFor="email">{t('login.email')}</Label>
                       <Input id="email" type="email" autoComplete="username webauthn" required value={email} onChange={(e) => setEmail(e.target.value)} />
                     </div>
-                    <div className="space-y-1.5">
+                    <div className="space-y-2">
                       <Label htmlFor="password">{t('login.password')}</Label>
                       <PasswordInput id="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
                     </div>
@@ -385,11 +385,11 @@ export default function LoginPage() {
 
                 <TabsContent value="code">
                   <form onSubmit={submitEmailCode} className="space-y-3">
-                    <div className="space-y-1.5">
+                    <div className="space-y-2">
                       <Label htmlFor="code-email">邮箱</Label>
                       <Input id="code-email" type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} />
                     </div>
-                    <div className="space-y-1.5">
+                    <div className="space-y-2">
                       <Label htmlFor="code">验证码</Label>
                       <div className="flex gap-2">
                         <OtpInput id="code" value={code} onChange={setCode} className="flex-1" />
@@ -406,11 +406,11 @@ export default function LoginPage() {
 
                 <TabsContent value="reset">
                   <form onSubmit={submitReset} className="space-y-3">
-                    <div className="space-y-1.5">
+                    <div className="space-y-2">
                       <Label htmlFor="reset-email">邮箱</Label>
                       <Input id="reset-email" type="email" autoComplete="username" required value={email} onChange={(e) => setEmail(e.target.value)} />
                     </div>
-                    <div className="space-y-1.5">
+                    <div className="space-y-2">
                       <Label htmlFor="reset-code">验证码</Label>
                       <div className="flex gap-2">
                         <OtpInput id="reset-code" value={code} onChange={setCode} className="flex-1" />
@@ -419,7 +419,7 @@ export default function LoginPage() {
                         </Button>
                       </div>
                     </div>
-                    <div className="space-y-1.5">
+                    <div className="space-y-2">
                       <Label htmlFor="reset-pw">新密码</Label>
                       <PasswordInput id="reset-pw" autoComplete="new-password" required value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
                     </div>
@@ -441,7 +441,7 @@ export default function LoginPage() {
                 <Fingerprint /> {t('login.passkey')}
               </Button>
 
-              <p className="text-muted-foreground flex items-center justify-center gap-1.5 text-center text-xs">
+              <p className="text-muted-foreground flex items-center justify-center gap-2 text-center text-xs">
                 <Mail className="size-3.5" />
                 {selfRegister ? (
                   <>

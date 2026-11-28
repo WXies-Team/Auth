@@ -133,7 +133,7 @@ export default function AdminUsersPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <PageHeader
         title="用户"
         description="管理账号、角色与封禁，或邀请新成员。"
@@ -145,7 +145,7 @@ export default function AdminUsersPage() {
       />
 
       <Card>
-        <CardContent className="space-y-3 p-4">
+        <CardContent className="space-y-3 px-4 py-4 sm:px-6">
           <form
             className="flex flex-wrap gap-2"
             onSubmit={(e) => {
@@ -154,10 +154,10 @@ export default function AdminUsersPage() {
             }}
           >
             <div className="relative min-w-48 flex-1">
-              <Search className="text-muted-foreground absolute top-1/2 left-2.5 size-4 -translate-y-1/2" />
+              <Search className="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2" />
               <Input
                 aria-label="按邮箱片段或 uid 搜索"
-                className="pl-8"
+                className="pl-9"
                 placeholder="按邮箱片段或 uid 搜索"
                 value={query}
                 onChange={(e) => {
@@ -301,7 +301,7 @@ export default function AdminUsersPage() {
                     </TableCell>
                     <TableCell>
                       <Link to={`/web/admin/users/${u.uid}`} className="hover:underline">
-                        <p className="flex items-center gap-1.5 font-medium">
+                        <p className="flex items-center gap-2 font-medium">
                           {u.email}
                           {u.isRoot && <Badge variant="secondary">根</Badge>}
                         </p>
@@ -381,7 +381,7 @@ export default function AdminUsersPage() {
                         uid {u.uid}
                         {u.nickname ? ` · ${u.nickname}` : ''} · 注册 {dateOnly(u.createdAt)}
                       </p>
-                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                      <div className="mt-1.5 flex flex-wrap items-center gap-2">
                         <Badge variant={u.role === 'super' ? 'default' : u.role === 'admin' ? 'secondary' : 'outline'}>
                           {roleLabel(u.role)}
                         </Badge>
@@ -404,7 +404,7 @@ export default function AdminUsersPage() {
       </Card>
 
       <Card>
-        <CardContent className="p-4">
+        <CardContent className="px-4 py-4 sm:px-6">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <p className="text-sm font-medium">邀请记录</p>
@@ -556,11 +556,11 @@ export default function AdminUsersPage() {
             <DialogDescription>发送一封 24 小时内有效的邀请邮件，对方设置密码后即可登录。</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <Label htmlFor="invite-email">邮箱</Label>
               <Input id="invite-email" type="email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} />
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <Label htmlFor="invite-app">项目（可选）</Label>
               <Select id="invite-app" value={inviteApp} onChange={(e) => setInviteApp(e.target.value)}>
                 <option value="">账号级邀请</option>
@@ -608,7 +608,7 @@ export default function AdminUsersPage() {
             </DialogDescription>
           </DialogHeader>
           {bulkKind !== 'unban' && (
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <Label htmlFor="bulk-reason">原因（可选）</Label>
               <Input id="bulk-reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="例如：异常登录" />
             </div>
