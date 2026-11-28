@@ -111,6 +111,7 @@ type OAuthView struct {
 	Tx           string
 	App          string
 	AppName      string
+	Icon         string // 应用图标的站内路径（/brand/<App>-v1.png）；未登记品牌时为空
 	RedirectHost string
 	Email        string
 	Scopes       []string
@@ -154,7 +155,7 @@ func (s *Service) OAuthAuthorizeView(tx string, uid int64) (*OAuthView, error) {
 		}
 	}
 	return &OAuthView{
-		Tx: tx, App: e.App, AppName: appName(e.App),
+		Tx: tx, App: e.App, AppName: appName(e.App), Icon: brands[e.App].iconPath,
 		RedirectHost: host, Email: email,
 		Scopes: labels,
 	}, nil

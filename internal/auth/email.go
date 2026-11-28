@@ -121,6 +121,10 @@ type brand struct {
 	// logoPath 是托管 logo 的站内路径（/brand/<slug>-v1.png，internal/ui 静态路由，
 	// scripts/genicons 生成）。品牌表按此口径引用，brand_test 逐个断言非空。
 	logoPath string
+	// iconPath 是应用**自己站点**的 favicon 站内副本（/brand/<slug>-favicon.<ext>，
+	// 从各项目 public/ 原样复制，不经 genicons 重绘），OAuth 同意页用它显示应用身份。
+	// 没有站点 favicon 的应用留空，前端退回首字方块。
+	iconPath string
 }
 
 // logoURL 返回邮件里 <img src> 的绝对地址（托管图，非 cid）。
@@ -144,11 +148,13 @@ var brands = map[string]brand{
 		name: "奇奇岛护照", latin: "EPassportForMikey", footer: "奇奇岛护照 EPassportForMikey",
 		prefix: "【奇奇岛护照】", account: "奇奇岛护照账号",
 		primaryHex: "#1363D6", logoPath: "/brand/EPassportForMikey-v1.png",
+		iconPath: "/brand/EPassportForMikey-favicon.png",
 	},
 	"Shortener": {
 		name: "屑涵短链", latin: "Shortener", footer: "屑涵短链 Shortener",
 		prefix: "【屑涵短链】", account: "屑涵短链账号",
 		primaryHex: "#1363D6", logoPath: "/brand/Shortener-v1.png",
+		iconPath: "/brand/Shortener-favicon.svg",
 	},
 }
 

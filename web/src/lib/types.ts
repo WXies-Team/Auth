@@ -216,6 +216,8 @@ export type OAuthInfo = {
   tx: string
   app: string
   appName: string
+  /** 应用图标的站内路径（/brand/<App>-v1.png），未登记品牌时为空 */
+  icon?: string
   redirectHost: string
   email: string
   scopes: string[]

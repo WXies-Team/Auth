@@ -5,6 +5,9 @@ import { ArrowLeftRight, CheckCircle2, Loader2, ShieldAlert } from 'lucide-react
 import { api, ApiError } from '@/lib/api'
 import type { OAuthInfo } from '@/lib/types'
 import { useAuth } from '@/lib/auth'
+import { useProfile } from '@/lib/queries'
+import { AVATAR_PALETTE, avatarDataUrl, initials } from '@/lib/format'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { AuthLayout } from '@/components/layout/app-shell'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -31,6 +34,28 @@ function initial(value: string): string {
   return (value.trim()[0] ?? 'A').toUpperCase()
 }
 
+// 应用图标用品牌登记表里的站内图标（/brand/<App>-v1.png），加载失败再退回首字方块。
+function AppBadge({ icon, name }: { icon?: string; name: string }) {
+  const [failed, setFailed] = React.useState(false)
+  if (icon && !failed) {
+    return (
+      <img
+        src={icon}
+        alt=""
+        width={44}
+        height={44}
+        className="size-11 shrink-0 rounded-xl"
+        onError={() => setFailed(true)}
+      />
+    )
+  }
+  return (
+    <div className="bg-primary/10 text-primary grid size-11 shrink-0 place-items-center rounded-xl text-lg font-semibold">
+      {initial(name)}
+    </div>
+  )
+}
+
 export function ConsentCard({
   data,
   isLoading,
@@ -44,6 +69,7 @@ export function ConsentCard({
 }) {
   const showSkeleton = useLoadingSkeleton(isLoading)
   const { logout } = useAuth()
+  const { data: profile } = useProfile()
   const [switching, setSwitching] = React.useState(false)
 
   // 换账号 = 结束当前会话，再带着同一个 tx 回登录页；登录成功后按 tx 续跑授权，
@@ -59,6 +85,9 @@ export function ConsentCard({
   }
 
   const appName = data?.appName || data?.app
+  // 账号头像沿用控制台那一套：有图用图，没图用昵称首字 + 主题色。
+  const avatarName = profile?.nickname?.trim() || data?.email.split('@')[0] || ''
+  const avatarColor = AVATAR_PALETTE[profile?.avatarColor ?? 0] ?? AVATAR_PALETTE[0]
 
   return (
     <AuthLayout wide>
@@ -66,9 +95,7 @@ export function ConsentCard({
         <CardHeader>
           {appName ? (
             <div className="flex items-center gap-3">
-              <div className="bg-primary/10 text-primary grid size-11 shrink-0 place-items-center rounded-xl text-lg font-semibold">
-                {initial(appName)}
-              </div>
+              <AppBadge icon={data?.icon} name={appName} />
               <div className="min-w-0">
                 <CardTitle className="text-xl">{appName}</CardTitle>
                 <CardDescription>请求访问你的账号</CardDescription>
@@ -107,9 +134,12 @@ export function ConsentCard({
           ) : data ? (
             <>
               <div className="flex items-center gap-3 rounded-lg border px-3 py-2.5">
-                <div className="bg-primary text-primary-foreground grid size-8 shrink-0 place-items-center rounded-full text-xs font-medium">
-                  {initial(data.email)}
-                </div>
+                <Avatar className="size-8">
+                  <AvatarImage src={avatarDataUrl(profile?.avatarImage)} alt="" />
+                  <AvatarFallback style={{ background: avatarColor, color: '#fff' }}>
+                    {initials(avatarName)}
+                  </AvatarFallback>
+                </Avatar>
                 <div className="min-w-0 flex-1">
                   <p className="text-muted-foreground text-xs">当前账号</p>
                   <p className="truncate text-sm font-medium">{data.email}</p>

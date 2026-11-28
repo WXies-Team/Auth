@@ -262,6 +262,43 @@ test('配置中心用类型化控件，项目级策略在项目访问页', async
   await expect(dialog.getByRole('switch')).toHaveCount(2)
 })
 
+test('授权同意页显示应用图标与当前账号，可切换账号', async ({ page }) => {
+  let signedIn = true
+  await page.route('**/web/session', (route) =>
+    signedIn ? route.fulfill({ json: session }) : route.fulfill({ status: 401, json: { message: '未登录' } }),
+  )
+  await page.route('**/api/profile', (route) => route.fulfill({ json: profile }))
+  await page.route('**/web/logout', (route) => {
+    signedIn = false
+    route.fulfill({ status: 204, body: '' })
+  })
+  await page.route(
+    (url) => url.pathname === '/oauth/authorize' && url.searchParams.get('format') === 'json',
+    (route) =>
+      route.fulfill({
+        json: {
+          tx: 'demo-tx',
+          app: 'Shortener',
+          appName: '屑涵短链',
+          icon: '/brand/Shortener-favicon.svg',
+          redirectHost: 'tio.fyi',
+          email: session.email,
+          scopes: ['你的账号标识（uid）', '你的邮箱地址'],
+        },
+      }),
+  )
+
+  await page.goto('/oauth/authorize?client_id=demo&response_type=code&state=x&challenge=y')
+  // 应用图标用各项目自己的 favicon 站内副本，不再用首字占位。
+  await expect(page.locator('img[src="/brand/Shortener-favicon.svg"]')).toBeVisible()
+  await expect(page.getByText('屑涵短链')).toBeVisible()
+  await expect(page.getByText(session.email)).toBeVisible()
+
+  await page.getByRole('button', { name: /切换账号/ }).click()
+  // 换账号 = 结束当前会话 + 带同一个 tx 回登录页；tx 不含 uid，同意仍由新账号做。
+  await expect(page).toHaveURL(/\/web\/login\?tx=demo-tx$/)
+})
+
 test('移动端抽屉选中目标后自动收起', async ({ page }) => {
   await mockApi(page, true)
   await page.setViewportSize({ width: 390, height: 844 })

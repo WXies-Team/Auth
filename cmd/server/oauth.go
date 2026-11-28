@@ -221,10 +221,11 @@ func renderOAuthConfirm(svc *auth.Service, w http.ResponseWriter, r *http.Reques
 			Tx           string   `json:"tx"`
 			App          string   `json:"app"`
 			AppName      string   `json:"appName"`
+			Icon         string   `json:"icon"`
 			RedirectHost string   `json:"redirectHost"`
 			Email        string   `json:"email"`
 			Scopes       []string `json:"scopes"`
-		}{view.Tx, view.App, view.AppName, view.RedirectHost, view.Email, view.Scopes})
+		}{view.Tx, view.App, view.AppName, view.Icon, view.RedirectHost, view.Email, view.Scopes})
 		return
 	}
 	w.Header().Set("Content-Security-Policy",
