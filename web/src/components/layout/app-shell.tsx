@@ -614,22 +614,21 @@ export function RequireSuper() {
 }
 
 export function AuthLayout({ children, wide = false }: { children: React.ReactNode; wide?: boolean }) {
-  // 登录/注册/邀请/同意屏/错误页统一版式：品牌顶上、卡片在剩余空间里垂直居中。
-  // 品牌不参与居中，卡片高度变化只影响自己，品牌不会跟着上下跳。
+  // 登录/注册/邀请/同意屏/错误页统一版式：品牌在卡片正上方、间距 24，整组视觉居中。
+  // 没有内容时不挂载（同意屏加载态）：品牌+卡片一起出现、一起播上浮，
+  // 不会先出现品牌、再被卡片挤上去。
   return (
-    <div className="auth-bg flex min-h-dvh flex-col items-center px-4 pt-[max(2rem,env(safe-area-inset-top))] pb-4">
-      <div className="flex items-center gap-2 py-4">
-        <img src="/favicon.svg" alt="" className="size-8" />
-        <span className="text-lg font-semibold tracking-tight">Auth</span>
-      </div>
-      {/* 同意屏内容更多，桌面放宽到 28rem；登录/注册仍用 24rem。
-          内容为空的加载态不挂载动画壳：卡片一到就跟着它一起上浮，
-          而不是壳先播完、卡片再「直接闪出来」。 */}
-      <div className="flex w-full flex-1 flex-col">
-        <div className={cn('m-auto w-full', wide ? 'max-w-md' : 'max-w-sm')}>
-          {children ? <div className="page-enter">{children}</div> : null}
+    <div className="auth-bg flex min-h-dvh flex-col items-center justify-center p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
+      {children ? (
+        <div className="page-enter flex w-full flex-col items-center">
+          <div className="mb-6 flex items-center gap-2">
+            <img src="/favicon.svg" alt="" className="size-8" />
+            <span className="text-lg font-semibold tracking-tight">Auth</span>
+          </div>
+          {/* 同意屏内容更多，桌面放宽到 28rem；登录/注册仍用 24rem。 */}
+          <div className={cn('w-full', wide ? 'max-w-md' : 'max-w-sm')}>{children}</div>
         </div>
-      </div>
+      ) : null}
     </div>
   )
 }

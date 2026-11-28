@@ -156,7 +156,8 @@ export function ConsentCard({
   const needsLogin = errInfo?.status === 401
 
   if (pending) {
-    return <AuthLayout wide>{null}</AuthLayout>
+    // 加载态整页留白（不先画品牌），就绪后品牌+卡片一起上浮。
+    return <div className="auth-bg min-h-dvh" />
   }
 
   return (
